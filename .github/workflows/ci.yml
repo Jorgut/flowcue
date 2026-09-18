@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-and-build:
+    runs-on: macos-26
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: swift --version
+
+      - name: Render icon assets
+        run: swift Scripts/render-flowcue-icon.swift
+
+      - name: Run tests
+        run: swift test
+
+      - name: Build app bundle
+        run: zsh Scripts/build-app.sh
+
+      - name: Verify bundle
+        run: |
+          plutil -lint dist/FlowCue.app/Contents/Info.plist
+          codesign --verify --deep --strict dist/FlowCue.app
