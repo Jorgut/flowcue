@@ -1,0 +1,35 @@
+.build/
+.swiftpm/
+.swift-module-cache/
+.swiftpm-cache/
+.swiftpm-config/
+dist/
+Design/
+Support/FlowCue.icns
+Support/FlowCue.iconset/
+Support/FlowCue.xcassets/
+Support/FlowCueIcon-1024.png
+Support/FlowCueMenuTemplate.png
+Support/FlowCueMenuTemplate@2x.png
+.DS_Store
+*.xcuserstate
+xcuserdata/
+
+# Local project handoff and machine-specific state
+PROJECT_STATE.md
+
+# Apple distribution outputs and signing material
+*.app
+*.dmg
+*.ipa
+*.pkg
+*.xcarchive
+*.mobileprovision
+*.p12
+AuthKey_*.p8
+
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+.secrets/
