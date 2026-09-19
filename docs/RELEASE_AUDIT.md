@@ -117,6 +117,8 @@ OpenAI 的 Codex app-server daemon 文档说明它支持桌面和移动远程客
 
 保留本机 CLI 和菜单栏体验，发布源码，并在有 Developer ID 后提供已签名、公证的 Mac 构建。该版本不受 Mac App Store 沙箱限制，但仍应使用 Hardened Runtime 和最小权限。
 
+仓库已包含 `Scripts/release-macos.sh`。该脚本会拒绝 ad-hoc 身份，只在 Developer ID 签名、公证、票据装订和 Gatekeeper 检查全部通过后生成版本化 ZIP 与 SHA-256 文件。
+
 ### App Store 版
 
 共享本地草稿、收件箱和状态模型，使用独立传输协议：

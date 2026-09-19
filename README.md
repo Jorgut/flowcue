@@ -46,9 +46,20 @@ zsh Scripts/build-app.sh
 open "dist/Reroute.app"
 ```
 
-打包脚本会生成本地 ad-hoc 签名的 `dist/Reroute.app`。正式想法、任务缓存与投递记录存放于 `~/Library/Application Support/CodexIdeaDock.store`；正在输入且尚未完成 SwiftData 写入的短期崩溃恢复缓冲存放于该 bundle 的本地 UserDefaults。两者都只在本机使用，不启用 CloudKit。
+打包脚本默认生成本地 ad-hoc 签名的 `dist/Reroute.app`。设置 `REROUTE_CODE_SIGN_IDENTITY` 时，会改用指定的 Developer ID Application 身份并启用 Hardened Runtime 与安全时间戳。正式想法、任务缓存与投递记录存放于 `~/Library/Application Support/CodexIdeaDock.store`；正在输入且尚未完成 SwiftData 写入的短期崩溃恢复缓冲存放于该 bundle 的本地 UserDefaults。两者都只在本机使用，不启用 CloudKit。
 
 这是本机使用版本，尚未使用 Developer ID 签名或进行 Apple 公证，不作为对外分发包。重新构建前先正常退出正在运行的 Reroute，完成后从上述明确路径打开，避免旧实例截获快捷键和打开请求。
+
+公开下载版必须先把公证凭据安全存入钥匙串，再运行发布脚本。脚本只接受 Developer ID Application 身份，完成签名、公证、票据装订与 Gatekeeper 检查后，才会生成 ZIP 和 SHA-256 文件：
+
+```bash
+xcrun notarytool store-credentials "Reroute-Notary"
+REROUTE_CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+REROUTE_NOTARY_PROFILE="Reroute-Notary" \
+zsh Scripts/release-macos.sh
+```
+
+GitHub Release 文案和安装说明见 [0.1.0 发布说明](docs/RELEASE_NOTES_0.1.0.md)。不要公开上传默认 ad-hoc 签名的 `dist/Reroute.app`。
 
 构建时会先从 `Scripts/render-reroute-icon.swift` 重新生成应用图标和菜单栏模板图，再在临时目录中组装、校验和签名应用；全部成功后才替换现有 `Reroute.app`。如果 `dist` 中存在另一个使用相同 Bundle ID 的旧 `.app`，构建会停止，避免 macOS 启动错误版本。
 
