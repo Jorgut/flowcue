@@ -1,6 +1,6 @@
-# 发布审查：FlowCue（工作名称）
+# 发布审查：Reroute
 
-更新日期：2026-09-18
+更新日期：2026-09-19
 
 当前产品是 macOS 菜单栏本地应用。GitHub 源码发布可以在品牌与许可证确认后进行；当前二进制不能直接提交 Mac App Store，也不存在 iOS target。
 
@@ -14,11 +14,11 @@
 
 ## 阻断项
 
-### 1. 品牌名称已发生冲突
+### 1. 品牌名称已确定，正式可用性仍待确认
 
-App Store 已存在 `FlowCue App`，同时存在多个使用 FlowCue 名称的软件和网站。GitHub 用户名下暂未发现同名仓库，但仓库名可用不代表产品名或商标可用。
+原工作名称 FlowCue 因 App Store 和多个软件服务存在同名冲突而停用。2026-09-19 已确认公开品牌名称为 **Reroute**，本机应用和仓库文档已完成品牌迁移。
 
-发布前需完成名称检索，锁定新的 App Store 名称、GitHub 仓库名、Bundle ID、图标文字和商店元数据。当前名称仅作为工作名称保留。
+正式发布前仍需在 App Store Connect 预留名称，并完成商标、域名和 GitHub 仓库名核查。当前初步检索不能替代正式可用性确认。
 
 ### 2. GitHub 远端发布尚未完成
 
@@ -90,7 +90,7 @@ OpenAI 的 Codex app-server daemon 文档说明它支持桌面和移动远程客
 
 ### Bundle ID 与数据迁移
 
-当前 Bundle ID 是 `com.altn.codex-idea-dock`，用于保留本地历史数据。正式新品牌应选择新 Bundle ID，并决定：
+当前本机版继续使用 `com.altn.codex-idea-dock`，用于保留本地历史数据。App Store 版本仍需确认独立 Bundle ID，并决定：
 
 - GitHub 版是否保留旧 ID 读取现有数据；
 - App Store 版是否使用新容器；
@@ -131,7 +131,8 @@ OpenAI 的 Codex app-server daemon 文档说明它支持桌面和移动远程客
 
 ### GitHub
 
-- [ ] 最终品牌与仓库名确认
+- [x] 最终品牌确认：Reroute
+- [ ] GitHub 仓库名确认
 - [ ] 可见性与许可证确认
 - [ ] 本机 GitHub 重新登录
 - [ ] CI 通过
