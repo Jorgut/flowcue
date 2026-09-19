@@ -1,12 +1,11 @@
-import SwiftUI
+import AppKit
 
 @main
-struct CodexIdeaDockApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    var body: some Scene {
-        Settings {
-            EmptyView()
-        }
+enum CodexIdeaDockApp {
+    static func main() {
+        let application = NSApplication.shared
+        let delegate = AppDelegate()
+        application.delegate = delegate
+        application.run()
     }
 }
