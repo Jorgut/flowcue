@@ -16,7 +16,7 @@ run_swift_build() {
 
 cd "$project_directory"
 dist_directory="$project_directory/dist"
-app_directory="$dist_directory/FlowCue.app"
+app_directory="$dist_directory/Reroute.app"
 bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$project_directory/Support/Info.plist")"
 
 mkdir -p "$dist_directory"
@@ -34,19 +34,19 @@ while IFS= read -r -d '' candidate_app; do
     fi
 done < <(find "$dist_directory" -maxdepth 1 -type d -name '*.app' -print0)
 
-mkdir -p "$project_directory/.build/flowcue-icon-module-cache"
+mkdir -p "$project_directory/.build/reroute-icon-module-cache"
 swift \
-    -module-cache-path "$project_directory/.build/flowcue-icon-module-cache" \
-    "$script_directory/render-flowcue-icon.swift"
+    -module-cache-path "$project_directory/.build/reroute-icon-module-cache" \
+    "$script_directory/render-reroute-icon.swift"
 
 run_swift_build --configuration "$configuration" --product CodexIdeaDock
 run_swift_build --configuration "$configuration" --product CodexIdeaDockProcessLauncher
 
 binary_directory="$(run_swift_build --configuration "$configuration" --show-bin-path)"
-staging_directory="$(mktemp -d "$dist_directory/.flowcue-build.XXXXXX")"
-staged_app_directory="$staging_directory/FlowCue.app"
+staging_directory="$(mktemp -d "$dist_directory/.reroute-build.XXXXXX")"
+staged_app_directory="$staging_directory/Reroute.app"
 contents_directory="$staged_app_directory/Contents"
-backup_app_directory="$dist_directory/.FlowCue.app.previous.$$"
+backup_app_directory="$dist_directory/.Reroute.app.previous.$$"
 
 cleanup() {
     rm -rf "$staging_directory"
@@ -59,10 +59,10 @@ cp \
     "$binary_directory/CodexIdeaDockProcessLauncher" \
     "$contents_directory/Helpers/CodexIdeaDockProcessLauncher"
 cp "$project_directory/Support/Info.plist" "$contents_directory/Info.plist"
-cp "$project_directory/Support/FlowCue.icns" "$contents_directory/Resources/FlowCue.icns"
+cp "$project_directory/Support/Reroute.icns" "$contents_directory/Resources/Reroute.icns"
 cp \
-    "$project_directory/Support/FlowCueMenuTemplate.png" \
-    "$project_directory/Support/FlowCueMenuTemplate@2x.png" \
+    "$project_directory/Support/RerouteMenuTemplate.png" \
+    "$project_directory/Support/RerouteMenuTemplate@2x.png" \
     "$contents_directory/Resources/"
 plutil -lint "$contents_directory/Info.plist"
 codesign --force --sign - "$contents_directory/Helpers/CodexIdeaDockProcessLauncher"

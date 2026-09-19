@@ -37,7 +37,7 @@ private func makeContext(size: Int) throws -> CGContext {
         space: sRGBColorSpace,
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     ) else {
-        throw NSError(domain: "FlowCueIcon", code: 1)
+        throw NSError(domain: "RerouteIcon", code: 1)
     }
     context.setAllowsAntialiasing(true)
     context.setShouldAntialias(true)
@@ -49,7 +49,7 @@ private func makeContext(size: Int) throws -> CGContext {
 private func pngData(from image: CGImage) throws -> Data {
     let representation = NSBitmapImageRep(cgImage: image)
     guard let data = representation.representation(using: .png, properties: [:]) else {
-        throw NSError(domain: "FlowCueIcon", code: 2)
+        throw NSError(domain: "RerouteIcon", code: 2)
     }
     return data
 }
@@ -266,7 +266,7 @@ private func drawAppIcon(size: Int) throws -> Data {
     drawReturnGlyph(in: context, size: size)
 
     guard let image = context.makeImage() else {
-        throw NSError(domain: "FlowCueIcon", code: 3)
+        throw NSError(domain: "RerouteIcon", code: 3)
     }
     return try pngData(from: image)
 }
@@ -281,7 +281,7 @@ private func drawMenuIcon(size: Int) throws -> Data {
         space: sRGBColorSpace,
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     ) else {
-        throw NSError(domain: "FlowCueIcon", code: 4)
+        throw NSError(domain: "RerouteIcon", code: 4)
     }
     context.setAllowsAntialiasing(true)
     context.setShouldAntialias(true)
@@ -324,7 +324,7 @@ private func drawMenuIcon(size: Int) throws -> Data {
     context.fillPath()
 
     guard let image = context.makeImage() else {
-        throw NSError(domain: "FlowCueIcon", code: 5)
+        throw NSError(domain: "RerouteIcon", code: 5)
     }
     return try pngData(from: image)
 }
@@ -345,7 +345,7 @@ private func runProcess(_ executableURL: URL, arguments: [String]) throws -> Str
     let output = String(decoding: data, as: UTF8.self)
     guard process.terminationStatus == 0 else {
         throw NSError(
-            domain: "FlowCueIcon",
+            domain: "RerouteIcon",
             code: Int(process.terminationStatus),
             userInfo: [
                 NSLocalizedDescriptionKey: output.isEmpty
@@ -370,7 +370,7 @@ private func activeDeveloperDirectory() throws -> URL {
     let path = output.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !path.isEmpty else {
         throw NSError(
-            domain: "FlowCueIcon",
+            domain: "RerouteIcon",
             code: 6,
             userInfo: [NSLocalizedDescriptionKey: "xcode-select returned an empty developer path"]
         )
@@ -385,13 +385,13 @@ private func compileICNS(
 ) throws {
     let fileManager = FileManager.default
     let temporaryDirectory = fileManager.temporaryDirectory
-        .appendingPathComponent("FlowCueIcon-\(UUID().uuidString)", isDirectory: true)
+        .appendingPathComponent("RerouteIcon-\(UUID().uuidString)", isDirectory: true)
     defer { try? fileManager.removeItem(at: temporaryDirectory) }
 
     let assetCatalogDirectory = temporaryDirectory
-        .appendingPathComponent("FlowCueAssets.xcassets", isDirectory: true)
+        .appendingPathComponent("RerouteAssets.xcassets", isDirectory: true)
     let appIconDirectory = assetCatalogDirectory
-        .appendingPathComponent("FlowCue.appiconset", isDirectory: true)
+        .appendingPathComponent("Reroute.appiconset", isDirectory: true)
     let compiledDirectory = temporaryDirectory
         .appendingPathComponent("Compiled", isDirectory: true)
     let partialInfoURL = temporaryDirectory.appendingPathComponent("IconInfo.plist")
@@ -431,11 +431,11 @@ private func compileICNS(
     let actoolURL = developerDirectory.appendingPathComponent("usr/bin/actool")
     guard fileManager.isExecutableFile(atPath: actoolURL.path) else {
         throw NSError(
-            domain: "FlowCueIcon",
+            domain: "RerouteIcon",
             code: 7,
             userInfo: [
                 NSLocalizedDescriptionKey:
-                    "Apple actool was not found at \(actoolURL.path). Install full Xcode to build FlowCue icons."
+                    "Apple actool was not found at \(actoolURL.path). Install full Xcode to build Reroute icons."
             ]
         )
     }
@@ -447,7 +447,7 @@ private func compileICNS(
             "--compile", compiledDirectory.path,
             "--platform", "macosx",
             "--minimum-deployment-target", "14.0",
-            "--app-icon", "FlowCue",
+            "--app-icon", "Reroute",
             "--standalone-icon-behavior", "all",
             "--output-partial-info-plist", partialInfoURL.path,
             "--warnings",
@@ -457,16 +457,16 @@ private func compileICNS(
         ]
     )
 
-    let compiledIconURL = compiledDirectory.appendingPathComponent("FlowCue.icns")
+    let compiledIconURL = compiledDirectory.appendingPathComponent("Reroute.icns")
     guard fileManager.fileExists(atPath: compiledIconURL.path) else {
         throw NSError(
-            domain: "FlowCueIcon",
+            domain: "RerouteIcon",
             code: 8,
-            userInfo: [NSLocalizedDescriptionKey: "actool did not produce FlowCue.icns"]
+            userInfo: [NSLocalizedDescriptionKey: "actool did not produce Reroute.icns"]
         )
     }
     try Data(contentsOf: compiledIconURL).write(
-        to: supportDirectory.appendingPathComponent("FlowCue.icns"),
+        to: supportDirectory.appendingPathComponent("Reroute.icns"),
         options: .atomic
     )
 }
@@ -476,7 +476,7 @@ let projectDirectory = scriptURL
     .deletingLastPathComponent()
     .deletingLastPathComponent()
 let supportDirectory = projectDirectory.appendingPathComponent("Support", isDirectory: true)
-let iconsetDirectory = supportDirectory.appendingPathComponent("FlowCue.iconset", isDirectory: true)
+let iconsetDirectory = supportDirectory.appendingPathComponent("Reroute.iconset", isDirectory: true)
 try FileManager.default.createDirectory(at: iconsetDirectory, withIntermediateDirectories: true)
 
 let iconFiles: [(pixels: Int, name: String)] = [
@@ -511,15 +511,15 @@ try compileICNS(
 )
 
 try renderedBySize[1024]?.write(
-    to: supportDirectory.appendingPathComponent("FlowCueIcon-1024.png"),
+    to: supportDirectory.appendingPathComponent("RerouteIcon-1024.png"),
     options: .atomic
 )
 try drawMenuIcon(size: 18).write(
-    to: supportDirectory.appendingPathComponent("FlowCueMenuTemplate.png"),
+    to: supportDirectory.appendingPathComponent("RerouteMenuTemplate.png"),
     options: .atomic
 )
 try drawMenuIcon(size: 36).write(
-    to: supportDirectory.appendingPathComponent("FlowCueMenuTemplate@2x.png"),
+    to: supportDirectory.appendingPathComponent("RerouteMenuTemplate@2x.png"),
     options: .atomic
 )
 

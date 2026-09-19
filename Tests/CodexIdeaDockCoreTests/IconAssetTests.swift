@@ -109,10 +109,10 @@ final class IconAssetTests: XCTestCase {
 
     func testGeneratedAppIconRoundTripsThroughIconutil() throws {
         let supportDirectory = projectDirectory.appendingPathComponent("Support")
-        let sourceDirectory = supportDirectory.appendingPathComponent("FlowCue.iconset")
+        let sourceDirectory = supportDirectory.appendingPathComponent("Reroute.iconset")
         let temporaryDirectory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("FlowCueIconTests-\(UUID().uuidString)")
-        let extractedDirectory = temporaryDirectory.appendingPathComponent("FlowCue.iconset")
+            .appendingPathComponent("RerouteIconTests-\(UUID().uuidString)")
+        let extractedDirectory = temporaryDirectory.appendingPathComponent("Reroute.iconset")
         try FileManager.default.createDirectory(
             at: temporaryDirectory,
             withIntermediateDirectories: true
@@ -120,7 +120,7 @@ final class IconAssetTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
 
         try runIconutil(
-            input: supportDirectory.appendingPathComponent("FlowCue.icns"),
+            input: supportDirectory.appendingPathComponent("Reroute.icns"),
             output: extractedDirectory
         )
 
@@ -151,8 +151,8 @@ final class IconAssetTests: XCTestCase {
     func testMenuBarTemplatesAreMonochromeAtBothScales() throws {
         let supportDirectory = projectDirectory.appendingPathComponent("Support")
         let templates = [
-            ("FlowCueMenuTemplate.png", 18),
-            ("FlowCueMenuTemplate@2x.png", 36),
+            ("RerouteMenuTemplate.png", 18),
+            ("RerouteMenuTemplate@2x.png", 36),
         ]
 
         for (name, dimension) in templates {
