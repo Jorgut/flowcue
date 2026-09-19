@@ -14,11 +14,13 @@
 
 ## 阻断项
 
-### 1. 品牌名称已确定，正式可用性仍待确认
+### 1. 品牌名称已确定，但精确 App Store 名称已被占用
 
 原工作名称 FlowCue 因 App Store 和多个软件服务存在同名冲突而停用。2026-09-19 已确认公开品牌名称为 **Reroute**，本机应用和仓库文档已完成品牌迁移。
 
-正式发布前仍需在 App Store Connect 预留名称，并完成商标、域名和 GitHub 仓库名核查。当前初步检索不能替代正式可用性确认。
+实时核查确认 App Store 已存在另一开发者发布的 `Reroute: Fix Technoference`，其安装名和商店品牌均使用 Reroute。Apple 规定另一开发者已使用的 App Store 名称不能再次创建，除非持有可主张的商标权。
+
+应用内品牌仍可保留 Reroute，但 App Store Connect 记录必须使用不超过 30 个字符的唯一名称，例如候选 `Reroute: Idea Queue`；最终可用性需在 App Store Connect 实际创建记录时确认。正式发布前仍需完成商标、域名和 GitHub 仓库名核查。
 
 ### 2. GitHub 远端发布尚未完成
 
@@ -134,7 +136,7 @@ OpenAI 的 Codex app-server daemon 文档说明它支持桌面和移动远程客
 ### GitHub
 
 - [x] 最终品牌确认：Reroute
-- [ ] GitHub 仓库名确认
+- [ ] GitHub 仓库名确认（建议使用能区分同名项目的 `reroute-codex`）
 - [ ] 可见性与许可证确认
 - [ ] 本机 GitHub 重新登录
 - [ ] CI 通过
@@ -144,6 +146,7 @@ OpenAI 的 Codex app-server daemon 文档说明它支持桌面和移动远程客
 ### App Store
 
 - [ ] 商店版传输架构确认
+- [ ] 唯一 App Store 名称确认（精确名称 `Reroute` 已被其他开发者占用）
 - [ ] Xcode 工程、iOS target、Mac App Store target 和共享模块完成
 - [ ] 唯一 Bundle ID 与发布团队确认
 - [ ] App Sandbox 和最小 entitlements 验证
@@ -155,6 +158,8 @@ OpenAI 的 Codex app-server daemon 文档说明它支持桌面和移动远程客
 ## 官方依据
 
 - [Apple：Mac App Store 必须启用 App Sandbox](https://developer.apple.com/documentation/xcode/configuring-the-macos-app-sandbox)
+- [Apple：App 名称不可用时的处理方式](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app)
+- [App Store：已存在的 Reroute 应用](https://apps.apple.com/us/app/reroute-fix-technoference/id6780990045)
 - [Apple：准备应用分发](https://developer.apple.com/documentation/xcode/preparing-your-app-for-distribution)
 - [Apple：隐私清单](https://developer.apple.com/documentation/bundleresources/privacy-manifest-files)
 - [Apple：上传构建](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds)

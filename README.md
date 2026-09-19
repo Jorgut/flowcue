@@ -1,6 +1,6 @@
 # Reroute
 
-> 发布状态：当前是已验证的本机 macOS 原型，尚未发布到 GitHub Releases 或 App Store。公开品牌名称已确定为 Reroute；App Store 名称预留与商标核查仍需在正式发布前完成。
+> 发布状态：当前是已验证的本机 macOS 原型，尚未发布到 GitHub Releases 或 App Store。公开品牌名称已确定为 Reroute；App Store 已有其他开发者使用精确名称 `Reroute`，商店记录必须采用可用的唯一名称，商标核查仍需在正式发布前完成。
 
 Reroute 是一个本地运行的 macOS 菜单栏应用，用来随时捕捉想法，并在你明确选择后通过 Codex Queue 投递到指定任务。默认操作只保存到本地，不会改变正在执行的 Codex 任务。
 
