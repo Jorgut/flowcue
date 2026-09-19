@@ -1030,7 +1030,7 @@ private enum AppServerRequest {
                 clientInfo: ClientInfo(
                     // Stable protocol identifier retained for compatibility across the rebrand.
                     name: "codex_idea_dock",
-                    title: "FlowCue",
+                    title: "Reroute",
                     version: "0.1.0"
                 )
             )

@@ -154,10 +154,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateStatusItem() {
         guard let button = statusItem?.button else { return }
 
-        let image = NSImage(named: NSImage.Name("FlowCueMenuTemplate"))
+        let image = NSImage(named: NSImage.Name("RerouteMenuTemplate"))
             ?? NSImage(
                 systemSymbolName: "lightbulb",
-                accessibilityDescription: "FlowCue"
+                accessibilityDescription: "Reroute"
             )
         image?.isTemplate = true
         image?.size = NSSize(width: 18, height: 18)
@@ -166,9 +166,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pendingCount = store?.pendingCount ?? 0
         button.title = pendingCount > 0 ? " \(pendingCount)" : ""
         button.toolTip = hotKeyRegistrationFailed
-            ? "FlowCue（全局快捷键注册失败）"
-            : "FlowCue · ⌃⌥Space"
-        button.setAccessibilityLabel("FlowCue")
+            ? "Reroute（全局快捷键注册失败）"
+            : "Reroute · ⌃⌥Space"
+        button.setAccessibilityLabel("Reroute")
         button.setAccessibilityValue("\(pendingCount) 条待处理想法")
     }
 
@@ -199,7 +199,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         refreshItem.isEnabled = store?.isLoadingContexts == false
         menu.addItem(.separator())
-        menu.addItem(withTitle: "退出 FlowCue", action: #selector(quit), keyEquivalent: "q")
+        menu.addItem(withTitle: "退出 Reroute", action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
     }
@@ -241,7 +241,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func presentStartupFailure(_ error: Error) {
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "FlowCue 无法启动"
+        alert.messageText = "Reroute 无法启动"
         alert.informativeText = "无法打开本地数据存储。为避免丢失想法，应用没有切换到临时存储。\n\n\(error.localizedDescription)"
         alert.addButton(withTitle: "退出")
         alert.runModal()
