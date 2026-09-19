@@ -12,10 +12,10 @@
 ## 验证
 
 ```bash
-swift Scripts/render-flowcue-icon.swift
+swift Scripts/render-reroute-icon.swift
 swift test
 zsh Scripts/build-app.sh
-codesign --verify --deep --strict dist/FlowCue.app
+codesign --verify --deep --strict dist/Reroute.app
 ```
 
 真实 App Server 测试默认跳过，避免 CI 或贡献者机器读取真实任务：
