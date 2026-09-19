@@ -24,7 +24,7 @@ jobs:
         run: swift --version
 
       - name: Render icon assets
-        run: swift Scripts/render-flowcue-icon.swift
+        run: swift Scripts/render-reroute-icon.swift
 
       - name: Run tests
         run: swift test
@@ -34,5 +34,5 @@ jobs:
 
       - name: Verify bundle
         run: |
-          plutil -lint dist/FlowCue.app/Contents/Info.plist
-          codesign --verify --deep --strict dist/FlowCue.app
+          plutil -lint dist/Reroute.app/Contents/Info.plist
+          codesign --verify --deep --strict dist/Reroute.app
