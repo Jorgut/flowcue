@@ -5,6 +5,21 @@ set -euo pipefail
 script_directory="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 project_directory="$(cd -- "$script_directory/.." && pwd -P)"
 configuration="${1:-release}"
+code_sign_identity="${REROUTE_CODE_SIGN_IDENTITY:--}"
+
+sign_bundle() {
+    local target="$1"
+    local -a sign_arguments
+
+    sign_arguments=(--force --sign "$code_sign_identity")
+    if [[ "$code_sign_identity" == "-" ]]; then
+        sign_arguments+=(--timestamp=none)
+    else
+        sign_arguments+=(--options runtime --timestamp)
+    fi
+
+    codesign "${sign_arguments[@]}" "$target"
+}
 
 run_swift_build() {
     if [[ "${CODEX_IDEA_DOCK_DISABLE_SWIFTPM_SANDBOX:-0}" == "1" ]]; then
@@ -65,9 +80,9 @@ cp \
     "$project_directory/Support/RerouteMenuTemplate@2x.png" \
     "$contents_directory/Resources/"
 plutil -lint "$contents_directory/Info.plist"
-codesign --force --sign - "$contents_directory/Helpers/CodexIdeaDockProcessLauncher"
-codesign --force --sign - "$contents_directory/MacOS/CodexIdeaDock"
-codesign --force --sign - "$staged_app_directory"
+sign_bundle "$contents_directory/Helpers/CodexIdeaDockProcessLauncher"
+sign_bundle "$contents_directory/MacOS/CodexIdeaDock"
+sign_bundle "$staged_app_directory"
 codesign --verify --deep --strict "$staged_app_directory"
 
 if [[ -e "$backup_app_directory" ]]; then
