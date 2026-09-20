@@ -24,6 +24,10 @@ Reroute 是一个本地运行的 macOS 菜单栏应用，用来随时捕捉想�
 
 Reroute 是独立的第三方项目，与 OpenAI 无隶属、合作、认证或官方背书关系。Codex、OpenAI 和相关标识归各自权利人所有。
 
+## 许可证
+
+源码使用 [MIT License](LICENSE) 发布。
+
 ## 开发
 
 要求 macOS 14 或更新版本、Xcode 16 或更新版本，以及支持 `queue` 子命令的 Codex CLI。
