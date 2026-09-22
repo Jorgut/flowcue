@@ -17,7 +17,7 @@ Reroute is a local macOS menu bar app for capturing ideas and sending them to a 
 
 ## Privacy
 
-Ideas, drafts, task cache, and delivery records stay on the Mac. Reroute reads the task list through the local Codex App Server and invokes the local Codex CLI only after an explicit queue action. It does not include analytics, advertising, tracking, or third-party SDKs.
+Ideas, drafts, task cache, and delivery records are stored on the Mac. Reroute reads the task list through the local Codex App Server and invokes the local Codex CLI only after an explicit queue action. The Codex CLI and its configured service may then process or transmit the queued text under their own settings and privacy terms. Reroute does not include analytics, advertising, tracking, or third-party SDKs. See the full [Privacy Policy](https://github.com/Jorgut/reroute-codex/blob/main/PRIVACY.md).
 
 ## Distribution note
 

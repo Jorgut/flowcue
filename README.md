@@ -28,6 +28,8 @@ Reroute 是独立的第三方项目，与 OpenAI 无隶属、合作、认证或�
 
 源码使用 [MIT License](LICENSE) 发布。
 
+隐私处理方式见 [Privacy Policy](PRIVACY.md)，使用问题和错误报告方式见 [Support](SUPPORT.md)。
+
 ## 开发
 
 要求 macOS 14 或更新版本、Xcode 16 或更新版本，以及支持 `queue` 子命令的 Codex CLI。

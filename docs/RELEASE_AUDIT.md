@@ -72,7 +72,7 @@ Mac App Store 要求 App Sandbox。当前应用会：
 
 ### 隐私清单与商店隐私标签
 
-项目没有 `PrivacyInfo.xcprivacy`。现有代码使用 `UserDefaults`；iOS target 至少需要为仅应用自身读取写入声明 `NSPrivacyAccessedAPICategoryUserDefaults` / `CA92.1`。无追踪、无广告、无第三方 SDK 时应保持：
+项目现已包含与当前直接下载版实际数据流一致的 `PRIVACY.md`，发布后可作为公开隐私政策页面。`Support/PrivacyInfo.xcprivacy` 已声明无追踪、无收集数据，并为仅应用自身读写的 `UserDefaults` 声明 `NSPrivacyAccessedAPICategoryUserDefaults` / `CA92.1`；打包脚本会把它复制到应用 bundle。未来 Xcode 商店 target 仍需把同一文件加入 Copy Bundle Resources，并用 Xcode Privacy Report 复核。当前应保持：
 
 - `NSPrivacyTracking = false`；
 - tracking domains 为空；
