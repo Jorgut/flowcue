@@ -74,12 +74,14 @@ cp \
     "$binary_directory/CodexIdeaDockProcessLauncher" \
     "$contents_directory/Helpers/CodexIdeaDockProcessLauncher"
 cp "$project_directory/Support/Info.plist" "$contents_directory/Info.plist"
+cp "$project_directory/Support/PrivacyInfo.xcprivacy" "$contents_directory/Resources/PrivacyInfo.xcprivacy"
 cp "$project_directory/Support/Reroute.icns" "$contents_directory/Resources/Reroute.icns"
 cp \
     "$project_directory/Support/RerouteMenuTemplate.png" \
     "$project_directory/Support/RerouteMenuTemplate@2x.png" \
     "$contents_directory/Resources/"
 plutil -lint "$contents_directory/Info.plist"
+plutil -lint "$contents_directory/Resources/PrivacyInfo.xcprivacy"
 sign_bundle "$contents_directory/Helpers/CodexIdeaDockProcessLauncher"
 sign_bundle "$contents_directory/MacOS/CodexIdeaDock"
 sign_bundle "$staged_app_directory"

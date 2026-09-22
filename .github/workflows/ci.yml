@@ -38,4 +38,5 @@ jobs:
       - name: Verify bundle
         run: |
           plutil -lint dist/Reroute.app/Contents/Info.plist
+          plutil -lint dist/Reroute.app/Contents/Resources/PrivacyInfo.xcprivacy
           codesign --verify --deep --strict dist/Reroute.app
