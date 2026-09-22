@@ -57,9 +57,11 @@ Mac App Store 要求 App Sandbox。当前应用会：
 - App Store Connect 应用记录；
 - 可验证的 archive 与上传流程。
 
-### 6. Xcode 法律与环境状态未完成
+### 6. Apple 公证凭据尚未配置
 
-默认 `xcodebuild`、`xcrun` 以及全新检出的 Swift 构建会因 Xcode 许可尚未接受而返回 69。接受许可属于开发者账号持有人需要亲自完成的法律操作；完成前不能进行干净构建、正式公证、Archive、验证和上传。当前工作区的既有缓存构建与测试结果不能替代这项发布门槛。
+2026-09-22 用户已亲自接受 Xcode 与 Apple SDK 许可。随后使用当前 `HEAD` 的全新 `git archive` 检出，按 CI 顺序重新生成图标、运行 51 项测试（50 通过、1 项真实连接按设计跳过）并完成 release 应用构建与严格签名验证。
+
+本机有有效的 `Developer ID Application: hong liang zhu (GB38532D8G)` 身份，但钥匙串尚无 `Reroute-Notary` 配置，本机也未发现可复用的 App Store Connect `AuthKey_*.p8`。在账号持有人创建公证凭据前，不能提交 Apple 公证或生成最终下载 ZIP。
 
 ## 高优先级项
 
@@ -133,6 +135,7 @@ MIT 许可证、隐私政策、支持说明和 README 非官方项目声明已�
 - [ ] 明确批准公开可见性与完整提交历史（包含作者邮箱）
 - [ ] CI 通过
 - [x] 本地历史扫描未发现秘密、证书、profile、真实任务正文和机器路径
+- [x] 全新检出生成图标、测试、release 构建与严格签名验证通过
 - [ ] 创建 `v0.1.0` 源码标签；二进制 Release 仅在 Developer ID、公证和安装验证后提供
 
 ### App Store
