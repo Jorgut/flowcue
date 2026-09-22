@@ -1,6 +1,6 @@
 # Reroute
 
-> 发布状态：当前是已验证的本机 macOS 原型，尚未发布到 GitHub Releases 或 App Store。公开品牌名称已确定为 Reroute；App Store 已有其他开发者使用精确名称 `Reroute`，商店记录必须采用可用的唯一名称，商标核查仍需在正式发布前完成。
+> 发布状态：macOS `0.1.0 (5)` arm64 下载包已完成 Developer ID 签名、Apple 公证、票据装订、Gatekeeper 与解压后独立验证；尚未上传 GitHub Releases，也未提交 App Store。公开品牌名称已确定为 Reroute；App Store 已有其他开发者使用精确名称 `Reroute`，商店记录必须采用可用的唯一名称，商标核查仍需在正式发布前完成。
 
 Reroute 是一个本地运行的 macOS 菜单栏应用，用来随时捕捉想法，并在你明确选择后通过 Codex Queue 投递到指定任务。默认操作只保存到本地，不会改变正在执行的 Codex 任务。
 
@@ -54,7 +54,7 @@ open "dist/Reroute.app"
 
 打包脚本默认生成本地 ad-hoc 签名的 `dist/Reroute.app`。设置 `REROUTE_CODE_SIGN_IDENTITY` 时，会改用指定的 Developer ID Application 身份并启用 Hardened Runtime 与安全时间戳。正式想法、任务缓存与投递记录存放于 `~/Library/Application Support/CodexIdeaDock.store`；正在输入且尚未完成 SwiftData 写入的短期崩溃恢复缓冲存放于该 bundle 的本地 UserDefaults。两者都只在本机使用，不启用 CloudKit。
 
-这是本机使用版本，尚未使用 Developer ID 签名或进行 Apple 公证，不作为对外分发包。重新构建前先正常退出正在运行的 Reroute，完成后从上述明确路径打开，避免旧实例截获快捷键和打开请求。
+普通 `build-app.sh` 构建仍以本机验证为目的；不应把它的工作区 `.app` 直接作为下载文件。当前正式候选下载包为 `dist/releases/Reroute-0.1.0-macOS-arm64.zip`，已经 Developer ID 签名并通过 Apple 公证。重新构建前先正常退出正在运行的 Reroute，完成后从上述明确路径打开，避免旧实例截获快捷键和打开请求。
 
 公开下载版必须先把公证凭据安全存入钥匙串，再运行发布脚本。脚本只接受 Developer ID Application 身份，完成签名、公证、票据装订与 Gatekeeper 检查后，才会生成 ZIP 和 SHA-256 文件：
 

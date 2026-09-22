@@ -8,7 +8,7 @@
 
 | 优先级 | 数量 | 结论 |
 | --- | ---: | --- |
-| 阻断 | 6 | 发布前必须解决 |
+| 阻断 | 5 | 发布前必须解决 |
 | 高 | 4 | 商店构建前解决 |
 | 中 | 4 | TestFlight 前解决 |
 
@@ -57,11 +57,13 @@ Mac App Store 要求 App Sandbox。当前应用会：
 - App Store Connect 应用记录；
 - 可验证的 archive 与上传流程。
 
-### 6. Apple 公证凭据尚未配置
+## 已完成的直接下载验证
 
 2026-09-22 用户已亲自接受 Xcode 与 Apple SDK 许可。随后使用当前 `HEAD` 的全新 `git archive` 检出，按 CI 顺序重新生成图标、运行 51 项测试（50 通过、1 项真实连接按设计跳过）并完成 release 应用构建与严格签名验证。
 
-本机有有效的 `Developer ID Application: hong liang zhu (GB38532D8G)` 身份，但钥匙串尚无 `Reroute-Notary` 配置，本机也未发现可复用的 App Store Connect `AuthKey_*.p8`。在账号持有人创建公证凭据前，不能提交 Apple 公证或生成最终下载 ZIP。
+正式下载包使用 `Developer ID Application: hong liang zhu (GB38532D8G)` 签名，并通过钥匙串配置 `Reroute-Notary` 提交 Apple 公证。提交 `8db35894-d3bd-4d4f-bc38-5226b5da316b` 状态为 `Accepted`；票据装订、`stapler validate`、Gatekeeper、ZIP 完整性、SHA-256、版本、架构与隐私清单复核全部通过。
+
+本地产物为 `Reroute-0.1.0-macOS-arm64.zip`，大小 1,620,245 bytes，SHA-256 为 `8e9929cc7273e455f231e4b0567d3d26500db71773239979cc78d96cead3eaa3`。该文件尚未上传或公开。
 
 ## 高优先级项
 
@@ -110,7 +112,7 @@ MIT 许可证、隐私政策、支持说明和 README 非官方项目声明已�
 
 ### GitHub / 直接下载版
 
-保留本机 CLI 和菜单栏体验，发布源码，并在有 Developer ID 后提供已签名、公证的 Mac 构建。该版本不受 Mac App Store 沙箱限制，但仍应使用 Hardened Runtime 和最小权限。
+保留本机 CLI 和菜单栏体验，发布源码，并提供已经 Developer ID 签名、公证的 Mac 构建。该版本不受 Mac App Store 沙箱限制，但仍使用 Hardened Runtime 和最小权限。
 
 仓库已包含 `Scripts/release-macos.sh`。该脚本会拒绝 ad-hoc 身份，只在 Developer ID 签名、公证、票据装订和 Gatekeeper 检查全部通过后生成版本化 ZIP 与 SHA-256 文件。
 
@@ -136,7 +138,8 @@ MIT 许可证、隐私政策、支持说明和 README 非官方项目声明已�
 - [ ] CI 通过
 - [x] 本地历史扫描未发现秘密、证书、profile、真实任务正文和机器路径
 - [x] 全新检出生成图标、测试、release 构建与严格签名验证通过
-- [ ] 创建 `v0.1.0` 源码标签；二进制 Release 仅在 Developer ID、公证和安装验证后提供
+- [x] Developer ID 签名、Apple 公证、票据装订、Gatekeeper 与最终 ZIP 独立验证通过
+- [ ] 创建 `v0.1.0` 源码标签，并上传已验证的 ZIP 与 SHA-256
 
 ### App Store
 
