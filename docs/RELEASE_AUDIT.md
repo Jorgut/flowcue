@@ -1,15 +1,15 @@
 # 发布审查：Reroute
 
-更新日期：2026-09-19
+更新日期：2026-09-22
 
-当前产品是 macOS 菜单栏本地应用。GitHub 源码发布可以在品牌与许可证确认后进行；当前二进制不能直接提交 Mac App Store，也不存在 iOS target。
+当前产品是 macOS 菜单栏本地应用。GitHub 源码发布的本地准备已经完成，外部发布等待明确授权；当前二进制不能直接提交 Mac App Store，也不存在 iOS target。
 
 ## 审查结论
 
 | 优先级 | 数量 | 结论 |
 | --- | ---: | --- |
 | 阻断 | 6 | 发布前必须解决 |
-| 高 | 5 | 商店构建前解决 |
+| 高 | 4 | 商店构建前解决 |
 | 中 | 4 | TestFlight 前解决 |
 
 ## 阻断项
@@ -24,13 +24,9 @@
 
 ### 2. GitHub 远端发布尚未完成
 
-本地 `main` 已建立原子化提交历史和 CI，但尚无远端或上游分支；本机 GitHub CLI 登录需要更新。外部发布前还需要：
+本地 `main` 已建立原子化提交历史和 CI，但尚无远端或上游分支。GitHub CLI 当前已登录 `Jorgut`，候选公开仓库 `Jorgut/reroute-codex` 尚不存在，MIT 许可证与非官方项目声明已经就绪。外部发布仍需要用户明确批准具体仓库、公开可见性以及要推送的历史范围。
 
-1. 确认公开或私有；
-2. 确认开源许可证或保留版权；
-3. 重新登录 GitHub；
-4. 创建远端并推送本地历史；
-5. 验证 CI 和仓库私密漏洞报告功能。
+2026-09-22 的本地公开前扫描覆盖全部 64 个历史 blob：未发现私钥、常见 GitHub/OpenAI/AWS/Slack 令牌、Apple 私钥文件名或真实机器路径；版本控制内最大文件约 41 KB。完整历史的提交作者邮箱为 `honaler@gmail.com`，若按原历史公开，该邮箱也会公开。创建远端后仍需验证 GitHub Actions 的全新检出构建，并开启仓库私密漏洞报告功能。
 
 本机 `PROJECT_STATE.md` 含绝对路径，已从 Git 范围排除。
 
@@ -53,20 +49,17 @@ Mac App Store 要求 App Sandbox。当前应用会：
 
 ### 5. 缺少 App Store 工程与签名链
 
-当前由 SwiftPM 和 shell 脚本手工组装 `.app`，使用 ad-hoc 签名。缺少：
+当前由 SwiftPM 和 shell 脚本手工组装 `.app`。本机已安装有效的 Developer ID Application 与 Apple Distribution 身份，Developer ID 私钥和 Hardened Runtime 签名已验证；但商店发布链仍缺少：
 
 - `.xcodeproj` / `.xcworkspace` 与 Archive scheme；
 - App Sandbox、网络、App Group 等 entitlements；
 - iOS 与 Mac App Store provisioning profile；
-- Apple Distribution 证书；
 - App Store Connect 应用记录；
 - 可验证的 archive 与上传流程。
 
-本机当前显示 0 个有效代码签名身份。Xcode 已记录一个个人团队，但不能据此确认它属于本项目的发布账号。
-
 ### 6. Xcode 法律与环境状态未完成
 
-默认 `xcrun` 会因 Xcode 许可尚未接受而返回 69。接受许可属于开发者账号持有人需要亲自完成的法律操作；完成前不能进行正式 Archive、验证和上传。
+默认 `xcodebuild`、`xcrun` 以及全新检出的 Swift 构建会因 Xcode 许可尚未接受而返回 69。接受许可属于开发者账号持有人需要亲自完成的法律操作；完成前不能进行干净构建、正式公证、Archive、验证和上传。当前工作区的既有缓存构建与测试结果不能替代这项发布门槛。
 
 ## 高优先级项
 
@@ -102,9 +95,7 @@ OpenAI 的 Codex app-server daemon 文档说明它支持桌面和移动远程客
 
 需要准备：隐私政策 URL、支持 URL、营销 URL（可选）、App 描述、关键词、分类、版权主体、年龄分级、审核说明、截图、预览视频（可选）、出口合规回答与无障碍声明。
 
-### 公开仓库法律信息未确认
-
-公开仓库需要明确许可证。README 已加入非官方项目声明，避免用户误以为 OpenAI 背书；发布页、商店描述和截图也必须使用相同口径。
+MIT 许可证、隐私政策、支持说明和 README 非官方项目声明已经完成。发布页、商店描述和截图仍需保持相同口径。
 
 ## 中优先级项
 
@@ -136,11 +127,12 @@ OpenAI 的 Codex app-server daemon 文档说明它支持桌面和移动远程客
 ### GitHub
 
 - [x] 最终品牌确认：Reroute
-- [ ] GitHub 仓库名确认（建议使用能区分同名项目的 `reroute-codex`）
-- [ ] 可见性与许可证确认
-- [ ] 本机 GitHub 重新登录
+- [x] 候选 GitHub 仓库名：`Jorgut/reroute-codex`
+- [x] 开源许可证：MIT
+- [x] 本机 GitHub 登录：`Jorgut`
+- [ ] 明确批准公开可见性与完整提交历史（包含作者邮箱）
 - [ ] CI 通过
-- [ ] 无秘密、证书、profile、真实任务正文和机器路径进入 Git 历史
+- [x] 本地历史扫描未发现秘密、证书、profile、真实任务正文和机器路径
 - [ ] 创建 `v0.1.0` 源码标签；二进制 Release 仅在 Developer ID、公证和安装验证后提供
 
 ### App Store
