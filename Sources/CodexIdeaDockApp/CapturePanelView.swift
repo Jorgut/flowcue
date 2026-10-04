@@ -1,4 +1,6 @@
+#if SWIFT_PACKAGE
 import CodexIdeaDockCore
+#endif
 import Observation
 import SwiftUI
 
@@ -18,25 +20,32 @@ struct CapturePanelView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            CaptureHeader(
-                contexts: store.contexts,
-                source: store.sourceContext,
-                target: store.targetContext,
-                isRefreshing: store.isLoadingContexts,
-                isQueueing: store.isQueueing,
-                onSelectSource: { store.setSource($0) },
-                onSelectTarget: { store.setTarget($0) },
-                onTogglePinned: { context in
-                    store.setPinned(!context.isPinned, for: context.id)
-                },
-                onRefresh: {
-                    Task { @MainActor in
-                        await store.refreshThreads()
-                    }
-                },
-                onOpenInbox: onOpenInbox,
-                onClose: onClose
-            )
+            if AppDistribution.supportsDirectQueue {
+                CaptureHeader(
+                    contexts: store.contexts,
+                    source: store.sourceContext,
+                    target: store.targetContext,
+                    isRefreshing: store.isLoadingContexts,
+                    isQueueing: store.isQueueing,
+                    onSelectSource: { store.setSource($0) },
+                    onSelectTarget: { store.setTarget($0) },
+                    onTogglePinned: { context in
+                        store.setPinned(!context.isPinned, for: context.id)
+                    },
+                    onRefresh: {
+                        Task { @MainActor in
+                            await store.refreshThreads()
+                        }
+                    },
+                    onOpenInbox: onOpenInbox,
+                    onClose: onClose
+                )
+            } else {
+                AppStoreCaptureHeader(
+                    onOpenInbox: onOpenInbox,
+                    onClose: onClose
+                )
+            }
 
             CaptureEditor(
                 text: $store.draftText,
@@ -72,6 +81,38 @@ struct CapturePanelView: View {
         .compositingGroup()
         .clipShape(.rect(cornerRadius: 16))
         .animation(.easeOut(duration: reduceMotion ? 0.08 : 0.14), value: store.notification?.id)
+    }
+}
+
+private struct AppStoreCaptureHeader: View {
+    let onOpenInbox: () -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Label("记录想法", systemImage: "lightbulb")
+                .font(.headline)
+
+            Text("内容只保存在本机")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Spacer(minLength: 0)
+
+            Button(action: onOpenInbox) {
+                Image(systemName: "tray.full")
+            }
+            .buttonStyle(.plain)
+            .help("打开收件箱")
+            .accessibilityLabel("打开收件箱")
+
+            Button(action: onClose) {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.plain)
+            .help("隐藏悬浮窗，保留草稿")
+            .accessibilityLabel("隐藏悬浮窗并保留草稿")
+        }
     }
 }
 
@@ -285,41 +326,55 @@ private struct CaptureFooter: View {
                     .transition(.opacity)
                     .accessibilityElement(children: .combine)
             } else {
-                Text("⌘↩ 保存 · ⌥⌘↩ 排队 · ⌘N 新建")
+                Text(
+                    AppDistribution.supportsDirectQueue
+                        ? "⌘↩ 保存 · ⌥⌘↩ 排队 · ⌘N 新建"
+                        : "⌘↩ 保存 · ⌥⌘↩ 复制并打开 Codex · ⌘N 新建"
+                )
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
 
             Spacer(minLength: 4)
 
-            Button(action: onCopyAndOpenCodex) {
-                Image(systemName: "doc.on.clipboard")
+            if AppDistribution.supportsDirectQueue {
+                Button(action: onCopyAndOpenCodex) {
+                    Image(systemName: "doc.on.clipboard")
+                }
+                .buttonStyle(.plain)
+                .disabled(isDraftEmpty)
+                .help("复制内容并打开 Codex")
+                .accessibilityLabel("复制内容并打开 Codex")
             }
-            .buttonStyle(.plain)
-            .disabled(isDraftEmpty)
-            .help("复制内容并打开 Codex")
-            .accessibilityLabel("复制内容并打开 Codex")
 
             Button("保存", action: onSave)
                 .keyboardShortcut(.return, modifiers: [.command])
                 .disabled(isDraftEmpty || isQueueing)
                 .accessibilityLabel("保存想法并关闭")
 
-            Button {
-                onQueue()
-            } label: {
-                if isQueueing {
-                    ProgressView()
-                        .controlSize(.small)
-                        .frame(width: 44)
-                } else {
-                    Text("排到 Codex")
+            if AppDistribution.supportsDirectQueue {
+                Button {
+                    onQueue()
+                } label: {
+                    if isQueueing {
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(width: 44)
+                    } else {
+                        Text("排到 Codex")
+                    }
                 }
+                .keyboardShortcut(.return, modifiers: [.command, .option])
+                .buttonStyle(.borderedProminent)
+                .disabled(isDraftEmpty || isQueueing || !isTargetAvailable)
+                .accessibilityLabel(isQueueing ? "正在排到 Codex" : "排到 Codex")
+            } else {
+                Button("复制并打开 Codex", action: onQueue)
+                    .keyboardShortcut(.return, modifiers: [.command, .option])
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isDraftEmpty)
+                    .accessibilityLabel("保存想法、复制内容并打开 Codex")
             }
-            .keyboardShortcut(.return, modifiers: [.command, .option])
-            .buttonStyle(.borderedProminent)
-            .disabled(isDraftEmpty || isQueueing || !isTargetAvailable)
-            .accessibilityLabel(isQueueing ? "正在排到 Codex" : "排到 Codex")
         }
         .frame(minHeight: 24)
     }
