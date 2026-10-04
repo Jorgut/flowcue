@@ -1,5 +1,7 @@
 import AppKit
+#if SWIFT_PACKAGE
 import CodexIdeaDockCore
+#endif
 import QuartzCore
 import SwiftUI
 
@@ -42,9 +44,17 @@ final class CapturePanelController: NSWindowController {
                     }
                 },
                 onQueue: {
+                    #if REROUTE_APP_STORE
+                    let text = store.draftText
+                    guard store.saveCurrent() != nil else { return }
+                    Task { @MainActor in
+                        store.notification = await CodexFallback.copyAndActivate(text: text).notification
+                    }
+                    #else
                     Task { @MainActor in
                         await store.queueCurrent()
                     }
+                    #endif
                 },
                 onNewCapture: {
                     store.newCapture()

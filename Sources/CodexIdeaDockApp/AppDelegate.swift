@@ -1,5 +1,7 @@
 import AppKit
+#if SWIFT_PACKAGE
 import CodexIdeaDockCore
+#endif
 import Observation
 
 @MainActor
@@ -19,7 +21,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         do {
+            #if REROUTE_APP_STORE
+            store = try IdeaDockStore(
+                modelContainer: IdeaDockPersistence.makeDefaultContainer(),
+                bridge: AppStoreCodexBridge(),
+                userDefaults: .standard
+            )
+            #else
             store = try IdeaDockStore()
+            #endif
         } catch {
             presentStartupFailure(error)
             return
@@ -54,7 +64,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         store?.flushDraft()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
+        #if !REROUTE_APP_STORE
         FoundationProcessRunner.terminateAllProcesses()
+        #endif
     }
 
     private func configureWindows() {
@@ -192,6 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "收件箱…", action: #selector(showInbox), keyEquivalent: "")
         menu.addItem(.separator())
 
+        #if !REROUTE_APP_STORE
         let refreshItem = menu.addItem(
             withTitle: "刷新 Codex 任务",
             action: #selector(refreshThreads),
@@ -199,6 +212,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         )
         refreshItem.isEnabled = store?.isLoadingContexts == false
         menu.addItem(.separator())
+        #endif
         menu.addItem(withTitle: "退出 Reroute", action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
@@ -226,12 +240,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inboxWindowController?.show()
     }
 
-    @objc
-    private func refreshThreads() {
+    #if !REROUTE_APP_STORE
+    @objc private func refreshThreads() {
         Task { @MainActor [weak self] in
             await self?.store?.refreshThreads()
         }
     }
+    #endif
 
     @objc
     private func quit() {

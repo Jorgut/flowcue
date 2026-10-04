@@ -1,5 +1,7 @@
 import AppKit
+#if SWIFT_PACKAGE
 import CodexIdeaDockCore
+#endif
 
 enum CodexFallbackResult {
     case copiedAndActivated
@@ -33,6 +35,13 @@ enum CodexFallback {
         }
 
         let pasteboard = NSPasteboard.general
+        #if REROUTE_APP_STORE
+        pasteboard.clearContents()
+        guard pasteboard.writeObjects([text as NSString]) else {
+            NSSound.beep()
+            return .copyFailed
+        }
+        #else
         let previousItems = pasteboard.pasteboardItems
         pasteboard.clearContents()
         guard pasteboard.writeObjects([text as NSString]) else {
@@ -46,6 +55,7 @@ enum CodexFallback {
             NSSound.beep()
             return restoredClipboard ? .copyFailed : .copyFailedAndClipboardCouldNotBeRestored
         }
+        #endif
 
         if let runningApplication = NSRunningApplication.runningApplications(
             withBundleIdentifier: "com.openai.codex"
