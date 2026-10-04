@@ -1,4 +1,6 @@
+#if SWIFT_PACKAGE
 import CodexIdeaDockCore
+#endif
 import Foundation
 import Observation
 import SwiftUI
@@ -113,7 +115,11 @@ struct InboxView: View {
                     ContentUnavailableView(
                         "选择一条想法",
                         systemImage: "lightbulb",
-                        description: Text("可以编辑、排队到 Codex，或归档已处理内容。")
+                        description: Text(
+                            AppDistribution.supportsDirectQueue
+                                ? "可以编辑、排队到 Codex，或归档已处理内容。"
+                                : "可以编辑、复制到 Codex，或归档已处理内容。"
+                        )
                     )
                 }
             }
@@ -241,6 +247,13 @@ private struct InboxToolbar: View {
     let canUndoArchive: Bool
     let onUndoArchive: () -> Void
 
+    private var availableStatuses: [CaptureStatus] {
+        if AppDistribution.supportsDirectQueue {
+            return CaptureStatus.allCases.filter { $0 != .draft }
+        }
+        return [.saved, .archived]
+    }
+
     var body: some View {
         VStack(spacing: 8) {
             HStack(spacing: 10) {
@@ -262,7 +275,10 @@ private struct InboxToolbar: View {
 
                 Spacer()
 
-                TextField("搜索内容、来源或目标", text: $store.searchText)
+                TextField(
+                    AppDistribution.supportsDirectQueue ? "搜索内容、来源或目标" : "搜索内容",
+                    text: $store.searchText
+                )
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 250)
                     .accessibilityLabel("搜索想法")
@@ -274,21 +290,23 @@ private struct InboxToolbar: View {
                 .help("撤销最近一次归档")
                 .accessibilityLabel("撤销最近一次归档")
 
-                Button {
-                    Task { @MainActor in
-                        await store.refreshThreads()
+                if AppDistribution.supportsDirectQueue {
+                    Button {
+                        Task { @MainActor in
+                            await store.refreshThreads()
+                        }
+                    } label: {
+                        if store.isLoadingContexts {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                        }
                     }
-                } label: {
-                    if store.isLoadingContexts {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        Image(systemName: "arrow.clockwise")
-                    }
+                    .disabled(store.isLoadingContexts || store.isQueueing)
+                    .help("刷新 Codex 任务")
+                    .accessibilityLabel(store.isLoadingContexts ? "正在刷新 Codex 任务" : "刷新 Codex 任务")
                 }
-                .disabled(store.isLoadingContexts || store.isQueueing)
-                .help("刷新 Codex 任务")
-                .accessibilityLabel(store.isLoadingContexts ? "正在刷新 Codex 任务" : "刷新 Codex 任务")
             }
 
             HStack(spacing: 10) {
@@ -296,22 +314,24 @@ private struct InboxToolbar: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                RouteFilterPicker(
-                    label: "来源",
-                    selection: $sourceFilter,
-                    options: sourceFilterOptions
-                )
+                if AppDistribution.supportsDirectQueue {
+                    RouteFilterPicker(
+                        label: "来源",
+                        selection: $sourceFilter,
+                        options: sourceFilterOptions
+                    )
 
-                RouteFilterPicker(
-                    label: "目标",
-                    selection: $targetFilter,
-                    options: targetFilterOptions
-                )
+                    RouteFilterPicker(
+                        label: "目标",
+                        selection: $targetFilter,
+                        options: targetFilterOptions
+                    )
+                }
 
                 Picker("状态", selection: $store.statusFilter) {
                     Text("全部状态")
                         .tag(nil as CaptureStatus?)
-                    ForEach(CaptureStatus.allCases.filter { $0 != .draft }, id: \.self) { status in
+                    ForEach(availableStatuses, id: \.self) { status in
                         Text(status.displayName)
                             .tag(Optional(status))
                     }
@@ -382,7 +402,7 @@ private struct InboxCaptureList: View {
 
     @ViewBuilder
     private func captureActions(for capture: CaptureItem) -> some View {
-        if capture.status.canQueue {
+        if AppDistribution.supportsDirectQueue, capture.status.canQueue {
             Button(capture.status.queueActionTitle) {
                 onQueue(capture.id)
             }
@@ -422,10 +442,12 @@ private struct CaptureRow: View {
             }
 
             HStack(spacing: 4) {
-                Image(systemName: "arrow.triangle.branch")
-                    .accessibilityHidden(true)
-                Text(capture.routeDescription)
-                    .lineLimit(1)
+                if AppDistribution.supportsDirectQueue {
+                    Image(systemName: "arrow.triangle.branch")
+                        .accessibilityHidden(true)
+                    Text(capture.routeDescription)
+                        .lineLimit(1)
+                }
                 Spacer(minLength: 4)
                 Text(capture.updatedAt, format: .dateTime.month().day().hour().minute())
             }
@@ -434,7 +456,11 @@ private struct CaptureRow: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(capture.status.displayName)，\(capture.routeDescription)，\(capture.text)")
+        .accessibilityLabel(
+            AppDistribution.supportsDirectQueue
+                ? "\(capture.status.displayName)，\(capture.routeDescription)，\(capture.text)"
+                : "\(capture.status.displayName)，\(capture.text)"
+        )
     }
 }
 
@@ -486,19 +512,21 @@ private struct CaptureDetailView: View {
         VStack(alignment: .leading, spacing: 14) {
             CaptureDetailHeader(capture: capture)
 
-            CaptureRouteEditor(
-                capture: capture,
-                contexts: contexts,
-                isEditable: canEditRoute,
-                onSelectSource: { sourceThreadID in
-                    guard commitEditedText() else { return }
-                    _ = onRouteChange(sourceThreadID, capture.targetThreadID)
-                },
-                onSelectTarget: { targetThreadID in
-                    guard commitEditedText() else { return }
-                    _ = onRouteChange(capture.sourceThreadID, targetThreadID)
-                }
-            )
+            if AppDistribution.supportsDirectQueue {
+                CaptureRouteEditor(
+                    capture: capture,
+                    contexts: contexts,
+                    isEditable: canEditRoute,
+                    onSelectSource: { sourceThreadID in
+                        guard commitEditedText() else { return }
+                        _ = onRouteChange(sourceThreadID, capture.targetThreadID)
+                    },
+                    onSelectTarget: { targetThreadID in
+                        guard commitEditedText() else { return }
+                        _ = onRouteChange(capture.sourceThreadID, targetThreadID)
+                    }
+                )
+            }
 
             TextEditor(text: $editedText)
                 .font(.body)
@@ -544,7 +572,7 @@ private struct CaptureDetailView: View {
                     .accessibilityLabel("恢复这条已归档想法")
                 }
 
-                if capture.status.canQueue {
+                if AppDistribution.supportsDirectQueue, capture.status.canQueue {
                     Button(capture.status.queueActionTitle) {
                         guard commitEditedText() else { return }
                         onQueue()
