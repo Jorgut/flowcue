@@ -1,10 +1,6 @@
+#if !REROUTE_APP_STORE
 import Darwin
 import Foundation
-
-public protocol CodexBridging: Sendable {
-    func listThreads() async throws -> [WorkContextItem]
-    func queue(message: String, to threadID: String) async -> QueueDeliveryOutcome
-}
 
 public struct ProcessExecutionResult: Sendable, Equatable {
     public enum TerminationReason: Sendable, Equatable {
@@ -1236,3 +1232,4 @@ private extension String {
         return trimmed.isEmpty ? nil : trimmed
     }
 }
+#endif
