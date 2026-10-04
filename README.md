@@ -18,9 +18,14 @@ Reroute 是一个本地运行的 macOS 菜单栏应用，用来随时捕捉想�
 
 当前版本为 **0.1.0 (5)**，采用已确认的 B1-L（`｜ + 左向 ↵`）图标。发布审查与平台改造范围见 [发布审查](docs/RELEASE_AUDIT.md)。
 
-## 发布边界
+## 发布版本
 
-当前实现依赖本机 Codex CLI 与 App Server，只能作为 macOS 本地版本运行。Mac App Store 要求启用 App Sandbox；iOS 也不能启动本机命令行进程，因此两个商店版本都需要新的传输适配器，不能直接提交当前应用包。
+项目现在提供两个 macOS 构建：
+
+- GitHub 下载版保留 Codex CLI、App Server 任务读取和显式 Queue。
+- Mac App Store 版启用 App Sandbox，只在应用容器内保存想法，并通过“复制并打开 Codex”交给用户继续处理。它不包含 CLI、helper 或 App Server 连接。
+
+这是同一套本地记录体验的两个分发版本。Mac App Store 的沙盒版已经具备原生 Xcode target、资源目录、隐私清单和归档配置；正式签名与上传仍需要先确定唯一商店名称和最终 Bundle ID。iOS target 尚未实现，不能把 macOS 应用包直接提交为 iOS 应用。
 
 Reroute 是独立的第三方项目，与 OpenAI 无隶属、合作、认证或官方背书关系。Codex、OpenAI 和相关标识归各自权利人所有。
 
@@ -71,6 +76,29 @@ GitHub Release 文案和安装说明见 [0.1.0 发布说明](docs/RELEASE_NOTES_
 
 图标生成和应用编译统一使用 `PATH` 中的 `swift`。需要显式选择工具链时，可设置 `DEVELOPER_DIR`、`PATH` 和 `SDKROOT`；本机验证过的完整命令见 [PROJECT_STATE.md](PROJECT_STATE.md)。
 
+## 构建 Mac App Store 版
+
+本地沙盒预览使用独立 Bundle ID，避免读写 GitHub 下载版的正式数据：
+
+```bash
+REROUTE_APP_STORE_BUNDLE_IDENTIFIER="com.example.reroute.preview" \
+zsh Scripts/build-app-store-preview.sh
+open "dist/Reroute-App-Store-Preview.app"
+```
+
+该脚本生成 ad-hoc 签名的本地预览包，只用于验证沙盒行为。正式归档使用 Xcode 工程：
+
+```bash
+xcodebuild \
+  -project RerouteStore.xcodeproj \
+  -scheme RerouteStore \
+  -configuration Release \
+  -destination 'generic/platform=macOS' \
+  archive
+```
+
+提交前必须在 `RerouteStore` target 中替换占位 Bundle ID，并确认它与 App Store Connect 中创建的 macOS App 记录一致。不要使用预览 Bundle ID 创建正式记录。
+
 ## 验证
 
 首次克隆后先运行图标渲染脚本，再执行 `swift test`。测试使用隔离存储，不写入正式收件箱。真实 App Server 读取默认跳过，可单独启用：
@@ -96,12 +124,12 @@ Reroute 沿用以下内部标识，以继续读取改名前已经保存的草稿
 
 - `⌃⌥Space`：显示或隐藏悬浮窗
 - `⌘Return`：保存到本地并关闭
-- `⌥⌘Return`：排入目标 Codex 任务
+- `⌥⌘Return`：GitHub 下载版排入目标 Codex 任务；Mac App Store 版保存、复制并打开 Codex
 - `⌘N`：保存当前想法并开始新想法
 - `Esc`：隐藏窗口并保留草稿
 
 ## 隐私边界
 
-应用不直接读取或修改 Codex 的数据库或会话文件。任务列表通过 Codex App Server 的只读接口获取；投递通过官方 `codex queue` 命令完成。应用不会自动发送想法，也不会记录想法正文到日志。
+两个 macOS 版本都不会直接读取或修改 Codex 的数据库或会话文件。GitHub 下载版通过 Codex App Server 的只读接口获取任务列表，并通过官方 `codex queue` 命令投递；Mac App Store 版不连接这两个本地接口。应用不会自动发送想法，也不会记录想法正文到日志。
 
-应用将 Codex CLI 放在独立的本地进程组中运行，以便在超时、取消或应用退出时同时结束包装器和子进程。CLI 原始错误输出不会写入 SwiftData；本地只保留固定错误分类、退出码和时间。Codex CLI 目前只接受 `--message <TEXT>`，因此用户显式排队时，正文会在本地 launcher／CLI 进程存活期间短暂出现在本机进程参数中；应用不会把这些参数写入日志或持久化为投递诊断。
+GitHub 下载版将 Codex CLI 放在独立的本地进程组中运行，以便在超时、取消或应用退出时同时结束包装器和子进程。CLI 原始错误输出不会写入 SwiftData；本地只保留固定错误分类、退出码和时间。Codex CLI 目前只接受 `--message <TEXT>`，因此用户显式排队时，正文会在本地 launcher／CLI 进程存活期间短暂出现在本机进程参数中；应用不会把这些参数写入日志或持久化为投递诊断。
