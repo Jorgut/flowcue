@@ -24,13 +24,23 @@ jobs:
         run: swift --version
 
       - name: Validate release scripts
-        run: zsh -n Scripts/build-app.sh Scripts/release-macos.sh
+        run: zsh -n Scripts/build-app.sh Scripts/build-app-store-preview.sh Scripts/release-macos.sh
 
       - name: Render icon assets
         run: swift Scripts/render-reroute-icon.swift
 
       - name: Run tests
         run: swift test
+
+      - name: Build Mac App Store target
+        run: >-
+          xcodebuild
+          -project RerouteStore.xcodeproj
+          -scheme RerouteStore
+          -configuration Release
+          -destination 'generic/platform=macOS'
+          CODE_SIGNING_ALLOWED=NO
+          build
 
       - name: Build app bundle
         run: zsh Scripts/build-app.sh
