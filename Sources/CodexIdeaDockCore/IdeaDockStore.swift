@@ -46,7 +46,7 @@ public final class IdeaDockStore {
     @ObservationIgnored private var draftPersistenceTask: Task<Void, Never>?
     @ObservationIgnored private var hasPendingDraftPersistence = false
 
-    #if !REROUTE_APP_STORE
+    #if !FLOWCUE_APP_STORE
     public convenience init() throws {
         try self.init(
             modelContainer: IdeaDockPersistence.makeDefaultContainer(),

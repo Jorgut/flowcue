@@ -1,8 +1,8 @@
-# Reroute
+# FlowCue
 
-> 发布状态：源码已发布到 [Jorgut/reroute-codex](https://github.com/Jorgut/reroute-codex)，macOS `0.1.0 (5)` arm64 下载包已完成 Developer ID 签名、Apple 公证、票据装订、Gatekeeper 与解压后独立验证，并在 [GitHub Releases](https://github.com/Jorgut/reroute-codex/releases/tag/v0.1.0) 提供下载。App Store 尚未提交；精确名称 `Reroute` 已被其他开发者使用，商店记录必须采用可用的唯一名称。
+> 发布状态：源码已发布到 [Jorgut/flowcue](https://github.com/Jorgut/flowcue)，macOS `0.1.0 (5)` arm64 下载包已完成 Developer ID 签名、Apple 公证、票据装订、Gatekeeper 与解压后独立验证，并在 [GitHub Releases](https://github.com/Jorgut/flowcue/releases/tag/v0.1.0) 提供下载。本仓库与应用的当前品牌为 **FlowCue**（2026-11-11 由 Reroute 改回，见 [CHANGELOG](CHANGELOG.md)）。App Store 尚未提交；商店记录必须采用可用的唯一名称。
 
-Reroute 是一个本地运行的 macOS 菜单栏应用，用来随时捕捉想法，并在你明确选择后通过 Codex Queue 投递到指定任务。默认操作只保存到本地，不会改变正在执行的 Codex 任务。
+FlowCue 是一个本地运行的 macOS 菜单栏应用，用来随时捕捉想法，并在你明确选择后通过 Codex Queue 投递到指定任务。默认操作只保存到本地，不会改变正在执行的 Codex 任务。
 
 ## 主要能力
 
@@ -27,7 +27,7 @@ Reroute 是一个本地运行的 macOS 菜单栏应用，用来随时捕捉想�
 
 这是同一套本地记录体验的两个分发版本。Mac App Store 的沙盒版已经具备原生 Xcode target、资源目录、隐私清单和归档配置；正式签名与上传仍需要先确定唯一商店名称和最终 Bundle ID。iOS target 尚未实现，不能把 macOS 应用包直接提交为 iOS 应用。
 
-Reroute 是独立的第三方项目，与 OpenAI 无隶属、合作、认证或官方背书关系。Codex、OpenAI 和相关标识归各自权利人所有。
+FlowCue 是独立的第三方项目，与 OpenAI 无隶属、合作、认证或官方背书关系。Codex、OpenAI 和相关标识归各自权利人所有。
 
 ## 许可证
 
@@ -42,7 +42,7 @@ Reroute 是独立的第三方项目，与 OpenAI 无隶属、合作、认证或�
 请先完成 Xcode 首次启动设置并由使用者审阅、接受许可；如果命令返回 69，这属于本机开发环境尚未就绪。图标编译需要完整 Xcode 中的 `actool`，只有 Command Line Tools 不足以完成打包。
 
 ```bash
-swift Scripts/render-reroute-icon.swift
+swift Scripts/render-flowcue-icon.swift
 swift test
 swift build --product CodexIdeaDockProcessLauncher
 swift run CodexIdeaDock
@@ -54,25 +54,25 @@ swift run CodexIdeaDock
 
 ```bash
 zsh Scripts/build-app.sh
-open "dist/Reroute.app"
+open "dist/FlowCue.app"
 ```
 
-打包脚本默认生成本地 ad-hoc 签名的 `dist/Reroute.app`。设置 `REROUTE_CODE_SIGN_IDENTITY` 时，会改用指定的 Developer ID Application 身份并启用 Hardened Runtime 与安全时间戳。正式想法、任务缓存与投递记录存放于 `~/Library/Application Support/CodexIdeaDock.store`；正在输入且尚未完成 SwiftData 写入的短期崩溃恢复缓冲存放于该 bundle 的本地 UserDefaults。两者都只在本机使用，不启用 CloudKit。
+打包脚本默认生成本地 ad-hoc 签名的 `dist/FlowCue.app`。设置 `FLOWCUE_CODE_SIGN_IDENTITY` 时，会改用指定的 Developer ID Application 身份并启用 Hardened Runtime 与安全时间戳。正式想法、任务缓存与投递记录存放于 `~/Library/Application Support/CodexIdeaDock.store`；正在输入且尚未完成 SwiftData 写入的短期崩溃恢复缓冲存放于该 bundle 的本地 UserDefaults。两者都只在本机使用，不启用 CloudKit。
 
-普通 `build-app.sh` 构建仍以本机验证为目的；不应把它的工作区 `.app` 直接作为下载文件。当前正式候选下载包为 `dist/releases/Reroute-0.1.0-macOS-arm64.zip`，已经 Developer ID 签名并通过 Apple 公证。重新构建前先正常退出正在运行的 Reroute，完成后从上述明确路径打开，避免旧实例截获快捷键和打开请求。
+普通 `build-app.sh` 构建仍以本机验证为目的；不应把它的工作区 `.app` 直接作为下载文件。0.1.0 的正式下载包已经 Developer ID 签名并通过 Apple 公证（该次发布沿用旧品牌产物名，见[发布说明](docs/RELEASE_NOTES_0.1.0.md)）。重新构建前先正常退出正在运行的 FlowCue，完成后从上述明确路径打开，避免旧实例截获快捷键和打开请求。
 
 公开下载版必须先把公证凭据安全存入钥匙串，再运行发布脚本。脚本只接受 Developer ID Application 身份，完成签名、公证、票据装订与 Gatekeeper 检查后，才会生成 ZIP 和 SHA-256 文件：
 
 ```bash
-xcrun notarytool store-credentials "Reroute-Notary"
-REROUTE_CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-REROUTE_NOTARY_PROFILE="Reroute-Notary" \
+xcrun notarytool store-credentials "FlowCue-Notary"
+FLOWCUE_CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+FLOWCUE_NOTARY_PROFILE="FlowCue-Notary" \
 zsh Scripts/release-macos.sh
 ```
 
-GitHub Release 文案和安装说明见 [0.1.0 发布说明](docs/RELEASE_NOTES_0.1.0.md)。不要公开上传默认 ad-hoc 签名的 `dist/Reroute.app`。
+GitHub Release 文案和安装说明见 [0.1.0 发布说明](docs/RELEASE_NOTES_0.1.0.md)。不要公开上传默认 ad-hoc 签名的 `dist/FlowCue.app`。
 
-构建时会先从 `Scripts/render-reroute-icon.swift` 重新生成应用图标和菜单栏模板图，再在临时目录中组装、校验和签名应用；全部成功后才替换现有 `Reroute.app`。如果 `dist` 中存在另一个使用相同 Bundle ID 的旧 `.app`，构建会停止，避免 macOS 启动错误版本。
+构建时会先从 `Scripts/render-flowcue-icon.swift` 重新生成应用图标和菜单栏模板图，再在临时目录中组装、校验和签名应用；全部成功后才替换现有 `FlowCue.app`。如果 `dist` 中存在另一个使用相同 Bundle ID 的旧 `.app`，构建会停止，避免 macOS 启动错误版本。
 
 图标生成和应用编译统一使用 `PATH` 中的 `swift`。需要显式选择工具链时，可设置 `DEVELOPER_DIR`、`PATH` 和 `SDKROOT`；本机验证过的完整命令见 [PROJECT_STATE.md](PROJECT_STATE.md)。
 
@@ -81,23 +81,23 @@ GitHub Release 文案和安装说明见 [0.1.0 发布说明](docs/RELEASE_NOTES_
 本地沙盒预览使用独立 Bundle ID，避免读写 GitHub 下载版的正式数据：
 
 ```bash
-REROUTE_APP_STORE_BUNDLE_IDENTIFIER="com.example.reroute.preview" \
+FLOWCUE_APP_STORE_BUNDLE_IDENTIFIER="com.example.flowcue.preview" \
 zsh Scripts/build-app-store-preview.sh
-open "dist/Reroute-App-Store-Preview.app"
+open "dist/FlowCue-App-Store-Preview.app"
 ```
 
 该脚本生成 ad-hoc 签名的本地预览包，只用于验证沙盒行为。正式归档使用 Xcode 工程：
 
 ```bash
 xcodebuild \
-  -project RerouteStore.xcodeproj \
-  -scheme RerouteStore \
+  -project FlowCue.xcodeproj \
+  -scheme FlowCue \
   -configuration Release \
   -destination 'generic/platform=macOS' \
   archive
 ```
 
-提交前必须在 `RerouteStore` target 中替换占位 Bundle ID，并确认它与 App Store Connect 中创建的 macOS App 记录一致。不要使用预览 Bundle ID 创建正式记录。
+提交前必须在 `FlowCue` target 中替换占位 Bundle ID，并确认它与 App Store Connect 中创建的 macOS App 记录一致。不要使用预览 Bundle ID 创建正式记录。
 
 ## 验证
 
@@ -111,14 +111,15 @@ CODEX_IDEA_DOCK_REAL_TEST=1 swift test --filter CodexBridgeTests/testRealAppServ
 
 ## 品牌迁移兼容标识
 
-Reroute 沿用以下内部标识，以继续读取改名前已经保存的草稿、想法和窗口状态。没有显式迁移逻辑时，不应直接把它们改成新品牌名：
+FlowCue 沿用以下内部标识，以继续读取改名前已经保存的草稿、想法和窗口状态。没有显式迁移逻辑时，不应直接把它们改成新品牌名：
 
-- Bundle ID：`com.altn.codex-idea-dock`
+- Bundle ID（GitHub 下载版）：`com.altn.codex-idea-dock`
+- Bundle ID（Mac App Store 版）：`com.altn.reroute.app-store-preview`（保留历史标识作为升级身份）
 - SwiftData 配置名与本地数据库：`CodexIdeaDock` / `~/Library/Application Support/CodexIdeaDock.store`
 - 收件箱窗口恢复键：`CodexIdeaDock.Inbox`
 - App Server 稳定客户端标识：`codex_idea_dock`
 
-首次运行前，也可以先在 Codex 的 `Settings > General > Follow-up behavior` 中选择 `Queue`，作为日常输入的临时保护。Reroute 本身只会在你点击“排到 Codex”或按下 `⌥⌘Return` 时投递。
+首次运行前，也可以先在 Codex 的 `Settings > General > Follow-up behavior` 中选择 `Queue`，作为日常输入的临时保护。FlowCue 本身只会在你点击“排到 Codex”或按下 `⌥⌘Return` 时投递。
 
 ## 快捷键
 

@@ -7,17 +7,17 @@
     <key>CFBundleLocalizations</key>
     <array><string>en</string><string>zh-Hans</string></array>
     <key>CFBundleDisplayName</key>
-    <string>Reroute</string>
+    <string>FlowCue</string>
     <key>CFBundleExecutable</key>
     <string>CodexIdeaDock</string>
     <key>CFBundleIdentifier</key>
     <string>com.altn.codex-idea-dock</string>
     <key>CFBundleIconFile</key>
-    <string>Reroute.icns</string>
+    <string>FlowCue.icns</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Reroute</string>
+    <string>FlowCue</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>

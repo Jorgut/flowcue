@@ -35,7 +35,7 @@ enum CodexFallback {
         }
 
         let pasteboard = NSPasteboard.general
-        #if REROUTE_APP_STORE
+        #if FLOWCUE_APP_STORE
         pasteboard.clearContents()
         guard pasteboard.writeObjects([text as NSString]) else {
             NSSound.beep()

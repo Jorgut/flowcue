@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.setActivationPolicy(.accessory)
         #endif
         do {
-            #if REROUTE_APP_STORE
+            #if FLOWCUE_APP_STORE
             store = try IdeaDockStore(
                 modelContainer: IdeaDockPersistence.makeDefaultContainer(),
                 bridge: AppStoreCodexBridge(),
@@ -44,7 +44,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let store {
             syncController = IdeaSyncController(
                 store: store, defaults: .standard,
-                containerIdentifier: Bundle.main.object(forInfoDictionaryKey: "RerouteCloudKitContainer") as? String
+                containerIdentifier: Bundle.main.object(forInfoDictionaryKey: "FlowCueCloudKitContainer") as? String
             )
         }
         configureWindows()
@@ -83,7 +83,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         syncTask?.cancel()
         store?.flushDraft()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
-        #if !REROUTE_APP_STORE
+        #if !FLOWCUE_APP_STORE
         FoundationProcessRunner.terminateAllProcesses()
         #endif
     }
@@ -181,10 +181,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateStatusItem() {
         guard let button = statusItem?.button else { return }
 
-        let image = NSImage(named: NSImage.Name("RerouteMenuTemplate"))
+        let image = NSImage(named: NSImage.Name("FlowCueMenuTemplate"))
             ?? NSImage(
                 systemSymbolName: "lightbulb",
-                accessibilityDescription: "Reroute"
+                accessibilityDescription: "FlowCue"
             )
         image?.isTemplate = true
         image?.size = NSSize(width: 18, height: 18)
@@ -193,9 +193,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let pendingCount = store?.pendingCount ?? 0
         button.title = pendingCount > 0 ? " \(pendingCount)" : ""
         button.toolTip = hotKeyRegistrationFailed
-            ? L10n.text("Reroute（全局快捷键注册失败）")
-            : "Reroute · ⌃⌥Space"
-        button.setAccessibilityLabel("Reroute")
+            ? L10n.text("FlowCue（全局快捷键注册失败）")
+            : "FlowCue · ⌃⌥Space"
+        button.setAccessibilityLabel("FlowCue")
         button.setAccessibilityValue("\(pendingCount) " + (L10n.language == .mandarin ? "条待处理想法" : "pending ideas"))
     }
 
@@ -215,7 +215,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func configureApplicationMenu() {
         let mainMenu = NSMenu()
-        let applicationItem = NSMenuItem(title: "Reroute", action: nil, keyEquivalent: "")
+        let applicationItem = NSMenuItem(title: "FlowCue", action: nil, keyEquivalent: "")
         let applicationMenu = makeStatusMenu()
         applicationMenu.delegate = self
         applicationItem.submenu = applicationMenu
@@ -253,7 +253,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(withTitle: L10n.text("收件箱…"), action: #selector(showInbox), keyEquivalent: "")
         menu.addItem(.separator())
 
-        #if !REROUTE_APP_STORE
+        #if !FLOWCUE_APP_STORE
         let refreshItem = menu.addItem(
             withTitle: L10n.text("刷新 Codex 任务"),
             action: #selector(refreshThreads),
@@ -285,7 +285,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             syncNow.isEnabled = syncController.isEnabled
         }
         menu.addItem(.separator())
-        menu.addItem(withTitle: L10n.text("退出 Reroute"), action: #selector(quit), keyEquivalent: "q")
+        menu.addItem(withTitle: L10n.text("退出 FlowCue"), action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
         return menu
     }
@@ -332,7 +332,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         inboxWindowController?.show()
     }
 
-    #if !REROUTE_APP_STORE
+    #if !FLOWCUE_APP_STORE
     @objc private func refreshThreads() {
         Task { @MainActor [weak self] in
             await self?.store?.refreshThreads()
@@ -348,7 +348,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func presentStartupFailure(_ error: Error) {
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = L10n.text("Reroute 无法启动")
+        alert.messageText = L10n.text("FlowCue 无法启动")
         alert.informativeText = (L10n.language == .mandarin ? "无法打开本地数据存储。为避免丢失想法，应用没有切换到临时存储。" : "Could not open local storage. The app did not switch to temporary storage, to protect your ideas.") + "\n\n" + error.localizedDescription
         alert.addButton(withTitle: L10n.text("退出"))
         alert.runModal()
