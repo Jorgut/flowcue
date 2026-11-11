@@ -5,8 +5,10 @@ import CodexIdeaDockCore
 import Observation
 
 @MainActor
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var store: IdeaDockStore?
+    private var syncController: IdeaSyncController?
+    private var syncTask: Task<Void, Never>?
     private var statusItem: NSStatusItem?
     private var capturePanelController: CapturePanelController?
     private var inboxWindowController: InboxWindowController?
@@ -19,7 +21,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if REROUTE_APP_STORE
+        NSApp.setActivationPolicy(.regular)
+        #else
         NSApp.setActivationPolicy(.accessory)
+        #endif
         do {
             #if REROUTE_APP_STORE
             store = try IdeaDockStore(
@@ -35,9 +41,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
+        if let store {
+            syncController = IdeaSyncController(
+                store: store, defaults: .standard,
+                containerIdentifier: Bundle.main.object(forInfoDictionaryKey: "RerouteCloudKitContainer") as? String
+            )
+        }
         configureWindows()
         configureFrontmostApplicationObservation()
         configureStatusItem()
+        #if REROUTE_APP_STORE
+        configureApplicationMenu()
+        #endif
         configureGlobalHotKey()
         observePendingCount()
         showCapturePanel()
@@ -46,6 +61,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, let store else { return }
             await store.bootstrap()
             updateStatusItem()
+            syncTask = Task { @MainActor [weak self] in
+                await self?.syncController?.runWhileActive()
+            }
         }
     }
 
@@ -62,6 +80,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        syncTask?.cancel()
         store?.flushDraft()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         #if !REROUTE_APP_STORE
@@ -71,10 +90,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureWindows() {
         guard let store else { return }
-        capturePanelController = CapturePanelController(
-            store: store,
-            onOpenInbox: { [weak self] in self?.showInbox() }
-        )
         inboxWindowController = InboxWindowController(store: store)
     }
 
@@ -178,10 +193,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pendingCount = store?.pendingCount ?? 0
         button.title = pendingCount > 0 ? " \(pendingCount)" : ""
         button.toolTip = hotKeyRegistrationFailed
-            ? "Reroute（全局快捷键注册失败）"
+            ? L10n.text("Reroute（全局快捷键注册失败）")
             : "Reroute · ⌃⌥Space"
         button.setAccessibilityLabel("Reroute")
-        button.setAccessibilityValue("\(pendingCount) 条待处理想法")
+        button.setAccessibilityValue("\(pendingCount) " + (L10n.language == .mandarin ? "条待处理想法" : "pending ideas"))
     }
 
     @objc
@@ -198,40 +213,117 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func configureApplicationMenu() {
+        let mainMenu = NSMenu()
+        let applicationItem = NSMenuItem(title: "Reroute", action: nil, keyEquivalent: "")
+        let applicationMenu = makeStatusMenu()
+        applicationMenu.delegate = self
+        applicationItem.submenu = applicationMenu
+        mainMenu.addItem(applicationItem)
+        let editItem = NSMenuItem(title: "Edit", action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        editMenu.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+        NSApp.mainMenu = mainMenu
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        let updated = makeStatusMenu()
+        for item in updated.items {
+            updated.removeItem(item)
+            menu.addItem(item)
+        }
+    }
+
     private func showStatusMenu(relativeTo button: NSStatusBarButton) {
+        let menu = makeStatusMenu()
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
+    }
+
+    private func makeStatusMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(withTitle: "记录想法…", action: #selector(showCapturePanel), keyEquivalent: "")
-        menu.addItem(withTitle: "收件箱…", action: #selector(showInbox), keyEquivalent: "")
+        menu.autoenablesItems = false
+        menu.addItem(withTitle: L10n.text("记录想法…"), action: #selector(showCapturePanel), keyEquivalent: "")
+        menu.addItem(withTitle: L10n.text("收件箱…"), action: #selector(showInbox), keyEquivalent: "")
         menu.addItem(.separator())
 
         #if !REROUTE_APP_STORE
         let refreshItem = menu.addItem(
-            withTitle: "刷新 Codex 任务",
+            withTitle: L10n.text("刷新 Codex 任务"),
             action: #selector(refreshThreads),
             keyEquivalent: ""
         )
         refreshItem.isEnabled = store?.isLoadingContexts == false
         menu.addItem(.separator())
         #endif
-        menu.addItem(withTitle: "退出 Reroute", action: #selector(quit), keyEquivalent: "q")
+        let languageItem = NSMenuItem(title: "Language / 语言", action: nil, keyEquivalent: "")
+        let languageMenu = NSMenu()
+        for language in AppLanguage.allCases {
+            let item = NSMenuItem(title: language.displayName, action: #selector(changeLanguage(_:)), keyEquivalent: "")
+            item.representedObject = language.rawValue
+            item.target = self
+            item.state = L10n.language == language ? .on : .off
+            languageMenu.addItem(item)
+        }
+        languageItem.submenu = languageMenu
+        menu.addItem(languageItem)
+        if let syncController {
+            let syncItem = NSMenuItem(title: "iCloud Sync", action: #selector(toggleCloudSync), keyEquivalent: "")
+            syncItem.state = syncController.isEnabled ? .on : .off
+            syncItem.isEnabled = syncController.isAvailable
+            menu.addItem(syncItem)
+            let status = NSMenuItem(title: L10n.text(syncController.statusMessage), action: nil, keyEquivalent: "")
+            status.isEnabled = false
+            menu.addItem(status)
+            let syncNow = menu.addItem(withTitle: L10n.language == .mandarin ? "立即同步" : "Sync Now", action: #selector(synchronizeCloudNow), keyEquivalent: "")
+            syncNow.isEnabled = syncController.isEnabled
+        }
+        menu.addItem(.separator())
+        menu.addItem(withTitle: L10n.text("退出 Reroute"), action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
-        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
+        return menu
+    }
+
+    @objc
+    private func synchronizeCloudNow() {
+        Task { await syncController?.synchronizeNow() }
+    }
+
+    @objc
+    private func toggleCloudSync() {
+        guard let syncController else { return }
+        syncController.setEnabled(!syncController.isEnabled)
+        Task { await syncController.synchronizeNow() }
+    }
+
+    @objc
+    private func changeLanguage(_ sender: NSMenuItem) {
+        guard let rawValue = sender.representedObject as? String,
+              let language = AppLanguage(rawValue: rawValue),
+              language != L10n.language else { return }
+        store?.flushDraft()
+        UserDefaults.standard.set(language.rawValue, forKey: L10n.preferenceKey)
+        store?.notification = nil
+        capturePanelController?.hide()
+        inboxWindowController?.close()
+        configureWindows()
+        updateStatusItem()
+        showCapturePanel()
     }
 
     private func toggleCapturePanel() {
-        guard let capturePanelController else { return }
-        if capturePanelController.isVisible {
-            capturePanelController.hide()
-        } else {
-            updateCapturePanelFloatingState()
-            capturePanelController.show()
-        }
+        showCapturePanel()
     }
 
     @objc
     private func showCapturePanel() {
-        updateCapturePanelFloatingState()
-        capturePanelController?.show()
+        inboxWindowController?.showComposer()
     }
 
     @objc
@@ -256,9 +348,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func presentStartupFailure(_ error: Error) {
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "Reroute 无法启动"
-        alert.informativeText = "无法打开本地数据存储。为避免丢失想法，应用没有切换到临时存储。\n\n\(error.localizedDescription)"
-        alert.addButton(withTitle: "退出")
+        alert.messageText = L10n.text("Reroute 无法启动")
+        alert.informativeText = (L10n.language == .mandarin ? "无法打开本地数据存储。为避免丢失想法，应用没有切换到临时存储。" : "Could not open local storage. The app did not switch to temporary storage, to protect your ideas.") + "\n\n" + error.localizedDescription
+        alert.addButton(withTitle: L10n.text("退出"))
         alert.runModal()
         NSApp.terminate(nil)
     }

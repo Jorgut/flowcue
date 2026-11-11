@@ -22,6 +22,11 @@
 		D00000000000000000000019 /* WindowControllers.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000009 /* WindowControllers.swift */; };
 		E00000000000000000000001 /* AppStoreAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000001 /* AppStoreAssets.xcassets */; };
 		E00000000000000000000002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000002 /* PrivacyInfo.xcprivacy */; };
+		D00000000000000000000005 = {isa = PBXBuildFile; fileRef = A00000000000000000000005; };
+		D00000000000000000000006 = {isa = PBXBuildFile; fileRef = A00000000000000000000006; };
+		D00000000000000000000007 = {isa = PBXBuildFile; fileRef = A00000000000000000000007; };
+		D00000000000000000000008 = {isa = PBXBuildFile; fileRef = A00000000000000000000008; };
+		D00000000000000000000009 = {isa = PBXBuildFile; fileRef = A00000000000000000000009; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -43,6 +48,11 @@
 		C00000000000000000000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		C00000000000000000000003 /* AppStoreInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = AppStoreInfo.plist; sourceTree = "<group>"; };
 		C00000000000000000000004 /* AppStore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AppStore.entitlements; sourceTree = "<group>"; };
+		A00000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
+		A00000000000000000000006 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedIdeaSync.swift; sourceTree = "<group>"; };
+		A00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitIdeaTransport.swift; sourceTree = "<group>"; };
+		A00000000000000000000008 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDelivery.swift; sourceTree = "<group>"; };
+		A00000000000000000000009 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeaSyncController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,6 +99,11 @@
 				A00000000000000000000002 /* CodexBridging.swift */,
 				A00000000000000000000003 /* IdeaDockStore.swift */,
 				A00000000000000000000004 /* Models.swift */,
+				A00000000000000000000005,
+				A00000000000000000000009,
+				A00000000000000000000008,
+				A00000000000000000000007,
+				A00000000000000000000006,
 			);
 			path = CodexIdeaDockCore;
 			sourceTree = "<group>";
@@ -194,6 +209,11 @@
 				D00000000000000000000002 /* CodexBridging.swift in Sources */,
 				D00000000000000000000003 /* IdeaDockStore.swift in Sources */,
 				D00000000000000000000004 /* Models.swift in Sources */,
+				D00000000000000000000005,
+				D00000000000000000000009,
+				D00000000000000000000008,
+				D00000000000000000000007,
+				D00000000000000000000006,
 				D00000000000000000000011 /* AppDelegate.swift in Sources */,
 				D00000000000000000000012 /* AppDistribution.swift in Sources */,
 				D00000000000000000000013 /* CapturePanelView.swift in Sources */,
@@ -251,7 +271,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = Support/AppStore.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				ENABLE_APP_SANDBOX = YES;
@@ -261,7 +281,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.altn.reroute.app-store-preview";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.altn.reroute.ideainbox";
 				PRODUCT_NAME = Reroute;
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
@@ -279,7 +299,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = Support/AppStore.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 5;
+				CURRENT_PROJECT_VERSION = 6;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				ENABLE_APP_SANDBOX = YES;
@@ -289,7 +309,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.altn.reroute.app-store-preview";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.altn.reroute.ideainbox";
 				PRODUCT_NAME = Reroute;
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;

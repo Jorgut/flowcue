@@ -101,6 +101,52 @@ public struct CaptureItem: Identifiable, Hashable, Sendable {
     }
 }
 
+public enum MailTaskPriority: String, Codable, CaseIterable, Hashable, Sendable {
+    case today
+    case scheduled
+    case waiting
+    case reference
+
+    public var displayName: String {
+        switch self {
+        case .today: "今天处理"
+        case .scheduled: "安排时间"
+        case .waiting: "等待回复"
+        case .reference: "仅供参考"
+        }
+    }
+}
+
+public struct MailTriageTask: Codable, Hashable, Sendable {
+    public var title: String
+    public var priority: MailTaskPriority
+    public var dueDate: String?
+    public var source: String
+    public var reason: String
+
+    public init(
+        title: String,
+        priority: MailTaskPriority,
+        dueDate: String? = nil,
+        source: String,
+        reason: String
+    ) {
+        self.title = title
+        self.priority = priority
+        self.dueDate = dueDate
+        self.source = source
+        self.reason = reason
+    }
+}
+
+public struct MailTriageResponse: Codable, Hashable, Sendable {
+    public var tasks: [MailTriageTask]
+
+    public init(tasks: [MailTriageTask]) {
+        self.tasks = tasks
+    }
+}
+
 public enum QueueDeliveryOutcome: Sendable, Equatable {
     case queued(exitCode: Int)
     case failed(exitCode: Int?, message: String)
@@ -300,5 +346,38 @@ public enum IdeaDockPersistence {
             cloudKitDatabase: .none
         )
         return try ModelContainer(for: schema, configurations: [configuration])
+    }
+}
+
+public struct CodexUsageWindow: Decodable, Sendable, Equatable {
+    public let usedPercent: Double
+    public let windowDurationMins: Int?
+    public let resetsAt: Double?
+    public var remainingPercent: Double { max(0, min(100, 100 - usedPercent)) }
+}
+
+public struct CodexUsageSnapshot: Decodable, Sendable, Equatable {
+    public let primary: CodexUsageWindow?
+    public let secondary: CodexUsageWindow?
+
+    public static func parse(_ data: Data) throws -> Self {
+        struct Result: Decodable {
+            let rateLimits: CodexUsageSnapshot?
+            let rateLimitsByLimitId: [String: CodexUsageSnapshot]?
+        }
+        struct Envelope: Decodable { let id: Int?; let result: Result? }
+        for line in String(decoding: data, as: UTF8.self).split(whereSeparator: \.isNewline) {
+            guard let envelope = try? JSONDecoder().decode(Envelope.self, from: Data(line.utf8)), envelope.id == 2,
+                  let result = envelope.result,
+                  let snapshot = result.rateLimitsByLimitId?["codex"] ?? result.rateLimits else { continue }
+            let windows = [snapshot.primary, snapshot.secondary].compactMap { $0 }
+            guard !windows.isEmpty, windows.allSatisfy({ window in
+                window.usedPercent.isFinite && (0...100).contains(window.usedPercent)
+                    && (window.windowDurationMins.map { $0 > 0 } ?? true)
+                    && (window.resetsAt.map { $0.isFinite && (0...253402300799).contains($0) } ?? true)
+            }) else { throw CocoaError(.coderReadCorrupt) }
+            return snapshot
+        }
+        throw CocoaError(.coderReadCorrupt)
     }
 }

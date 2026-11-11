@@ -732,6 +732,19 @@ public struct CodexBridge: CodexBridging, Sendable {
         self.queueTimeout = queueTimeout
     }
 
+    public func readUsage() async throws -> CodexUsageSnapshot {
+        let initialize = ["method": "initialize", "id": 1, "params": ["clientInfo": ["name": "codex_idea_dock", "title": "Reroute", "version": "0.1.0"]]] as [String: Any]
+        let messages: [[String: Any]] = [initialize, ["method": "initialized"], ["method": "account/rateLimits/read", "id": 2]]
+        var input = Data()
+        for message in messages {
+            input.append(try JSONSerialization.data(withJSONObject: message))
+            input.append(0x0A)
+        }
+        let result = try await processRunner.run(executableURL: executableResolver(), arguments: Self.appServerArguments, standardInput: input, timeout: appServerTimeout)
+        guard !result.timedOut, result.exitCode == 0 else { throw CodexBridgeError.invalidResponse }
+        return try CodexUsageSnapshot.parse(result.stdout)
+    }
+
     public func listThreads() async throws -> [WorkContextItem] {
         let executableURL = try executableResolver()
         var cursor: String?
