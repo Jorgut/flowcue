@@ -25,7 +25,7 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		005000000000000000000000 /* Reroute.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Reroute.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		005000000000000000000000 /* FlowCue.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FlowCue.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A00000000000000000000001 /* CaptureHostPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureHostPolicy.swift; sourceTree = "<group>"; };
 		A00000000000000000000002 /* CodexBridging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexBridging.swift; sourceTree = "<group>"; };
 		A00000000000000000000003 /* IdeaDockStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeaDockStore.swift; sourceTree = "<group>"; };
@@ -68,7 +68,7 @@
 		004000000000000000000000 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				005000000000000000000000 /* Reroute.app */,
+				005000000000000000000000 /* FlowCue.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -123,9 +123,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		002000000000000000000000 /* RerouteStore */ = {
+		002000000000000000000000 /* FlowCue */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 018000000000000000000000 /* Build configuration list for PBXNativeTarget "RerouteStore" */;
+			buildConfigurationList = 018000000000000000000000 /* Build configuration list for PBXNativeTarget "FlowCue" */;
 			buildPhases = (
 				010000000000000000000000 /* Sources */,
 				011000000000000000000000 /* Frameworks */,
@@ -135,9 +135,9 @@
 			);
 			dependencies = (
 			);
-			name = RerouteStore;
-			productName = Reroute;
-			productReference = 005000000000000000000000 /* Reroute.app */;
+			name = FlowCue;
+			productName = FlowCue;
+			productReference = 005000000000000000000000 /* FlowCue.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -155,7 +155,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 017000000000000000000000 /* Build configuration list for PBXProject "RerouteStore" */;
+			buildConfigurationList = 017000000000000000000000 /* Build configuration list for PBXProject "FlowCue" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -168,7 +168,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				002000000000000000000000 /* RerouteStore */,
+				002000000000000000000000 /* FlowCue */,
 			);
 		};
 /* End PBXProject section */
@@ -262,11 +262,11 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.altn.reroute.app-store-preview";
-				PRODUCT_NAME = Reroute;
+				PRODUCT_NAME = FlowCue;
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
 				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) REROUTE_APP_STORE";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) FLOWCUE_APP_STORE";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
 			};
@@ -290,11 +290,11 @@
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "com.altn.reroute.app-store-preview";
-				PRODUCT_NAME = Reroute;
+				PRODUCT_NAME = FlowCue;
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
 				SUPPORTED_PLATFORMS = macosx;
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) REROUTE_APP_STORE";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) FLOWCUE_APP_STORE";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
 			};
@@ -303,7 +303,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		017000000000000000000000 /* Build configuration list for PBXProject "RerouteStore" */ = {
+		017000000000000000000000 /* Build configuration list for PBXProject "FlowCue" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				013000000000000000000000 /* Debug */,
@@ -312,7 +312,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		018000000000000000000000 /* Build configuration list for PBXNativeTarget "RerouteStore" */ = {
+		018000000000000000000000 /* Build configuration list for PBXNativeTarget "FlowCue" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				015000000000000000000000 /* Debug */,

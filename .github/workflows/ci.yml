@@ -27,7 +27,7 @@ jobs:
         run: zsh -n Scripts/build-app.sh Scripts/build-app-store-preview.sh Scripts/release-macos.sh
 
       - name: Render icon assets
-        run: swift Scripts/render-reroute-icon.swift
+        run: swift Scripts/render-flowcue-icon.swift
 
       - name: Run tests
         run: swift test
@@ -35,8 +35,8 @@ jobs:
       - name: Build Mac App Store target
         run: >-
           xcodebuild
-          -project RerouteStore.xcodeproj
-          -scheme RerouteStore
+          -project FlowCue.xcodeproj
+          -scheme FlowCue
           -configuration Release
           -destination 'generic/platform=macOS'
           CODE_SIGNING_ALLOWED=NO
@@ -47,6 +47,6 @@ jobs:
 
       - name: Verify bundle
         run: |
-          plutil -lint dist/Reroute.app/Contents/Info.plist
-          plutil -lint dist/Reroute.app/Contents/Resources/PrivacyInfo.xcprivacy
-          codesign --verify --deep --strict dist/Reroute.app
+          plutil -lint dist/FlowCue.app/Contents/Info.plist
+          plutil -lint dist/FlowCue.app/Contents/Resources/PrivacyInfo.xcprivacy
+          codesign --verify --deep --strict dist/FlowCue.app

@@ -1,4 +1,4 @@
-#if !REROUTE_APP_STORE
+#if !FLOWCUE_APP_STORE
 import Darwin
 import Foundation
 
@@ -1026,7 +1026,7 @@ private enum AppServerRequest {
                 clientInfo: ClientInfo(
                     // Stable protocol identifier retained for compatibility across the rebrand.
                     name: "codex_idea_dock",
-                    title: "Reroute",
+                    title: "FlowCue",
                     version: "0.1.0"
                 )
             )
