@@ -1,12 +1,12 @@
 {
   "images" : [
     {
-      "filename" : "RerouteMenuTemplate.png",
+      "filename" : "FlowCueMenuTemplate.png",
       "idiom" : "mac",
       "scale" : "1x"
     },
     {
-      "filename" : "RerouteMenuTemplate@2x.png",
+      "filename" : "FlowCueMenuTemplate@2x.png",
       "idiom" : "mac",
       "scale" : "2x"
     }

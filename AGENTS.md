@@ -1,4 +1,4 @@
-# Reroute 项目约定
+# FlowCue 项目约定
 
 - 原生 macOS 14+ 菜单栏应用；Swift 6、SwiftUI、AppKit、SwiftData，无第三方包依赖。
 - 开工先读 `README.md`、`PROJECT_STATE.md` 和共享协作记录。全局工程规则继续适用。

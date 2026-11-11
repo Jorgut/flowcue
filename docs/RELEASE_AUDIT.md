@@ -1,6 +1,6 @@
-# 发布审查：Reroute
+# 发布审查：FlowCue
 
-更新日期：2026-09-23
+更新日期：2026-11-11
 
 当前产品是 macOS 菜单栏本地应用。源码与已公证的 `0.1.0` arm64 下载包已经发布到 GitHub；当前二进制不能直接提交 Mac App Store，也不存在 iOS target。
 
@@ -14,13 +14,13 @@
 
 ## 阻断项
 
-### 1. 品牌名称已确定，但精确 App Store 名称已被占用
+### 1. 应用内品牌已统一，App Store 名称仍需确认
 
-原工作名称 FlowCue 因 App Store 和多个软件服务存在同名冲突而停用。2026-09-19 已确认公开品牌名称为 **Reroute**，本机应用和仓库文档已完成品牌迁移。
+2026-09-19 曾因 App Store 和多个软件服务存在同名冲突，将公开品牌从工作名称 FlowCue 改为 **Reroute**。2026-11-11 仓库与应用品牌统一改回 **FlowCue**：应用包、Xcode 工程、文档与用户可见文案同步更新，内部兼容标识保持不变（见 CHANGELOG）。
 
-实时核查确认 App Store 已存在另一开发者发布的 `Reroute: Fix Technoference`，其安装名和商店品牌均使用 Reroute。Apple 规定另一开发者已使用的 App Store 名称不能再次创建，除非持有可主张的商标权。
+历史上两次名称核查都发现冲突：FlowCue 曾与 App Store 中的应用以及多个软件和网站重名；Reroute 则与另一开发者发布的 `Reroute: Fix Technoference` 重名。Apple 规定另一开发者已使用的 App Store 名称不能再次创建，除非持有可主张的商标权。
 
-应用内品牌仍可保留 Reroute，但 App Store Connect 记录必须使用不超过 30 个字符的唯一名称，例如候选 `Reroute: Idea Queue`；最终可用性需在 App Store Connect 实际创建记录时确认。正式发布前仍需完成商标、域名和 GitHub 仓库名核查。
+应用内品牌已统一为 FlowCue，但 App Store Connect 记录仍必须使用不超过 30 个字符的唯一名称；最终可用性需在 App Store Connect 实际创建记录时确认。正式发布前仍需完成商标、域名和商店名称核查。
 
 ### 2. 没有 iOS 应用目标
 
@@ -53,11 +53,11 @@ Mac App Store 要求 App Sandbox。当前应用会：
 
 2026-09-22 用户已亲自接受 Xcode 与 Apple SDK 许可。随后使用当前 `HEAD` 的全新 `git archive` 检出，按 CI 顺序重新生成图标、运行 51 项测试（50 通过、1 项真实连接按设计跳过）并完成 release 应用构建与严格签名验证。
 
-正式下载包使用 `Developer ID Application: hong liang zhu (GB38532D8G)` 签名，并通过钥匙串配置 `Reroute-Notary` 提交 Apple 公证。提交 `8db35894-d3bd-4d4f-bc38-5226b5da316b` 状态为 `Accepted`；票据装订、`stapler validate`、Gatekeeper、ZIP 完整性、SHA-256、版本、架构与隐私清单复核全部通过。
+正式下载包使用 `Developer ID Application: hong liang zhu (GB38532D8G)` 签名，并通过钥匙串配置 `Reroute-Notary` 提交 Apple 公证（该配置名沿用 0.1.0 发布时的旧品牌；当前发布命令使用 `FlowCue-Notary`）。提交 `8db35894-d3bd-4d4f-bc38-5226b5da316b` 状态为 `Accepted`；票据装订、`stapler validate`、Gatekeeper、ZIP 完整性、SHA-256、版本、架构与隐私清单复核全部通过。
 
-发布产物为 `Reroute-0.1.0-macOS-arm64.zip`，大小 1,620,245 bytes，SHA-256 为 `8e9929cc7273e455f231e4b0567d3d26500db71773239979cc78d96cead3eaa3`。
+0.1.0 的发布产物为 `Reroute-0.1.0-macOS-arm64.zip`（旧品牌产物名，已发布文件不改名），大小 1,620,245 bytes，SHA-256 为 `8e9929cc7273e455f231e4b0567d3d26500db71773239979cc78d96cead3eaa3`。
 
-2026-09-23 已创建公开仓库 [Jorgut/reroute-codex](https://github.com/Jorgut/reroute-codex)，推送 `main` 完整历史和 `v0.1.0` 标签，并发布 [Reroute 0.1.0](https://github.com/Jorgut/reroute-codex/releases/tag/v0.1.0)。GitHub 重新下载的 ZIP 与本地公证包逐字节一致，Release digest 与本地 SHA-256 一致；首次 CI 成功，私密漏洞报告已启用。
+2026-09-23 已创建公开仓库 [Jorgut/flowcue](https://github.com/Jorgut/flowcue)（当时仓库名为 `reroute-codex`），推送 `main` 完整历史和 `v0.1.0` 标签，并发布 [0.1.0](https://github.com/Jorgut/flowcue/releases/tag/v0.1.0)（发布时旧品牌）。GitHub 重新下载的 ZIP 与本地公证包逐字节一致，Release digest 与本地 SHA-256 一致；首次 CI 成功，私密漏洞报告已启用。
 
 ## 高优先级项
 
@@ -124,8 +124,8 @@ MIT 许可证、隐私政策、支持说明和 README 非官方项目声明已�
 
 ### GitHub
 
-- [x] 最终品牌确认：Reroute
-- [x] 候选 GitHub 仓库名：`Jorgut/reroute-codex`
+- [x] 最终品牌确认：FlowCue
+- [x] GitHub 仓库名：`Jorgut/flowcue`
 - [x] 开源许可证：MIT
 - [x] 本机 GitHub 登录：`Jorgut`
 - [x] 已明确批准公开可见性与完整提交历史（包含作者邮箱）
@@ -138,7 +138,7 @@ MIT 许可证、隐私政策、支持说明和 README 非官方项目声明已�
 ### App Store
 
 - [ ] 商店版传输架构确认
-- [ ] 唯一 App Store 名称确认（精确名称 `Reroute` 已被其他开发者占用）
+- [ ] 唯一 App Store 名称确认（应用内品牌为 FlowCue；商店记录仍需确认可用名称）
 - [ ] Xcode 工程、iOS target、Mac App Store target 和共享模块完成
 - [ ] 唯一 Bundle ID 与发布团队确认
 - [ ] App Sandbox 和最小 entitlements 验证
@@ -151,7 +151,7 @@ MIT 许可证、隐私政策、支持说明和 README 非官方项目声明已�
 
 - [Apple：Mac App Store 必须启用 App Sandbox](https://developer.apple.com/documentation/xcode/configuring-the-macos-app-sandbox)
 - [Apple：App 名称不可用时的处理方式](https://developer.apple.com/help/app-store-connect/create-an-app-record/add-a-new-app)
-- [App Store：已存在的 Reroute 应用](https://apps.apple.com/us/app/reroute-fix-technoference/id6780990045)
+- [App Store：另一开发者的 Reroute 应用（历史名称冲突依据）](https://apps.apple.com/us/app/reroute-fix-technoference/id6780990045)
 - [Apple：准备应用分发](https://developer.apple.com/documentation/xcode/preparing-your-app-for-distribution)
 - [Apple：隐私清单](https://developer.apple.com/documentation/bundleresources/privacy-manifest-files)
 - [Apple：上传构建](https://developer.apple.com/help/app-store-connect/manage-builds/upload-builds)

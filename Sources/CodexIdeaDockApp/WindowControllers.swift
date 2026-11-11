@@ -44,7 +44,7 @@ final class CapturePanelController: NSWindowController {
                     }
                 },
                 onQueue: {
-                    #if REROUTE_APP_STORE
+                    #if FLOWCUE_APP_STORE
                     let text = store.draftText
                     guard store.saveCurrent() != nil else { return }
                     Task { @MainActor in
@@ -175,7 +175,7 @@ final class InboxWindowController: NSWindowController, NSWindowDelegate {
         )
         super.init(window: window)
 
-        window.title = "Reroute 收件箱"
+        window.title = "FlowCue 收件箱"
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
         window.minSize = NSSize(width: 720, height: 460)

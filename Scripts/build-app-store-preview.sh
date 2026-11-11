@@ -5,15 +5,15 @@ set -euo pipefail
 script_directory="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 project_directory="$(cd -- "$script_directory/.." && pwd -P)"
 configuration="${1:-release}"
-bundle_identifier="${REROUTE_APP_STORE_BUNDLE_IDENTIFIER:-}"
+bundle_identifier="${FLOWCUE_APP_STORE_BUNDLE_IDENTIFIER:-}"
 
 if [[ -z "$bundle_identifier" ]]; then
-    printf '%s\n' "REROUTE_APP_STORE_BUNDLE_IDENTIFIER is required." >&2
+    printf '%s\n' "FLOWCUE_APP_STORE_BUNDLE_IDENTIFIER is required." >&2
     exit 1
 fi
 
 if [[ ! "$bundle_identifier" =~ ^[A-Za-z0-9.-]+$ ]]; then
-    printf '%s\n' "REROUTE_APP_STORE_BUNDLE_IDENTIFIER contains unsupported characters." >&2
+    printf '%s\n' "FLOWCUE_APP_STORE_BUNDLE_IDENTIFIER contains unsupported characters." >&2
     exit 1
 fi
 
@@ -27,29 +27,29 @@ run_swift_build() {
 
 cd "$project_directory"
 dist_directory="$project_directory/dist"
-app_directory="$dist_directory/Reroute-App-Store-Preview.app"
+app_directory="$dist_directory/FlowCue-App-Store-Preview.app"
 
 mkdir -p "$dist_directory"
-mkdir -p "$project_directory/.build/reroute-icon-module-cache"
+mkdir -p "$project_directory/.build/flowcue-icon-module-cache"
 swift \
-    -module-cache-path "$project_directory/.build/reroute-icon-module-cache" \
-    "$script_directory/render-reroute-icon.swift"
+    -module-cache-path "$project_directory/.build/flowcue-icon-module-cache" \
+    "$script_directory/render-flowcue-icon.swift"
 
 run_swift_build \
     --configuration "$configuration" \
     --product CodexIdeaDock \
-    -Xswiftc -DREROUTE_APP_STORE
+    -Xswiftc -DFLOWCUE_APP_STORE
 
 binary_directory="$(
     run_swift_build \
         --configuration "$configuration" \
         --show-bin-path \
-        -Xswiftc -DREROUTE_APP_STORE
+        -Xswiftc -DFLOWCUE_APP_STORE
 )"
-staging_directory="$(mktemp -d "$dist_directory/.reroute-app-store-build.XXXXXX")"
-staged_app_directory="$staging_directory/Reroute-App-Store-Preview.app"
+staging_directory="$(mktemp -d "$dist_directory/.flowcue-app-store-build.XXXXXX")"
+staged_app_directory="$staging_directory/FlowCue-App-Store-Preview.app"
 contents_directory="$staged_app_directory/Contents"
-backup_app_directory="$dist_directory/.Reroute-App-Store-Preview.app.previous.$$"
+backup_app_directory="$dist_directory/.FlowCue-App-Store-Preview.app.previous.$$"
 
 cleanup() {
     rm -rf "$staging_directory"
@@ -60,10 +60,10 @@ mkdir -p "$contents_directory/MacOS" "$contents_directory/Resources"
 cp "$binary_directory/CodexIdeaDock" "$contents_directory/MacOS/CodexIdeaDock"
 cp "$project_directory/Support/Info.plist" "$contents_directory/Info.plist"
 cp "$project_directory/Support/PrivacyInfo.xcprivacy" "$contents_directory/Resources/PrivacyInfo.xcprivacy"
-cp "$project_directory/Support/Reroute.icns" "$contents_directory/Resources/Reroute.icns"
+cp "$project_directory/Support/FlowCue.icns" "$contents_directory/Resources/FlowCue.icns"
 cp \
-    "$project_directory/Support/RerouteMenuTemplate.png" \
-    "$project_directory/Support/RerouteMenuTemplate@2x.png" \
+    "$project_directory/Support/FlowCueMenuTemplate.png" \
+    "$project_directory/Support/FlowCueMenuTemplate@2x.png" \
     "$contents_directory/Resources/"
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $bundle_identifier" "$contents_directory/Info.plist"

@@ -5,7 +5,7 @@ set -euo pipefail
 script_directory="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 project_directory="$(cd -- "$script_directory/.." && pwd -P)"
 configuration="${1:-release}"
-code_sign_identity="${REROUTE_CODE_SIGN_IDENTITY:--}"
+code_sign_identity="${FLOWCUE_CODE_SIGN_IDENTITY:--}"
 
 sign_bundle() {
     local target="$1"
@@ -31,7 +31,7 @@ run_swift_build() {
 
 cd "$project_directory"
 dist_directory="$project_directory/dist"
-app_directory="$dist_directory/Reroute.app"
+app_directory="$dist_directory/FlowCue.app"
 bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$project_directory/Support/Info.plist")"
 
 mkdir -p "$dist_directory"
@@ -49,19 +49,19 @@ while IFS= read -r -d '' candidate_app; do
     fi
 done < <(find "$dist_directory" -maxdepth 1 -type d -name '*.app' -print0)
 
-mkdir -p "$project_directory/.build/reroute-icon-module-cache"
+mkdir -p "$project_directory/.build/flowcue-icon-module-cache"
 swift \
-    -module-cache-path "$project_directory/.build/reroute-icon-module-cache" \
-    "$script_directory/render-reroute-icon.swift"
+    -module-cache-path "$project_directory/.build/flowcue-icon-module-cache" \
+    "$script_directory/render-flowcue-icon.swift"
 
 run_swift_build --configuration "$configuration" --product CodexIdeaDock
 run_swift_build --configuration "$configuration" --product CodexIdeaDockProcessLauncher
 
 binary_directory="$(run_swift_build --configuration "$configuration" --show-bin-path)"
-staging_directory="$(mktemp -d "$dist_directory/.reroute-build.XXXXXX")"
-staged_app_directory="$staging_directory/Reroute.app"
+staging_directory="$(mktemp -d "$dist_directory/.flowcue-build.XXXXXX")"
+staged_app_directory="$staging_directory/FlowCue.app"
 contents_directory="$staged_app_directory/Contents"
-backup_app_directory="$dist_directory/.Reroute.app.previous.$$"
+backup_app_directory="$dist_directory/.FlowCue.app.previous.$$"
 
 cleanup() {
     rm -rf "$staging_directory"
@@ -75,10 +75,10 @@ cp \
     "$contents_directory/Helpers/CodexIdeaDockProcessLauncher"
 cp "$project_directory/Support/Info.plist" "$contents_directory/Info.plist"
 cp "$project_directory/Support/PrivacyInfo.xcprivacy" "$contents_directory/Resources/PrivacyInfo.xcprivacy"
-cp "$project_directory/Support/Reroute.icns" "$contents_directory/Resources/Reroute.icns"
+cp "$project_directory/Support/FlowCue.icns" "$contents_directory/Resources/FlowCue.icns"
 cp \
-    "$project_directory/Support/RerouteMenuTemplate.png" \
-    "$project_directory/Support/RerouteMenuTemplate@2x.png" \
+    "$project_directory/Support/FlowCueMenuTemplate.png" \
+    "$project_directory/Support/FlowCueMenuTemplate@2x.png" \
     "$contents_directory/Resources/"
 plutil -lint "$contents_directory/Info.plist"
 plutil -lint "$contents_directory/Resources/PrivacyInfo.xcprivacy"

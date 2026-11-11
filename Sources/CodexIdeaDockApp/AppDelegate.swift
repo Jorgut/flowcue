@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         do {
-            #if REROUTE_APP_STORE
+            #if FLOWCUE_APP_STORE
             store = try IdeaDockStore(
                 modelContainer: IdeaDockPersistence.makeDefaultContainer(),
                 bridge: AppStoreCodexBridge(),
@@ -64,7 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         store?.flushDraft()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
-        #if !REROUTE_APP_STORE
+        #if !FLOWCUE_APP_STORE
         FoundationProcessRunner.terminateAllProcesses()
         #endif
     }
@@ -166,10 +166,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func updateStatusItem() {
         guard let button = statusItem?.button else { return }
 
-        let image = NSImage(named: NSImage.Name("RerouteMenuTemplate"))
+        let image = NSImage(named: NSImage.Name("FlowCueMenuTemplate"))
             ?? NSImage(
                 systemSymbolName: "lightbulb",
-                accessibilityDescription: "Reroute"
+                accessibilityDescription: "FlowCue"
             )
         image?.isTemplate = true
         image?.size = NSSize(width: 18, height: 18)
@@ -178,9 +178,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let pendingCount = store?.pendingCount ?? 0
         button.title = pendingCount > 0 ? " \(pendingCount)" : ""
         button.toolTip = hotKeyRegistrationFailed
-            ? "Reroute（全局快捷键注册失败）"
-            : "Reroute · ⌃⌥Space"
-        button.setAccessibilityLabel("Reroute")
+            ? "FlowCue（全局快捷键注册失败）"
+            : "FlowCue · ⌃⌥Space"
+        button.setAccessibilityLabel("FlowCue")
         button.setAccessibilityValue("\(pendingCount) 条待处理想法")
     }
 
@@ -204,7 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(withTitle: "收件箱…", action: #selector(showInbox), keyEquivalent: "")
         menu.addItem(.separator())
 
-        #if !REROUTE_APP_STORE
+        #if !FLOWCUE_APP_STORE
         let refreshItem = menu.addItem(
             withTitle: "刷新 Codex 任务",
             action: #selector(refreshThreads),
@@ -213,7 +213,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         refreshItem.isEnabled = store?.isLoadingContexts == false
         menu.addItem(.separator())
         #endif
-        menu.addItem(withTitle: "退出 Reroute", action: #selector(quit), keyEquivalent: "q")
+        menu.addItem(withTitle: "退出 FlowCue", action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
         menu.popUp(positioning: nil, at: NSPoint(x: 0, y: button.bounds.minY), in: button)
     }
@@ -240,7 +240,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         inboxWindowController?.show()
     }
 
-    #if !REROUTE_APP_STORE
+    #if !FLOWCUE_APP_STORE
     @objc private func refreshThreads() {
         Task { @MainActor [weak self] in
             await self?.store?.refreshThreads()
@@ -256,7 +256,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func presentStartupFailure(_ error: Error) {
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "Reroute 无法启动"
+        alert.messageText = "FlowCue 无法启动"
         alert.informativeText = "无法打开本地数据存储。为避免丢失想法，应用没有切换到临时存储。\n\n\(error.localizedDescription)"
         alert.addButton(withTitle: "退出")
         alert.runModal()
