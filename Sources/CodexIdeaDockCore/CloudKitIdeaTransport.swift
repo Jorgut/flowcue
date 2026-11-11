@@ -89,3 +89,98 @@ public final class CloudKitIdeaTransport: IdeaRevisionTransport {
         }
     }
 }
+
+/// Private-database transport for the explicit phone -> Mac continuation workflow.
+/// The iCloud account is the pairing boundary: no public records are used.
+@MainActor
+public final class CloudKitRemoteTransport: RemoteContinuationTransport {
+    private let container: CKContainer
+    private var database: CKDatabase { container.privateCloudDatabase }
+    private let zone = CKRecordZone(zoneName: "FlowCueRemote")
+    private let threadType = "FlowCueRemoteThread"
+    private let commandType = "FlowCueRemoteCommand"
+    private let resultType = "FlowCueRemoteResult"
+
+    public init(containerIdentifier: String) {
+        container = CKContainer(identifier: containerIdentifier)
+    }
+
+    public func fetchThreads() async throws -> [RemoteThreadSnapshot] {
+        try await records(ofType: threadType).compactMap(decode).sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    public func publishThreads(_ threads: [RemoteThreadSnapshot]) async throws {
+        for thread in threads {
+            try await save(thread, recordName: "thread-\(thread.id)", type: threadType)
+        }
+    }
+
+    public func sendCommand(_ command: RemoteCommand) async throws {
+        try await save(command, recordName: "command-\(command.id.uuidString)", type: commandType)
+    }
+
+    public func fetchCommands(executorID: UUID) async throws -> [RemoteCommand] {
+        try await records(ofType: commandType)
+            .compactMap(decode)
+            .filter { $0.executorID == executorID }
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+
+    public func publishResult(_ result: RemoteCommandResult) async throws {
+        try await save(result, recordName: "result-\(result.id.uuidString)", type: resultType)
+    }
+
+    public func fetchResults(ids: [UUID]) async throws -> [RemoteCommandResult] {
+        var results: [RemoteCommandResult] = []
+        for id in ids {
+            let recordID = CKRecord.ID(recordName: "result-\(id.uuidString)", zoneID: zone.zoneID)
+            guard let record = try? await database.record(for: recordID),
+                  let payload = record.encryptedValues["payload"] as? Data,
+                  let result = try? JSONDecoder().decode(RemoteCommandResult.self, from: payload) else { continue }
+            results.append(result)
+        }
+        return results
+    }
+
+    private func save<T: Encodable>(_ value: T, recordName: String, type: String) async throws {
+        _ = try await accountIdentifier()
+        _ = try await database.save(zone)
+        let data = try JSONEncoder().encode(value)
+        let recordID = CKRecord.ID(recordName: recordName, zoneID: zone.zoneID)
+        if let existing = try? await database.record(for: recordID) {
+            existing.encryptedValues["payload"] = data as CKRecordValue
+            _ = try await database.modifyRecords(saving: [existing], deleting: [], savePolicy: .changedKeys)
+        } else {
+            let record = CKRecord(recordType: type, recordID: recordID)
+            record.encryptedValues["payload"] = data as CKRecordValue
+            _ = try await database.modifyRecords(saving: [record], deleting: [], savePolicy: .ifServerRecordUnchanged)
+        }
+    }
+
+    private func records(ofType type: String) async throws -> [CKRecord] {
+        _ = try await accountIdentifier()
+        _ = try await database.save(zone)
+        var records: [CKRecord] = []
+        var token: CKServerChangeToken?
+        repeat {
+            _ = try await accountIdentifier()
+            let page = try await database.recordZoneChanges(inZoneWith: zone.zoneID, since: token)
+            for result in page.modificationResultsByID.values {
+                if let record = try? result.get().record, record.recordType == type { records.append(record) }
+            }
+            token = page.changeToken
+            if !page.moreComing { break }
+        } while true
+        return records
+    }
+
+    private func decode<T: Decodable>(_ record: CKRecord) -> T? {
+        guard let payload = record.encryptedValues["payload"] as? Data else { return nil }
+        return try? JSONDecoder().decode(T.self, from: payload)
+    }
+
+    private func accountIdentifier() async throws -> String {
+        guard try await container.accountStatus() == .available else { throw IdeaSyncError.unavailableAccount }
+        return try await container.userRecordID().recordName
+    }
+}

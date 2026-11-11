@@ -39,7 +39,7 @@
 	<string>Copyright © 2026 hong liang zhu. All rights reserved.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
-	<key>RerouteCloudKitContainer</key>
+	<key>FlowCueCloudKitContainer</key>
 	<string>iCloud.com.altn.reroute.ideainbox</string>
 </dict>
 </plist>

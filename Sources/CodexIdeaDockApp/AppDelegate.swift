@@ -9,6 +9,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var store: IdeaDockStore?
     private var syncController: IdeaSyncController?
     private var syncTask: Task<Void, Never>?
+    #if !FLOWCUE_APP_STORE
+    private var remoteService: RemoteContinuationService?
+    private static let remotePreferenceKey = "FlowCue.remoteContinuationEnabled"
+    private static let remoteExecutorKey = "FlowCue.remoteExecutorID"
+    #endif
     private var statusItem: NSStatusItem?
     private var capturePanelController: CapturePanelController?
     private var inboxWindowController: InboxWindowController?
@@ -47,6 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 containerIdentifier: Bundle.main.object(forInfoDictionaryKey: "FlowCueCloudKitContainer") as? String
             )
         }
+        #if !FLOWCUE_APP_STORE
+        configureRemoteContinuation()
+        #endif
         configureWindows()
         configureFrontmostApplicationObservation()
         configureStatusItem()
@@ -84,6 +92,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         store?.flushDraft()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         #if !FLOWCUE_APP_STORE
+        remoteService?.stop()
         FoundationProcessRunner.terminateAllProcesses()
         #endif
     }
@@ -284,6 +293,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let syncNow = menu.addItem(withTitle: L10n.language == .mandarin ? "立即同步" : "Sync Now", action: #selector(synchronizeCloudNow), keyEquivalent: "")
             syncNow.isEnabled = syncController.isEnabled
         }
+        #if !FLOWCUE_APP_STORE
+        let remoteItem = NSMenuItem(
+            title: L10n.language == .mandarin ? "允许 iPhone 继续 Codex 会话" : "Allow iPhone to continue Codex sessions",
+            action: #selector(toggleRemoteContinuation),
+            keyEquivalent: ""
+        )
+        remoteItem.state = UserDefaults.standard.bool(forKey: Self.remotePreferenceKey) ? .on : .off
+        remoteItem.isEnabled = Bundle.main.object(forInfoDictionaryKey: "FlowCueCloudKitContainer") != nil
+        menu.addItem(remoteItem)
+        #endif
         menu.addItem(.separator())
         menu.addItem(withTitle: L10n.text("退出 FlowCue"), action: #selector(quit), keyEquivalent: "q")
         menu.items.forEach { $0.target = self }
@@ -336,6 +355,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func refreshThreads() {
         Task { @MainActor [weak self] in
             await self?.store?.refreshThreads()
+        }
+    }
+
+    private func configureRemoteContinuation() {
+        guard UserDefaults.standard.bool(forKey: Self.remotePreferenceKey) else { return }
+        startRemoteContinuation()
+    }
+
+    @objc
+    private func toggleRemoteContinuation() {
+        let defaults = UserDefaults.standard
+        let enabled = !defaults.bool(forKey: Self.remotePreferenceKey)
+        defaults.set(enabled, forKey: Self.remotePreferenceKey)
+        if enabled {
+            startRemoteContinuation()
+        } else {
+            remoteService?.stop()
+            remoteService = nil
+        }
+    }
+
+    private func startRemoteContinuation() {
+        guard remoteService == nil,
+              let containerIdentifier = Bundle.main.object(forInfoDictionaryKey: "FlowCueCloudKitContainer") as? String,
+              !containerIdentifier.isEmpty else { return }
+        let defaults = UserDefaults.standard
+        let executorID: UUID
+        if let raw = defaults.string(forKey: Self.remoteExecutorKey), let id = UUID(uuidString: raw) {
+            executorID = id
+        } else {
+            executorID = UUID()
+            defaults.set(executorID.uuidString, forKey: Self.remoteExecutorKey)
+        }
+        let ledgerURL = URL.applicationSupportDirectory.appendingPathComponent("FlowCueRemote/executor-ledger.json")
+        do {
+            let service = try RemoteContinuationService(
+                executorID: executorID,
+                bridge: CodexBridge(),
+                transport: CloudKitRemoteTransport(containerIdentifier: containerIdentifier),
+                ledgerURL: ledgerURL
+            )
+            service.start()
+            remoteService = service
+        } catch {
+            remoteService = nil
         }
     }
     #endif

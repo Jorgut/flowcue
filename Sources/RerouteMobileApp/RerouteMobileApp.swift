@@ -174,6 +174,173 @@ struct SubscriptionPaywall: View {
     }
 }
 
+
+
+// MARK: - Remote continuation (FlowCue Pro)
+
+@MainActor
+@Observable
+final class RemotePhoneController {
+    private let transport: CloudKitRemoteTransport?
+    private let defaults: UserDefaults
+    private(set) var threads: [RemoteThreadSnapshot] = []
+    private(set) var isLoading = false
+    var statusMessage = ""
+    var lastError: String?
+
+    var isAvailable: Bool { transport != nil }
+
+    init(containerIdentifier: String?, defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        self.transport = containerIdentifier.flatMap { CloudKitRemoteTransport(containerIdentifier: $0) }
+    }
+
+    func refresh() async {
+        guard let transport else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            threads = try await transport.fetchThreads()
+            statusMessage = threads.isEmpty ? "Waiting for your Mac to share sessions." : ""
+        } catch {
+            lastError = "Could not reach iCloud. Your Mac must be signed in to the same account."
+        }
+    }
+
+    @discardableResult
+    func send(to thread: RemoteThreadSnapshot, text: String) async -> Bool {
+        guard let transport else { return false }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        let phoneID: UUID
+        if let raw = defaults.string(forKey: "FlowCue.remotePhoneID"), let id = UUID(uuidString: raw) {
+            phoneID = id
+        } else {
+            phoneID = UUID()
+            defaults.set(phoneID.uuidString, forKey: "FlowCue.remotePhoneID")
+        }
+        let command = RemoteCommand(phoneID: phoneID, executorID: thread.executorID, threadID: thread.id, text: trimmed)
+        do {
+            try await transport.sendCommand(command)
+            statusMessage = "Sent to your Mac. The reply will appear when it is ready."
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                await self?.refresh()
+            }
+            return true
+        } catch {
+            lastError = "Could not send. Check that your Mac is online and signed in to iCloud."
+            return false
+        }
+    }
+}
+
+struct RemoteAgentsView: View {
+    @Bindable var controller: RemotePhoneController
+    @Environment(SubscriptionManager.self) private var subscription
+    @Environment(\.dismiss) private var dismiss
+    @State private var showingPaywall = false
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if !subscription.isPro {
+                    ContentUnavailableView {
+                        Label("FlowCue Pro", systemImage: "lock")
+                    } description: {
+                        Text("Remote continuation is part of FlowCue Pro.")
+                    } actions: {
+                        Button("Upgrade") { showingPaywall = true }
+                    }
+                } else if controller.threads.isEmpty {
+                    ContentUnavailableView {
+                        Label("No sessions yet", systemImage: "moon.zzz")
+                    } description: {
+                        Text(controller.isLoading ? "Loading sessions…" : "On your Mac, enable “Allow iPhone to continue Codex sessions” from the FlowCue menu bar.")
+                    }
+                } else {
+                    List(controller.threads) { thread in
+                        NavigationLink {
+                            RemoteThreadDetailView(controller: controller, thread: thread)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(thread.title).font(.headline).lineLimit(1)
+                                if !thread.lastReply.isEmpty {
+                                    Text(thread.lastReply).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                                }
+                            }
+                        }
+                    }
+                    .refreshable { await controller.refresh() }
+                }
+            }
+            .navigationTitle("Agents")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { Task { await controller.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                }
+            }
+            .task { await controller.refresh() }
+            .sheet(isPresented: $showingPaywall) { SubscriptionPaywall() }
+            .alert("Connection issue", isPresented: Binding(
+                get: { controller.lastError != nil },
+                set: { if !$0 { controller.lastError = nil } }
+            )) {
+                Button("OK", role: .cancel) { controller.lastError = nil }
+            } message: { Text(controller.lastError ?? "") }
+        }
+    }
+}
+
+private struct RemoteThreadDetailView: View {
+    @Bindable var controller: RemotePhoneController
+    let thread: RemoteThreadSnapshot
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var isSending = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                Text(thread.title).font(.title2.bold())
+                if !thread.lastReply.isEmpty {
+                    Text("Last reply").font(.caption).foregroundStyle(.secondary)
+                    Text(thread.lastReply)
+                        .font(.body)
+                        .textSelection(.enabled)
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                }
+                Text("Continue").font(.caption).foregroundStyle(.secondary)
+                TextEditor(text: $text)
+                    .frame(minHeight: 120)
+                    .padding(6)
+                    .background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                Button {
+                    isSending = true
+                    Task {
+                        let sent = await controller.send(to: thread, text: text)
+                        if sent { text = "" }
+                        isSending = false
+                    }
+                } label: {
+                    Label("Send to Mac", systemImage: "paperplane.fill").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(isSending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                if !controller.statusMessage.isEmpty {
+                    Text(controller.statusMessage).font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            .padding()
+        }
+        .navigationTitle("Session")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 @main
 struct RerouteMobileApp: App {
     @State private var store: IdeaDockStore?
@@ -191,7 +358,7 @@ struct RerouteMobileApp: App {
         _store = State(initialValue: localStore)
         _syncController = State(initialValue: localStore.map {
             IdeaSyncController(store: $0, defaults: .standard,
-                containerIdentifier: Bundle.main.object(forInfoDictionaryKey: "RerouteCloudKitContainer") as? String)
+                containerIdentifier: Bundle.main.object(forInfoDictionaryKey: "FlowCueCloudKitContainer") as? String)
         })
     }
 
@@ -225,6 +392,8 @@ private struct MobileInbox: View {
     @State private var showingCapture = false
     @State private var showingSettings = false
     @State private var showingPaywall = false
+    @State private var showingRemote = false
+    @State private var remoteController: RemotePhoneController?
 
     var body: some View {
         NavigationStack {
@@ -250,6 +419,10 @@ private struct MobileInbox: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { showingSettings = true } label: { Image(systemName: "globe") }
                         .accessibilityLabel("Language")
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { showingRemote = true } label: { Image(systemName: "paperplane") }
+                        .accessibilityLabel("Agents")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { showingCapture = true } label: { Image(systemName: "square.and.pencil") }
@@ -278,6 +451,16 @@ private struct MobileInbox: View {
                             }
                         }
                 }
+            }
+            .sheet(isPresented: $showingRemote) {
+                if let remoteController {
+                    RemoteAgentsView(controller: remoteController)
+                }
+            }
+            .task {
+                guard remoteController == nil else { return }
+                let container = Bundle.main.object(forInfoDictionaryKey: "FlowCueCloudKitContainer") as? String
+                remoteController = RemotePhoneController(containerIdentifier: container)
             }
             .sheet(isPresented: $showingSettings) {
                 NavigationStack {

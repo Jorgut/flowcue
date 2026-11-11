@@ -32,5 +32,7 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+	<key>FlowCueCloudKitContainer</key>
+	<string>iCloud.com.altn.reroute.ideainbox</string>
 </dict>
 </plist>
