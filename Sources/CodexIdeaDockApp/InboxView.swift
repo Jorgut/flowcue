@@ -202,7 +202,7 @@ struct InboxView: View {
         }
         .onAppear { composerFocused = presentation.isComposing }
         .task {
-            #if !REROUTE_APP_STORE
+            #if !FLOWCUE_APP_STORE
             while !Task.isCancelled {
                 await refreshUsage()
                 do { try await Task.sleep(for: .seconds(60)) } catch { return }
@@ -223,7 +223,7 @@ struct InboxView: View {
                 Text("Codex Usage").font(.headline)
                 Text(L10n.language == .mandarin ? "账户共享额度" : "Shared account limits").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                #if !REROUTE_APP_STORE
+                #if !FLOWCUE_APP_STORE
                 Button { Task { await refreshUsage() } } label: { Image(systemName: "arrow.clockwise") }
                     .disabled(usageLoading).accessibilityLabel("Refresh usage")
                 #endif
@@ -272,7 +272,7 @@ struct InboxView: View {
     }
 
     private func refreshUsage() async {
-        #if !REROUTE_APP_STORE
+        #if !FLOWCUE_APP_STORE
         guard !usageLoading else { return }
         usageLoading = true
         defer { usageLoading = false }

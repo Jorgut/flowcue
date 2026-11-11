@@ -21,7 +21,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        #if REROUTE_APP_STORE
+        #if FLOWCUE_APP_STORE
         NSApp.setActivationPolicy(.regular)
         #else
         NSApp.setActivationPolicy(.accessory)
@@ -50,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configureWindows()
         configureFrontmostApplicationObservation()
         configureStatusItem()
-        #if REROUTE_APP_STORE
+        #if FLOWCUE_APP_STORE
         configureApplicationMenu()
         #endif
         configureGlobalHotKey()
