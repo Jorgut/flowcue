@@ -158,6 +158,11 @@ struct SubscriptionPaywall: View {
                     }
                     Text("Subscriptions renew automatically unless cancelled at least 24 hours before the end of the current period. Manage or cancel in App Store settings.")
                         .font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 16) {
+                        Link("Privacy Policy", destination: URL(string: "https://github.com/Jorgut/flowcue/blob/main/PRIVACY.md")!)
+                        Link("Terms of Use", destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
+                    }
+                    .font(.caption)
                 }
                 .padding()
             }
