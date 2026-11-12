@@ -982,6 +982,14 @@ private struct AgentsView: View {
                 }
             }
             .onDisappear { controller.stopDiscovery() }
+            .task {
+                while !Task.isCancelled {
+                    if controller.isConnected {
+                        await controller.refresh()
+                    }
+                    try? await Task.sleep(for: .seconds(5))
+                }
+            }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
             .alert("Connection issue", isPresented: Binding(
                 get: { controller.lastError != nil },
