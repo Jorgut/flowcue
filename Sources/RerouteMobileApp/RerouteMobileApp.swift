@@ -1673,12 +1673,14 @@ final class VoiceDictation {
         guard !isRecording else { return }
         self.onUpdate = onUpdate
         error = nil
-        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+        // TCC invokes these callbacks on a background queue. Passing an
+        // isolated closure here trips Swift 6's actor-isolation assertion.
+        Self.requestSpeechAuthorization { @Sendable [weak self] status in
             guard status == .authorized else {
                 Task { @MainActor in self?.error = "Speech recognition permission was denied." }
                 return
             }
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+            Self.requestMicrophoneAuthorization { @Sendable [weak self] granted in
                 guard granted else {
                     Task { @MainActor in self?.error = "Microphone permission was denied." }
                     return
@@ -1686,6 +1688,18 @@ final class VoiceDictation {
                 Task { @MainActor in self?.begin() }
             }
         }
+    }
+
+    private nonisolated static func requestSpeechAuthorization(
+        _ completion: @escaping @Sendable (SFSpeechRecognizerAuthorizationStatus) -> Void
+    ) {
+        SFSpeechRecognizer.requestAuthorization(completion)
+    }
+
+    private nonisolated static func requestMicrophoneAuthorization(
+        _ completion: @escaping @Sendable (Bool) -> Void
+    ) {
+        AVAudioSession.sharedInstance().requestRecordPermission(completion)
     }
 
     func stop() {
@@ -1724,7 +1738,7 @@ final class VoiceDictation {
                 try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
                 return
             }
-            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+            input.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable buffer, _ in
                 request.append(buffer)
             }
             engine.prepare()
@@ -1732,15 +1746,13 @@ final class VoiceDictation {
             self.engine = engine
             self.request = request
             isRecording = true
-            task = recognizer.recognitionTask(with: request) { [weak self] result, speechError in
+            task = recognizer.recognitionTask(with: request) { @Sendable [weak self] result, speechError in
+                let transcript = result?.bestTranscription.formattedString
+                let finished = result?.isFinal == true || speechError != nil
                 Task { @MainActor in
                     guard let self else { return }
-                    if let result {
-                        self.onUpdate?(result.bestTranscription.formattedString)
-                    }
-                    if result?.isFinal == true || speechError != nil {
-                        self.stop()
-                    }
+                    if let transcript { self.onUpdate?(transcript) }
+                    if finished { self.stop() }
                 }
             }
         } catch {
