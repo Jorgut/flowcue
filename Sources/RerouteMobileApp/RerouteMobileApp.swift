@@ -280,8 +280,10 @@ final class LANRemoteController {
             await refreshDSHApprovals()
             await refreshDSHSessions()
             statusMessage = threads.isEmpty ? "Connected. No sessions are available yet." : "Connected."
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
             stopDiscovery()
         } catch {
+            UINotificationFeedbackGenerator().notificationOccurred(.error)
             lastError = "Could not connect. Check the code and that both devices are on the same Wi-Fi."
         }
     }
@@ -997,16 +999,22 @@ private struct AgentsView: View {
                 }
                 ForEach(controller.discovered) { mac in
                     Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task { await controller.connect(to: mac) }
                     } label: {
-                        HStack {
+                        HStack(spacing: 10) {
                             Image(systemName: "macbook")
                             Text(mac.name)
                             Spacer()
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                            if controller.isLoading {
+                                ProgressView().controlSize(.small)
+                                Text("Connecting…").font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                            }
                         }
                     }
-                    .disabled(controller.pairingCode.count != 6)
+                    .disabled(controller.pairingCode.count != 6 || controller.isLoading)
                 }
             }
             Section {
@@ -1393,26 +1401,37 @@ private struct DSHSessionDetailView: View {
                         ConversationBubble(message: message)
                     }
                 }
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Continue", systemImage: "arrow.turn.down.right")
-                        .font(.caption).foregroundStyle(.secondary)
-                    AgentComposer(text: $text, placeholder: "Message this DSH session", sending: sending) {
-                        sending = true
-                        Task {
-                            let sent = await controller.sendDSH(to: session, text: text)
-                            if sent {
-                                text = ""
-                                messages = await controller.dshMessages(for: session)
-                            }
-                            sending = false
-                        }
-                    }
-                }
                 Text("Messages go to the live DSH session on your Mac. If the session is not running, open it in DSH first.")
                     .font(.footnote).foregroundStyle(.secondary)
                     .padding(.top, 8)
             }
             .padding()
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 6) {
+                if messages.last?.role == "user" {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("DSH is working…").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                }
+                AgentComposer(text: $text, placeholder: "Message this DSH session", sending: sending) {
+                    sending = true
+                    Task {
+                        let sent = await controller.sendDSH(to: session, text: text)
+                        if sent {
+                            text = ""
+                            messages = await controller.dshMessages(for: session)
+                        }
+                        sending = false
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .background(.ultraThinMaterial)
         }
         .background(FlowCueTheme.canvas)
         .navigationTitle("DSH session")
@@ -1422,6 +1441,15 @@ private struct DSHSessionDetailView: View {
             messages = await controller.dshMessages(for: session)
             loading = false
             await scrollToBottom(proxy)
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { break }
+                let updated = await controller.dshMessages(for: session)
+                if updated != messages {
+                    messages = updated
+                    await scrollToBottom(proxy)
+                }
+            }
         }
         .onChange(of: messages.count) { _, _ in
             Task { await scrollToBottom(proxy) }
@@ -1485,25 +1513,36 @@ private struct AgentDetailView: View {
                         }
                     }
                 }
-                VStack(alignment: .leading, spacing: 6) {
-                    Label("Continue", systemImage: "arrow.turn.down.right")
-                        .font(.caption).foregroundStyle(.secondary)
-                    AgentComposer(text: $text, placeholder: "Next message", sending: sending) {
-                        sending = true
-                        Task {
-                            let sent = await controller.send(to: thread, text: text)
-                            if sent { text = "" }
-                            sending = false
-                            await controller.refresh()
-                            messages = await controller.messages(for: thread)
-                        }
-                    }
-                }
                 if !controller.statusMessage.isEmpty {
                     Text(controller.statusMessage).font(.caption).foregroundStyle(.secondary)
                 }
             }
             .padding()
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 6) {
+                if messages.last?.role == "user" {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text("Agent is working…").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                }
+                AgentComposer(text: $text, placeholder: "Next message", sending: sending) {
+                    sending = true
+                    Task {
+                        let sent = await controller.send(to: thread, text: text)
+                        if sent { text = "" }
+                        sending = false
+                        await controller.refresh()
+                        messages = await controller.messages(for: thread)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+            }
+            .background(.ultraThinMaterial)
         }
         .background(FlowCueTheme.canvas)
         .navigationTitle("Session")
@@ -1513,6 +1552,15 @@ private struct AgentDetailView: View {
             messages = await controller.messages(for: thread)
             loadingMessages = false
             await scrollToBottom(proxy)
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { break }
+                let updated = await controller.messages(for: thread)
+                if updated != messages {
+                    messages = updated
+                    await scrollToBottom(proxy)
+                }
+            }
         }
         .onChange(of: messages.count) { _, _ in
             Task { await scrollToBottom(proxy) }
@@ -1626,6 +1674,7 @@ private struct AgentComposer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             TextEditor(text: $text)
+                .scrollContentBackground(.hidden)
                 .frame(minHeight: 100)
                 .padding(8)
                 .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
