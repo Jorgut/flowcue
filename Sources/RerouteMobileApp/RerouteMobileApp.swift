@@ -4,6 +4,8 @@ import StoreKit
 import Observation
 import UIKit
 import Network
+import Speech
+import AVFoundation
 
 // MARK: - Product identity
 
@@ -317,6 +319,22 @@ final class LANRemoteController {
             dshSessions = try JSONDecoder().decode([DSHSessionSnapshot].self, from: data)
         } catch {
             dshSessions = []
+        }
+    }
+
+    @discardableResult
+    func sendDSH(to session: DSHSessionSnapshot, text: String) async -> Bool {
+        guard let selected else { return false }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        do {
+            let body = try JSONEncoder().encode(DSHRemoteMessage(sessionId: session.id, text: trimmed))
+            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/send", token: pairingCode, body: body)
+            statusMessage = "Sent to DSH."
+            return true
+        } catch {
+            lastError = "DSH session is not live. Open it in DSH on your Mac first, then try again."
+            return false
         }
     }
 
@@ -1243,6 +1261,8 @@ private struct DSHSessionDetailView: View {
     let session: DSHSessionSnapshot
     @State private var messages: [RemoteConversationMessage] = []
     @State private var loading = false
+    @State private var text = ""
+    @State private var sending = false
 
     var body: some View {
         ScrollView {
@@ -1260,7 +1280,22 @@ private struct DSHSessionDetailView: View {
                         ConversationBubble(message: message)
                     }
                 }
-                Text("Read-only history. To continue this DSH session, use the DSH app on your Mac.")
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Continue", systemImage: "arrow.turn.down.right")
+                        .font(.caption).foregroundStyle(.secondary)
+                    AgentComposer(text: $text, placeholder: "Message this DSH session", sending: sending) {
+                        sending = true
+                        Task {
+                            let sent = await controller.sendDSH(to: session, text: text)
+                            if sent {
+                                text = ""
+                                messages = await controller.dshMessages(for: session)
+                            }
+                            sending = false
+                        }
+                    }
+                }
+                Text("Messages go to the live DSH session on your Mac. If the session is not running, open it in DSH first.")
                     .font(.footnote).foregroundStyle(.secondary)
                     .padding(.top, 8)
             }
@@ -1325,30 +1360,17 @@ private struct AgentDetailView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Continue", systemImage: "arrow.turn.down.right")
                         .font(.caption).foregroundStyle(.secondary)
-                    TextEditor(text: $text)
-                        .focused($focused)
-                        .frame(minHeight: 120)
-                        .padding(8)
-                        .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        .accessibilityLabel("Next message")
-                }
-                Button {
-                    sending = true
-                    Task {
-                        let sent = await controller.send(to: thread, text: text)
-                        if sent { text = "" }
-                        sending = false
-                        await controller.refresh()
-                        messages = await controller.messages(for: thread)
+                    AgentComposer(text: $text, placeholder: "Next message", sending: sending) {
+                        sending = true
+                        Task {
+                            let sent = await controller.send(to: thread, text: text)
+                            if sent { text = "" }
+                            sending = false
+                            await controller.refresh()
+                            messages = await controller.messages(for: thread)
+                        }
                     }
-                } label: {
-                    Label(sending ? "Sending…" : "Send to Mac", systemImage: "paperplane.fill")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 4)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(FlowCueTheme.accent)
-                .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if !controller.statusMessage.isEmpty {
                     Text(controller.statusMessage).font(.caption).foregroundStyle(.secondary)
                 }
@@ -1362,6 +1384,153 @@ private struct AgentDetailView: View {
             loadingMessages = true
             messages = await controller.messages(for: thread)
             loadingMessages = false
+        }
+    }
+}
+
+@MainActor
+@Observable
+final class VoiceDictation {
+    private(set) var isRecording = false
+    var error: String?
+    private var engine: AVAudioEngine?
+    private var request: SFSpeechAudioBufferRecognitionRequest?
+    private var task: SFSpeechRecognitionTask?
+    private var onUpdate: ((String) -> Void)?
+
+    func start(onUpdate: @escaping (String) -> Void) {
+        guard !isRecording else { return }
+        self.onUpdate = onUpdate
+        error = nil
+        SFSpeechRecognizer.requestAuthorization { [weak self] status in
+            guard status == .authorized else {
+                Task { @MainActor in self?.error = "Speech recognition permission was denied." }
+                return
+            }
+            AVAudioSession.sharedInstance().requestRecordPermission { granted in
+                guard granted else {
+                    Task { @MainActor in self?.error = "Microphone permission was denied." }
+                    return
+                }
+                Task { @MainActor in self?.begin() }
+            }
+        }
+    }
+
+    func stop() {
+        if let engine {
+            engine.stop()
+            engine.inputNode.removeTap(onBus: 0)
+        }
+        request?.endAudio()
+        task?.cancel()
+        engine = nil
+        request = nil
+        task = nil
+        isRecording = false
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+    }
+
+    private func begin() {
+        let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "zh-CN"))
+            ?? SFSpeechRecognizer(locale: Locale.current)
+        guard let recognizer, recognizer.isAvailable else {
+            error = "Speech recognition is not available right now."
+            return
+        }
+        do {
+            let audioSession = AVAudioSession.sharedInstance()
+            try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+
+            let engine = AVAudioEngine()
+            let request = SFSpeechAudioBufferRecognitionRequest()
+            request.shouldReportPartialResults = true
+            let input = engine.inputNode
+            let format = input.inputFormat(forBus: 0)
+            input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
+                request.append(buffer)
+            }
+            engine.prepare()
+            try engine.start()
+            self.engine = engine
+            self.request = request
+            isRecording = true
+            task = recognizer.recognitionTask(with: request) { [weak self] result, speechError in
+                Task { @MainActor in
+                    guard let self else { return }
+                    if let result {
+                        self.onUpdate?(result.bestTranscription.formattedString)
+                    }
+                    if result?.isFinal == true || speechError != nil {
+                        self.stop()
+                    }
+                }
+            }
+        } catch {
+            self.error = error.localizedDescription
+            stop()
+        }
+    }
+}
+
+private struct AgentComposer: View {
+    @Binding var text: String
+    let placeholder: String
+    let sending: Bool
+    let onSend: () -> Void
+    @State private var dictation = VoiceDictation()
+    @State private var baseText = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            TextEditor(text: $text)
+                .frame(minHeight: 100)
+                .padding(8)
+                .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(alignment: .topLeading) {
+                    if text.isEmpty {
+                        Text(placeholder)
+                            .font(.body).foregroundStyle(.tertiary)
+                            .padding(.horizontal, 13).padding(.vertical, 16)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .accessibilityLabel(placeholder)
+            HStack(spacing: 12) {
+                Button {
+                    if dictation.isRecording {
+                        dictation.stop()
+                    } else {
+                        baseText = text
+                        dictation.start { transcript in
+                            text = baseText + (baseText.isEmpty ? "" : " ") + transcript
+                        }
+                    }
+                } label: {
+                    Image(systemName: dictation.isRecording ? "mic.fill" : "mic")
+                        .frame(width: 22, height: 22)
+                }
+                .buttonStyle(.bordered)
+                .tint(dictation.isRecording ? .red : FlowCueTheme.accent)
+                .accessibilityLabel(dictation.isRecording ? "Stop voice input" : "Start voice input")
+                if dictation.isRecording {
+                    Text("Listening…").font(.caption).foregroundStyle(.secondary)
+                }
+                if let error = dictation.error {
+                    Text(error).font(.caption).foregroundStyle(.orange).lineLimit(2)
+                }
+                Spacer()
+                Button(action: {
+                    dictation.stop()
+                    onSend()
+                }) {
+                    Label(sending ? "Sending…" : "Send", systemImage: "paperplane.fill")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(FlowCueTheme.accent)
+                .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
         }
     }
 }

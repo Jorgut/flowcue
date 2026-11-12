@@ -138,6 +138,14 @@ public final class LANRemoteServer {
             } catch {
                 return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: true, pending: [])))
             }
+        case ("POST", "/v1/dsh/send"):
+            let message = try JSONDecoder().decode(DSHRemoteMessage.self, from: request.body)
+            do {
+                try await dshBridge.send(sessionID: message.sessionId, text: message.text)
+                return Self.response(status: 200, body: Data("{}".utf8))
+            } catch {
+                return Self.response(status: 409, body: Data("{}".utf8))
+            }
         case ("POST", "/v1/dsh/decide"):
             let decision = try JSONDecoder().decode(DSHRemoteDecision.self, from: request.body)
             do {

@@ -156,6 +156,16 @@ public enum RemoteContinuationError: Error {
     case conflictingRequest
 }
 
+public struct DSHRemoteMessage: Codable, Sendable {
+    public let sessionId: String
+    public let text: String
+
+    public init(sessionId: String, text: String) {
+        self.sessionId = sessionId
+        self.text = text
+    }
+}
+
 public struct DSHSessionSnapshot: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let title: String

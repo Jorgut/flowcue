@@ -13,7 +13,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 export const name = "flowcue-dsh-bridge";
-export const inject = ["approval"];
+export const inject = ["approval", "agents"];
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.FLOWCUE_DSH_PORT || 47823);
@@ -76,6 +76,22 @@ export function apply(ctx) {
             createdAt: new Date(item.createdAt).toISOString(),
           })),
         });
+      }
+
+      if (req.method === "POST" && req.url === "/v1/message") {
+        const body = await readJSON(req);
+        if (typeof body.sessionId !== "string" || typeof body.text !== "string" || !body.text.trim()) {
+          return json(res, 400, { error: "sessionId and text are required" });
+        }
+        const agents = ctx.agents.list();
+        const agent = agents.find((candidate) => candidate.session?.id === body.sessionId)
+          ?? ctx.agents.get(body.sessionId);
+        if (!agent) return json(res, 409, { error: "DSH session is not live; open it in DSH first" });
+        await agent.followup({
+          content: [{ type: "text", text: body.text.trim() }],
+          source: { kind: "user" },
+        });
+        return json(res, 200, { ok: true });
       }
 
       if (req.method === "POST" && req.url === "/v1/decide") {

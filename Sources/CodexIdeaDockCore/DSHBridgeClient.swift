@@ -86,6 +86,13 @@ public final class DSHBridgeClient: @unchecked Sendable {
         return try JSONDecoder().decode(Response.self, from: data).pending
     }
 
+    public func send(sessionID: String, text: String) async throws {
+        var request = try authorizedRequest(path: "/v1/message", method: "POST")
+        request.httpBody = try JSONEncoder().encode(DSHRemoteMessage(sessionId: sessionID, text: text))
+        let (_, response) = try await configuration.session.data(for: request)
+        try validate(response)
+    }
+
     public func decide(id: String, decision: String) async throws {
         guard decision == "allowed-once" || decision == "rejected" else {
             throw DSHBridgeError.invalidDecision
