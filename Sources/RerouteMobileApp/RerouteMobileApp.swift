@@ -38,6 +38,11 @@ final class SubscriptionManager {
     #if DEBUG
     private let previewPro = ProcessInfo.processInfo.arguments.contains("--flowcue-pro-preview")
     #endif
+    /// TestFlight builds use a sandbox receipt. During beta, unlock Pro so testers
+    /// can exercise sync and remote continuation before subscriptions are live.
+    private var isTestFlightBuild: Bool {
+        Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+    }
     private(set) var isLoading = true
     var lastError: String?
     private var updatesTask: Task<Void, Never>?
@@ -60,9 +65,9 @@ final class SubscriptionManager {
             }
         }
         #if DEBUG
-        isPro = entitled || previewPro
+        isPro = entitled || previewPro || isTestFlightBuild
         #else
-        isPro = entitled
+        isPro = entitled || isTestFlightBuild
         #endif
         isLoading = false
     }
