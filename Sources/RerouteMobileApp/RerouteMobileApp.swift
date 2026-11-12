@@ -172,6 +172,7 @@ final class LANRemoteController {
     private(set) var threads: [RemoteThreadSnapshot] = []
     private(set) var dshApprovals: [DSHRemoteApproval] = []
     private(set) var dshSessions: [DSHSessionSnapshot] = []
+    private(set) var dshSubagents: [DSHSessionSnapshot] = []
     private(set) var dshBridgeAvailable = false
     private(set) var isLoading = false
     private(set) var isScanning = false
@@ -293,6 +294,7 @@ final class LANRemoteController {
         threads = []
         dshApprovals = []
         dshSessions = []
+        dshSubagents = []
         dshBridgeAvailable = false
         statusMessage = ""
         startDiscovery()
@@ -337,6 +339,17 @@ final class LANRemoteController {
         } catch {
             lastError = "DSH session is not live. Open it in DSH on your Mac first, then try again."
             return false
+        }
+    }
+
+    func dshSubagents(for session: DSHSessionSnapshot) async -> [DSHSessionSnapshot] {
+        guard let selected else { return [] }
+        let encoded = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
+        do {
+            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/subagents/\(encoded)", token: pairingCode, body: nil)
+            return try JSONDecoder().decode([DSHSessionSnapshot].self, from: data)
+        } catch {
+            return []
         }
     }
 
@@ -1384,6 +1397,7 @@ private struct DSHSessionDetailView: View {
     let session: DSHSessionSnapshot
     @State private var messages: [RemoteConversationMessage] = []
     @State private var loading = false
+    @State private var subagents: [DSHSessionSnapshot] = []
     @State private var text = ""
     @State private var sending = false
 
@@ -1394,6 +1408,32 @@ private struct DSHSessionDetailView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(session.title).font(.title3.bold())
                     Text(session.projectDirectory).font(.caption).foregroundStyle(.secondary)
+                }
+                if !subagents.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("\(subagents.count) subagent\(subagents.count == 1 ? "" : "s")", systemImage: "person.2.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(FlowCueTheme.accent)
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(subagents) { subagent in
+                                    NavigationLink {
+                                        DSHSessionDetailView(controller: controller, session: subagent)
+                                    } label: {
+                                        Text(subagent.title)
+                                            .font(.caption)
+                                            .lineLimit(1)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 6)
+                                            .background(FlowCueTheme.accent.opacity(0.14), in: Capsule())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+                    .padding(12)
+                    .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                 }
                 if loading {
                     ProgressView().frame(maxWidth: .infinity)
@@ -1443,6 +1483,7 @@ private struct DSHSessionDetailView: View {
         .task {
             loading = true
             messages = await controller.dshMessages(for: session)
+            subagents = await controller.dshSubagents(for: session)
             loading = false
             await scrollToBottom(proxy)
             while !Task.isCancelled {

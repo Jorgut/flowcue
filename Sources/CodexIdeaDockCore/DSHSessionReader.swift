@@ -28,7 +28,7 @@ public struct DSHSessionReader: Sendable {
                 includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
                 options: [.skipsHiddenFiles]
             ) else { continue }
-            for session in sessionDirs {
+            for session in sessionDirs where session.lastPathComponent.hasPrefix("session-") {
                 let log = session.appendingPathComponent("session.v4.jsonl.zstd")
                 guard FileManager.default.fileExists(atPath: log.path) else { continue }
                 let date = (try? log.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
@@ -43,6 +43,46 @@ public struct DSHSessionReader: Sendable {
             }
         }
         return Array(found.sorted { $0.updatedAt > $1.updatedAt }.prefix(limit))
+    }
+
+    public func subagents(ofParent parentID: String, limit: Int = 30) -> [DSHSessionSnapshot] {
+        guard let projects = try? FileManager.default.contentsOfDirectory(
+            at: sessionsDirectory,
+            includingPropertiesForKeys: nil,
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+        var found: [DSHSessionSnapshot] = []
+        for project in projects {
+            guard let sessionDirs = try? FileManager.default.contentsOfDirectory(
+                at: project,
+                includingPropertiesForKeys: [.contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            ) else { continue }
+            for session in sessionDirs where !session.lastPathComponent.hasPrefix("session-") {
+                let log = session.appendingPathComponent("session.v4.jsonl.zstd")
+                guard FileManager.default.fileExists(atPath: log.path) else { continue }
+                guard let parent = headerValue(logURL: log, key: "parentSession") as? String, parent == parentID else { continue }
+                let date = (try? log.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let id = session.lastPathComponent
+                let cached = cachedMetadata(sessionID: id)
+                found.append(DSHSessionSnapshot(
+                    id: id,
+                    title: cached?.title ?? "Subagent",
+                    projectDirectory: cached?.cwd ?? Self.decodeProjectPath(project.lastPathComponent),
+                    updatedAt: date,
+                    isSubagent: true,
+                    parentSessionID: parent
+                ))
+            }
+        }
+        return Array(found.sorted { $0.updatedAt > $1.updatedAt }.prefix(limit))
+    }
+
+    private func headerValue(logURL: URL, key: String) -> Any? {
+        guard let data = Self.decompress(path: logURL.path, maxBytes: 32_000) else { return nil }
+        guard let first = data.split(separator: UInt8(ascii: "\n")).first,
+              let object = try? JSONSerialization.jsonObject(with: Data(first)) as? [String: Any] else { return nil }
+        return object[key]
     }
 
     private func cachedMetadata(sessionID: String) -> (cwd: String, title: String?)? {

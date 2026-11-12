@@ -171,12 +171,23 @@ public struct DSHSessionSnapshot: Codable, Identifiable, Hashable, Sendable {
     public let title: String
     public let projectDirectory: String
     public let updatedAt: Date
+    public let isSubagent: Bool
+    public let parentSessionID: String?
 
-    public init(id: String, title: String, projectDirectory: String, updatedAt: Date) {
+    public init(
+        id: String,
+        title: String,
+        projectDirectory: String,
+        updatedAt: Date,
+        isSubagent: Bool = false,
+        parentSessionID: String? = nil
+    ) {
         self.id = id
         self.title = title
         self.projectDirectory = projectDirectory
         self.updatedAt = updatedAt
+        self.isSubagent = isSubagent
+        self.parentSessionID = parentSessionID
     }
 }
 

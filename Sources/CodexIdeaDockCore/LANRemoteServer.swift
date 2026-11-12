@@ -114,6 +114,12 @@ public final class LANRemoteServer {
                 )
             }
             return Self.response(status: 200, body: try JSONEncoder().encode(snapshots))
+        case ("GET", let path) where path.hasPrefix("/v1/dsh/subagents/"):
+            let encoded = String(path.dropFirst("/v1/dsh/subagents/".count))
+            guard let parentID = encoded.removingPercentEncoding, !parentID.isEmpty else {
+                return Self.response(status: 400, body: Data("[]".utf8))
+            }
+            return Self.response(status: 200, body: try JSONEncoder().encode(dshSessions.subagents(ofParent: parentID)))
         case ("GET", "/v1/dsh/sessions"):
             let sessions = dshSessions.sessions()
             return Self.response(status: 200, body: try JSONEncoder().encode(sessions))
