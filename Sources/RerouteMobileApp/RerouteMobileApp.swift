@@ -35,6 +35,9 @@ private enum FlowCueTheme {
 final class SubscriptionManager {
     private(set) var products: [Product] = []
     private(set) var isPro = false
+    #if DEBUG
+    private let previewPro = ProcessInfo.processInfo.arguments.contains("--flowcue-pro-preview")
+    #endif
     private(set) var isLoading = true
     var lastError: String?
     private var updatesTask: Task<Void, Never>?
@@ -56,7 +59,11 @@ final class SubscriptionManager {
                 entitled = true
             }
         }
+        #if DEBUG
+        isPro = entitled || previewPro
+        #else
         isPro = entitled
+        #endif
         isLoading = false
     }
 
@@ -138,10 +145,27 @@ final class LANRemoteController {
     private(set) var isLoading = false
     private(set) var isScanning = false
     var pairingCode = ""
+    var manualAddress = ""
     var statusMessage = ""
+    var browserStatus = ""
     var lastError: String?
 
     private var browser: NWBrowser?
+
+    init() {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let value = args.first(where: { $0.hasPrefix("--flowcue-manual=") }) {
+            manualAddress = String(value.dropFirst("--flowcue-manual=".count))
+        }
+        if let value = args.first(where: { $0.hasPrefix("--flowcue-code=") }) {
+            pairingCode = String(value.dropFirst("--flowcue-code=".count))
+        }
+        if !manualAddress.isEmpty && pairingCode.count == 6 {
+            Task { [weak self] in await self?.connectManually() }
+        }
+        #endif
+    }
 
     var isConnected: Bool { selected != nil }
 
@@ -155,10 +179,17 @@ final class LANRemoteController {
                 switch state {
                 case .ready:
                     self.isScanning = true
-                case .failed, .cancelled:
+                    self.browserStatus = "Scanning…"
+                case .waiting(let error):
+                    self.browserStatus = "Network waiting: \(error.localizedDescription)"
+                case .failed(let error):
                     self.isScanning = false
+                    self.browserStatus = "Browse failed: \(error.localizedDescription)"
+                case .cancelled:
+                    self.isScanning = false
+                    self.browserStatus = "Scan stopped"
                 default:
-                    break
+                    self.browserStatus = "Starting discovery…"
                 }
             }
         }
@@ -175,6 +206,7 @@ final class LANRemoteController {
                 }
                 self.discovered = found.sorted { $0.name < $1.name }
                 self.isScanning = !found.isEmpty
+                self.browserStatus = found.isEmpty ? (self.browserStatus.isEmpty ? "Scanning…" : self.browserStatus) : "Found \(found.count) Mac(s)"
             }
         }
         browser.start(queue: .main)
@@ -189,6 +221,19 @@ final class LANRemoteController {
     }
 
     func connect(to server: DiscoveredMac) async {
+        await connect(endpoint: server.endpoint, displayName: server.name)
+    }
+
+    func connectManually() async {
+        let parts = manualAddress.trimmingCharacters(in: .whitespaces).split(separator: ":")
+        guard parts.count == 2, let port = NWEndpoint.Port(rawValue: UInt16(parts[1])!) else {
+            lastError = "Enter the Mac address as IP:port, for example 192.168.1.10:8787."
+            return
+        }
+        await connect(endpoint: .hostPort(host: NWEndpoint.Host(String(parts[0])), port: port), displayName: String(parts[0]))
+    }
+
+    private func connect(endpoint: NWEndpoint, displayName: String) async {
         let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard code.count == 6 else {
             lastError = "Enter the 6-digit pairing code shown on your Mac."
@@ -197,9 +242,9 @@ final class LANRemoteController {
         isLoading = true
         defer { isLoading = false }
         do {
-            let data = try await LANHTTP.request(endpoint: server.endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
+            let data = try await LANHTTP.request(endpoint: endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
             let snapshots = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data)
-            selected = server
+            selected = DiscoveredMac(id: displayName, name: displayName, endpoint: endpoint)
             threads = snapshots.sorted { $0.updatedAt > $1.updatedAt }
             statusMessage = threads.isEmpty ? "Connected. No sessions are available yet." : "Connected."
             stopDiscovery()
@@ -430,7 +475,12 @@ private struct RootTabView: View {
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
     @Environment(\.scenePhase) private var scenePhase
-    @State private var tab: FlowCueTab = .inbox
+    @State private var tab: FlowCueTab = {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--flowcue-agents") { return .agents }
+        #endif
+        return .inbox
+    }()
 
     var body: some View {
         TabView(selection: $tab) {
@@ -777,7 +827,15 @@ private struct AgentsView: View {
                 }
             }
             .onAppear {
-                if subscription.isPro && !controller.isConnected { controller.startDiscovery() }
+                if subscription.isPro && !controller.isConnected {
+                    #if DEBUG
+                    if !controller.manualAddress.isEmpty && controller.pairingCode.count == 6 {
+                        Task { await controller.connectManually() }
+                        return
+                    }
+                    #endif
+                    controller.startDiscovery()
+                }
             }
             .onDisappear { controller.stopDiscovery() }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
@@ -834,10 +892,15 @@ private struct AgentsView: View {
             }
             Section("Macs found") {
                 if controller.discovered.isEmpty {
-                    HStack {
-                        ProgressView()
-                        Text(controller.isScanning ? "Looking for your Mac…" : "No Mac found. Make sure both are on the same Wi-Fi.")
-                            .font(.footnote).foregroundStyle(.secondary)
+                    HStack(alignment: .top) {
+                        ProgressView().padding(.top, 2)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(controller.isScanning ? "Looking for your Mac…" : "No Mac found.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            if !controller.browserStatus.isEmpty {
+                                Text(controller.browserStatus).font(.caption2).foregroundStyle(.tertiary)
+                            }
+                        }
                     }
                 }
                 ForEach(controller.discovered) { mac in
@@ -853,6 +916,20 @@ private struct AgentsView: View {
                     }
                     .disabled(controller.pairingCode.count != 6)
                 }
+            }
+            Section {
+                TextField("Mac address (IP:port)", text: $controller.manualAddress)
+                    .keyboardType(.URL)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                Button("Connect manually") {
+                    Task { await controller.connectManually() }
+                }
+                .disabled(controller.pairingCode.count != 6 || controller.manualAddress.isEmpty)
+            } header: {
+                Text("Advanced")
+            } footer: {
+                Text("Use this if the Mac does not appear automatically.")
             }
             if !controller.statusMessage.isEmpty {
                 Text(controller.statusMessage).font(.footnote).foregroundStyle(.secondary)
