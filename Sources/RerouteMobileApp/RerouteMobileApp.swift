@@ -20,10 +20,20 @@ enum FlowCueProduct {
 
 private enum FlowCueTheme {
     static let ink = Color(red: 0.11, green: 0.10, blue: 0.16)
-    static let accent = Color(red: 0.45, green: 0.40, blue: 1.0)
+    static let accent = Color(red: 0.52, green: 0.43, blue: 1.0
+    )
     static let mint = Color(red: 0.36, green: 0.85, blue: 0.72)
-    static let surface = Color(uiColor: .secondarySystemGroupedBackground)
-    static let canvas = Color(uiColor: .systemGroupedBackground)
+    static let surface = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 1)
+            : UIColor.secondarySystemGroupedBackground
+    })
+    static let canvas = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.055, green: 0.055, blue: 0.065, alpha: 1)
+            : UIColor.systemGroupedBackground
+    })
+    static let hairline = Color(uiColor: .separator)
 
     static var heroGradient: LinearGradient {
         LinearGradient(colors: [ink, Color(red: 0.18, green: 0.14, blue: 0.30)], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -1105,63 +1115,94 @@ private struct AgentHubView: View {
     @Bindable var controller: LANRemoteController
 
     var body: some View {
-        List {
-            Section {
-                HStack(spacing: 12) {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                HStack(spacing: 10) {
                     Image(systemName: "macbook.and.iphone")
-                        .font(.title3)
-                        .foregroundStyle(FlowCueTheme.accent)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Connected to Mac").font(.subheadline.weight(.semibold))
+                        .font(.system(size: 18, weight: .medium))
+                        .foregroundStyle(FlowCueTheme.mint)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Connected to Mac").font(.subheadline.weight(.medium))
                         Text(controller.statusMessage.isEmpty ? "Same Wi-Fi" : controller.statusMessage)
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Circle().fill(FlowCueTheme.mint).frame(width: 8, height: 8)
+                    Circle().fill(FlowCueTheme.mint).frame(width: 7, height: 7)
                 }
-                .padding(.vertical, 4)
-            }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-            Section("Agents") {
-                NavigationLink {
-                    CodexAgentView(controller: controller)
-                } label: {
-                    AgentProviderRow(
-                        icon: "chevron.left.forwardslash.chevron.right",
-                        iconColor: FlowCueTheme.accent,
-                        title: "Codex",
-                        subtitle: controller.threads.isEmpty ? "No sessions yet" : "\(controller.threads.count) session\(controller.threads.count == 1 ? "" : "s")"
-                    )
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Agents").font(.title3.weight(.semibold))
+                    NavigationLink {
+                        CodexAgentView(controller: controller)
+                    } label: {
+                        AgentProviderCard(
+                            icon: "chevron.left.forwardslash.chevron.right",
+                            iconColor: FlowCueTheme.accent,
+                            title: "Codex",
+                            subtitle: controller.threads.isEmpty ? "No sessions yet" : "\(controller.threads.count) session\(controller.threads.count == 1 ? "" : "s")"
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    NavigationLink {
+                        DSHAgentView(controller: controller)
+                    } label: {
+                        AgentProviderCard(
+                            icon: "checkmark.shield.fill",
+                            iconColor: FlowCueTheme.mint,
+                            title: "DSH",
+                            subtitle: {
+                                var parts: [String] = []
+                                if !controller.dshSessions.isEmpty { parts.append("\(controller.dshSessions.count) session\(controller.dshSessions.count == 1 ? "" : "s")") }
+                                if !controller.dshApprovals.isEmpty { parts.append("\(controller.dshApprovals.count) pending") }
+                                if parts.isEmpty { return controller.dshBridgeAvailable ? "No pending approvals" : "Bridge not installed" }
+                                return parts.joined(separator: " · ")
+                            }()
+                        )
+                    }
+                    .buttonStyle(.plain)
                 }
-                NavigationLink {
-                    DSHAgentView(controller: controller)
-                } label: {
-                    AgentProviderRow(
-                        icon: "checkmark.shield.fill",
-                        iconColor: FlowCueTheme.mint,
-                        title: "DSH",
-                        subtitle: {
-                            var parts: [String] = []
-                            if !controller.dshSessions.isEmpty { parts.append("\(controller.dshSessions.count) session\(controller.dshSessions.count == 1 ? "" : "s")") }
-                            if !controller.dshApprovals.isEmpty { parts.append("\(controller.dshApprovals.count) pending") }
-                            if parts.isEmpty { return controller.dshBridgeAvailable ? "No pending approvals" : "Bridge not installed" }
-                            return parts.joined(separator: " · ")
-                        }()
-                    )
-                }
-            }
 
-            Section {
                 Text("Choose an agent to see its sessions or approvals. Both use the same secure Wi-Fi connection to your Mac.")
-                    .font(.footnote).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.secondary)
+                    .padding(.horizontal, 4)
             }
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
+            .padding(.bottom, 28)
         }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
         .background(FlowCueTheme.canvas)
         .navigationTitle("Agents")
         .refreshable { await controller.refresh() }
-        .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 12) }
+    }
+}
+
+private struct AgentProviderCard: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(iconColor)
+                .frame(width: 42, height: 42)
+                .background(iconColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.tertiary)
+        }
+        .padding(14)
+        .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 
@@ -1214,23 +1255,21 @@ private struct CodexAgentView: View {
                         NavigationLink {
                             AgentDetailView(controller: controller, thread: thread)
                         } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(thread.title).font(.headline).lineLimit(2)
-                                if !thread.lastReply.isEmpty {
-                                    Text(thread.lastReply).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                                }
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(thread.title).font(.body.weight(.medium)).lineLimit(2)
                                 Text(thread.updatedAt, format: .relative(presentation: .named))
-                                    .font(.caption2).foregroundStyle(.tertiary)
+                                    .font(.caption).foregroundStyle(.secondary)
                             }
+                            .padding(.vertical, 3)
                         }
-                        .listRowBackground(FlowCueTheme.surface)
+                        .listRowSeparator(.hidden)
                     }
                 } label: {
                     projectLabel(name: group.name, path: group.path, count: group.threads.count)
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(FlowCueTheme.canvas)
         .refreshable { await controller.refresh() }
@@ -1252,15 +1291,15 @@ private struct CodexAgentView: View {
             Image(systemName: "folder.fill")
                 .foregroundStyle(FlowCueTheme.accent)
             VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.headline).lineLimit(1)
+                Text(name).font(.body.weight(.semibold)).lineLimit(1)
                 if path != "Unfiled" {
-                    Text(path).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Text(path).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
                 }
             }
             Spacer()
             Text("\(count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 
     private func expansionBinding(_ id: String) -> Binding<Bool> {
@@ -1310,12 +1349,13 @@ private struct DSHAgentView: View {
                                     DSHSessionDetailView(controller: controller, session: session)
                                 } label: {
                                     VStack(alignment: .leading, spacing: 4) {
-                                        Text(session.title).font(.headline).lineLimit(1)
+                                        Text(session.title).font(.body.weight(.medium)).lineLimit(2)
                                         Text(session.updatedAt, format: .relative(presentation: .named))
-                                            .font(.caption2).foregroundStyle(.tertiary)
+                                            .font(.caption).foregroundStyle(.secondary)
                                     }
+                                    .padding(.vertical, 3)
                                 }
-                                .listRowBackground(FlowCueTheme.surface)
+                                .listRowSeparator(.hidden)
                             }
                         } label: {
                             projectLabel(name: group.name, path: group.path, count: group.sessions.count)
@@ -1348,7 +1388,7 @@ private struct DSHAgentView: View {
                 Text("DSH is the DeepSeek Harness agent on your Mac. Approvals stay pending until you answer here or on the desktop.")
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(FlowCueTheme.canvas)
         .refreshable { await controller.refresh() }
@@ -1365,15 +1405,15 @@ private struct DSHAgentView: View {
             Image(systemName: "folder.fill")
                 .foregroundStyle(FlowCueTheme.mint)
             VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.headline).lineLimit(1)
+                Text(name).font(.body.weight(.semibold)).lineLimit(1)
                 if path != "Unfiled" {
-                    Text(path).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                    Text(path).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
                 }
             }
             Spacer()
             Text("\(count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
         }
-        .padding(.vertical, 2)
+        .padding(.vertical, 4)
     }
 
     private func expansionBinding(_ id: String) -> Binding<Bool> {
@@ -1432,8 +1472,7 @@ private struct DSHSessionDetailView: View {
                             }
                         }
                     }
-                    .padding(12)
-                    .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .padding(.vertical, 2)
                 }
                 if loading {
                     ProgressView().frame(maxWidth: .infinity)
@@ -1474,7 +1513,8 @@ private struct DSHSessionDetailView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
             }
-            .background(.ultraThinMaterial)
+            .background(FlowCueTheme.canvas)
+            .overlay(alignment: .top) { Divider().opacity(0.45) }
         }
         .background(FlowCueTheme.canvas)
         .navigationTitle("DSH session")
@@ -1529,13 +1569,8 @@ private struct AgentDetailView: View {
                     Text(thread.updatedAt, format: .relative(presentation: .named))
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Label("Context", systemImage: "text.bubble")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                        if loadingMessages { ProgressView().controlSize(.small) }
-                    }
+                VStack(alignment: .leading, spacing: 10) {
+                    if loadingMessages { ProgressView().controlSize(.small) }
                     if messages.isEmpty {
                         if !thread.lastReply.isEmpty {
                             Text(thread.lastReply)
@@ -1587,7 +1622,8 @@ private struct AgentDetailView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
             }
-            .background(.ultraThinMaterial)
+            .background(FlowCueTheme.canvas)
+            .overlay(alignment: .top) { Divider().opacity(0.45) }
         }
         .background(FlowCueTheme.canvas)
         .navigationTitle("Session")
@@ -1723,22 +1759,8 @@ private struct AgentComposer: View {
     @State private var baseText = ""
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            TextEditor(text: $text)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 76, maxHeight: 120)
-                .padding(8)
-                .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(alignment: .topLeading) {
-                    if text.isEmpty {
-                        Text(placeholder)
-                            .font(.body).foregroundStyle(.tertiary)
-                            .padding(.horizontal, 13).padding(.vertical, 16)
-                            .allowsHitTesting(false)
-                    }
-                }
-                .accessibilityLabel(placeholder)
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .bottom, spacing: 8) {
                 Button {
                     if dictation.isRecording {
                         dictation.stop()
@@ -1750,55 +1772,81 @@ private struct AgentComposer: View {
                     }
                 } label: {
                     Image(systemName: dictation.isRecording ? "mic.fill" : "mic")
-                        .frame(width: 22, height: 22)
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(dictation.isRecording ? .red : .secondary)
+                        .frame(width: 34, height: 34)
+                        .background(FlowCueTheme.canvas.opacity(0.8), in: Circle())
                 }
-                .buttonStyle(.bordered)
-                .tint(dictation.isRecording ? .red : FlowCueTheme.accent)
+                .buttonStyle(.plain)
                 .accessibilityLabel(dictation.isRecording ? "Stop voice input" : "Start voice input")
-                if dictation.isRecording {
-                    Text("Listening…").font(.caption).foregroundStyle(.secondary)
-                }
-                if let error = dictation.error {
-                    Text(error).font(.caption).foregroundStyle(.orange).lineLimit(2)
-                }
-                Spacer()
-                Button(action: {
+
+                TextField(placeholder, text: $text, axis: .vertical)
+                    .font(.body)
+                    .lineLimit(1...4)
+                    .padding(.vertical, 8)
+                    .accessibilityLabel(placeholder)
+
+                Button {
                     dictation.stop()
                     onSend()
-                }) {
-                    Label(sending ? "Sending…" : "Send", systemImage: "paperplane.fill")
+                } label: {
+                    Image(systemName: sending ? "ellipsis" : "arrow.up")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .frame(width: 34, height: 34)
+                        .background(
+                            text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending
+                                ? Color.secondary.opacity(0.25)
+                                : FlowCueTheme.accent,
+                            in: Circle()
+                        )
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(FlowCueTheme.accent)
+                .buttonStyle(.plain)
                 .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("Send message")
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                    .strokeBorder(FlowCueTheme.hairline.opacity(0.45), lineWidth: 1)
+            }
+
+            if dictation.isRecording {
+                Text("Listening…").font(.caption2).foregroundStyle(.secondary).padding(.leading, 8)
+            }
+            if let error = dictation.error {
+                Text(error).font(.caption2).foregroundStyle(.orange).lineLimit(2).padding(.leading, 8)
             }
         }
-        .frame(maxHeight: 190, alignment: .top)
     }
 }
 
 private struct ConversationBubble: View {
     let message: RemoteConversationMessage
 
-    var isUser: Bool { message.role == "user" }
+    private var isUser: Bool { message.role == "user" }
 
     var body: some View {
-        HStack {
-            if isUser { Spacer(minLength: 42) }
-            VStack(alignment: .leading, spacing: 4) {
-                Text(isUser ? "You" : "Agent")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+        if isUser {
+            HStack(alignment: .bottom) {
+                Spacer(minLength: 54)
                 Text(message.text)
                     .font(.body)
                     .textSelection(.enabled)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 10)
+                    .background(FlowCueTheme.accent.opacity(0.18), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
-            .padding(12)
-            .background(
-                isUser ? FlowCueTheme.accent.opacity(0.16) : FlowCueTheme.surface,
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-            if !isUser { Spacer(minLength: 42) }
+            .padding(.vertical, 2)
+        } else {
+            Text(message.text)
+                .font(.body)
+                .lineSpacing(3)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, 6)
         }
     }
 }
