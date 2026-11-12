@@ -38,7 +38,7 @@ final class CaptureHostPolicyTests: XCTestCase {
             "com.apple.Safari",
             "com.apple.finder",
             "com.tencent.xinWeChat",
-            "com.altn.codex-idea-dock",
+            "com.archintera.FlowCue.Mac",
         ]
 
         for bundleIdentifier in unrelatedBundleIdentifiers {
@@ -60,7 +60,7 @@ final class CaptureHostPolicyTests: XCTestCase {
         )
         XCTAssertTrue(
             state.applicationDidActivate(
-                bundleIdentifier: "com.altn.codex-idea-dock",
+                bundleIdentifier: "com.archintera.FlowCue.Mac",
                 isCurrentApplication: true
             )
         )
@@ -74,7 +74,7 @@ final class CaptureHostPolicyTests: XCTestCase {
         )
         XCTAssertFalse(
             state.applicationDidActivate(
-                bundleIdentifier: "com.altn.codex-idea-dock",
+                bundleIdentifier: "com.archintera.FlowCue.Mac",
                 isCurrentApplication: true
             )
         )

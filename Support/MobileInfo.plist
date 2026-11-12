@@ -47,7 +47,7 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>FlowCueCloudKitContainer</key>
-	<string>iCloud.com.altn.reroute.ideainbox</string>
+	<string>iCloud.com.archintera.FlowCue</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

@@ -40,6 +40,6 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>FlowCueCloudKitContainer</key>
-	<string>iCloud.com.altn.reroute.ideainbox</string>
+	<string>iCloud.com.archintera.FlowCue</string>
 </dict>
 </plist>

@@ -281,7 +281,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.altn.reroute.app-store-preview";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.archintera.FlowCue.MacStore";
 				PRODUCT_NAME = FlowCue;
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
@@ -309,7 +309,7 @@
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.altn.reroute.app-store-preview";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.archintera.FlowCue.MacStore";
 				PRODUCT_NAME = FlowCue;
 				SDKROOT = macosx;
 				SKIP_INSTALL = NO;
