@@ -6,6 +6,18 @@ import Foundation
 import Observation
 import SwiftUI
 
+private enum FlowCueDesktopTheme {
+    static let accent = Color(red: 0.45, green: 0.40, blue: 1.0)
+    static let mint = Color(red: 0.36, green: 0.85, blue: 0.72)
+    static let ink = Color(red: 0.10, green: 0.09, blue: 0.15)
+    static let canvas = Color(nsColor: .windowBackgroundColor)
+    static let card = Color(nsColor: .controlBackgroundColor)
+
+    static var headerGradient: LinearGradient {
+        LinearGradient(colors: [ink, Color(red: 0.17, green: 0.13, blue: 0.28)], startPoint: .topLeading, endPoint: .bottomTrailing)
+    }
+}
+
 private enum RouteFilter: Hashable {
     case all
     case unassigned
@@ -79,18 +91,7 @@ struct InboxView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            usageBar
-            HStack {
-                Button { presentation.compose() } label: {
-                    Label(L10n.language == .mandarin ? "新想法" : "New idea", systemImage: "square.and.pencil")
-                }.keyboardShortcut("n", modifiers: .command)
-                Button {
-                    isMailTriagePresented = true
-                } label: {
-                    Label(L10n.text("邮件分诊"), systemImage: "envelope")
-                }
-                Spacer()
-            }.padding(.horizontal, 12).padding(.vertical, 8)
+            brandHeader
             InboxToolbar(
                 store: store,
                 displayedCount: visibleCaptures.count,
@@ -119,23 +120,44 @@ struct InboxView: View {
                 .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 380)
             } detail: {
                 if presentation.isComposing {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text(L10n.language == .mandarin ? "新想法" : "New idea").font(.title2)
+                    VStack(alignment: .leading, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L10n.language == .mandarin ? "新想法" : "New idea")
+                                .font(.system(size: 28, weight: .bold, design: .rounded))
+                            Text(L10n.language == .mandarin ? "先记下来，之后再决定交给谁。" : "Capture it first. Route it when you're ready.")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
                         TextEditor(text: $store.draftText)
+                            .font(.body)
+                            .scrollContentBackground(.hidden)
+                            .padding(14)
+                            .frame(minHeight: 220)
+                            .background(FlowCueDesktopTheme.card.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+                            }
                             .focused($composerFocused)
                             .accessibilityLabel(L10n.language == .mandarin ? "想法内容" : "Idea content")
-                        HStack {
-                            Text(L10n.language == .mandarin ? "草稿已在本机保留" : "Draft kept on this Mac").font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 12) {
+                            Label(L10n.language == .mandarin ? "草稿已在本机保留" : "Draft kept on this Mac", systemImage: "lock")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
                             Spacer()
                             Button(L10n.language == .mandarin ? "保存" : "Save") {
                                 if let id = store.saveCurrent() {
                                     selectedCaptureID = id
                                     presentation.isComposing = false
                                 }
-                            }.keyboardShortcut(.return, modifiers: .command)
-                                .disabled(store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isQueueing)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(FlowCueDesktopTheme.accent)
+                            .keyboardShortcut(.return, modifiers: .command)
+                            .disabled(store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isQueueing)
                         }
-                    }.padding(20)
+                    }
+                    .padding(28)
                 } else if let selectedCapture {
                     CaptureDetailView(
                         capture: selectedCapture,
@@ -188,7 +210,8 @@ struct InboxView: View {
                 .accessibilityElement(children: .combine)
             }
         }
-        .frame(minWidth: 720, minHeight: 460)
+        .frame(minWidth: 760, minHeight: 500)
+        .background(FlowCueDesktopTheme.canvas)
         .sheet(isPresented: $isMailTriagePresented) {
             MailTriageView(store: store)
                 .frame(minWidth: 720, minHeight: 700)
@@ -217,49 +240,99 @@ struct InboxView: View {
         }
     }
 
-    private var usageBar: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                Text("Codex Usage").font(.headline)
-                Text(L10n.language == .mandarin ? "账户共享额度" : "Shared account limits").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                #if !FLOWCUE_APP_STORE
-                Button { Task { await refreshUsage() } } label: { Image(systemName: "arrow.clockwise") }
-                    .disabled(usageLoading).accessibilityLabel("Refresh usage")
-                #endif
-                Button(L10n.language == .mandarin ? "打开 Codex" : "Open Codex") {
-                    if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
-                        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+    private var brandHeader: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "sparkles")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundStyle(FlowCueDesktopTheme.mint)
+                        Text("FlowCue")
+                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .foregroundStyle(.white)
                     }
+                    Text(L10n.language == .mandarin ? "记录想法，交给你的 coding agent。" : "Capture ideas. Continue with your coding agents.")
+                        .font(.subheadline)
+                        .foregroundStyle(.white.opacity(0.68))
                 }
+                Spacer()
+                if remotePairingEnabled, let code = remotePairingCode {
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(L10n.language == .mandarin ? "iPhone 远程" : "iPhone remote")
+                            .font(.caption2)
+                            .foregroundStyle(.white.opacity(0.6))
+                        Text(code)
+                            .font(.system(.body, design: .monospaced, weight: .semibold))
+                            .foregroundStyle(FlowCueDesktopTheme.mint)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+                Button { presentation.compose() } label: {
+                    Label(L10n.language == .mandarin ? "新想法" : "New idea", systemImage: "square.and.pencil")
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(FlowCueDesktopTheme.accent)
+                .keyboardShortcut("n", modifiers: .command)
+                Button {
+                    isMailTriagePresented = true
+                } label: {
+                    Label(L10n.text("邮件分诊"), systemImage: "envelope")
+                }
+                .buttonStyle(.bordered)
+                .tint(.white)
             }
+
             if let usage {
-                ForEach(Array([usage.primary, usage.secondary].compactMap { $0 }.enumerated()), id: \.offset) { _, window in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(usageWindowTitle(window))
-                            ProgressView(value: window.usedPercent, total: 100).frame(maxWidth: 140)
-                            Text(L10n.language == .mandarin
-                                 ? "已用 \(Int(window.usedPercent))% · 剩余 \(Int(window.remainingPercent))%"
-                                 : "\(Int(window.usedPercent))% used · \(Int(window.remainingPercent))% left")
+                HStack(spacing: 10) {
+                    ForEach(Array([usage.primary, usage.secondary].compactMap { $0 }.enumerated()), id: \.offset) { _, window in
+                        usageCard(window)
+                    }
+                    Button { Task { await refreshUsage() } } label: {
+                        Image(systemName: "arrow.clockwise")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .disabled(usageLoading)
+                    .accessibilityLabel("Refresh usage")
+                    Button(L10n.language == .mandarin ? "打开 Codex" : "Open Codex") {
+                        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
+                            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
                         }
-                        if let reset = window.resetsAt {
-                            TimelineView(.periodic(from: .now, by: 60)) { context in
-                                let minutes = max(0, Int((reset - context.date.timeIntervalSince1970) / 60))
-                                Text((L10n.language == .mandarin ? "重置 " : "Resets ") + Date(timeIntervalSince1970: reset).formatted(date: .abbreviated, time: .shortened)
-                                     + " · \(minutes / 60)h \(minutes % 60)m")
-                            }.foregroundStyle(.secondary)
-                        }
-                    }.font(.caption)
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.white)
                 }
-                if let usageUpdatedAt { Text("Updated \(usageUpdatedAt.formatted(date: .omitted, time: .shortened))" + (usageFailed ? " · Refresh unavailable" : "")).font(.caption).foregroundStyle(.secondary) }
             } else {
-                Text(L10n.language == .mandarin
-                     ? (AppDistribution.supportsDirectQueue ? "用量暂不可用，请确认 Codex 登录后刷新。" : "此版本暂无法读取用量，可在 Codex 中查看。")
-                     : (AppDistribution.supportsDirectQueue ? (usageLoading ? "Loading usage…" : "Usage unavailable. Check your Codex sign-in and try refreshing.") : "Usage unavailable in this version. View usage in Codex."))
-                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Image(systemName: "chart.bar")
+                    Text(usageLoading
+                         ? (L10n.language == .mandarin ? "正在读取 Codex 用量…" : "Reading Codex usage…")
+                         : (L10n.language == .mandarin ? "Codex 用量暂不可用" : "Codex usage unavailable"))
+                    Spacer()
+                    Button { Task { await refreshUsage() } } label: { Image(systemName: "arrow.clockwise") }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.white.opacity(0.7))
+                }
+                .font(.caption)
+                .foregroundStyle(.white.opacity(0.6))
             }
-        }.padding(12).background(.quaternary.opacity(0.3))
+        }
+        .padding(20)
+        .background(FlowCueDesktopTheme.headerGradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 4)
+    }
+
+    private var remotePairingEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "FlowCue.remoteContinuationEnabled")
+    }
+
+    private var remotePairingCode: String? {
+        UserDefaults.standard.string(forKey: "FlowCue.remotePairingCode")
     }
 
     private func usageWindowTitle(_ window: CodexUsageWindow) -> String {
@@ -269,6 +342,31 @@ struct InboxView: View {
         if minutes == 10080 { return L10n.language == .mandarin ? "每周" : "Weekly" }
         if minutes % 60 == 0 { return L10n.language == .mandarin ? "\(minutes / 60) 小时" : "\(minutes / 60)h window" }
         return L10n.language == .mandarin ? "\(minutes) 分钟" : "\(minutes)m window"
+    }
+
+    @ViewBuilder
+    private func usageCard(_ window: CodexUsageWindow) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                Text(usageWindowTitle(window))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+                Spacer()
+                Text("\(Int(window.remainingPercent))%")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(FlowCueDesktopTheme.mint)
+            }
+            ProgressView(value: window.usedPercent, total: 100)
+                .tint(FlowCueDesktopTheme.mint)
+            if let reset = window.resetsAt {
+                Text((L10n.language == .mandarin ? "重置 " : "Resets ") + Date(timeIntervalSince1970: reset).formatted(date: .abbreviated, time: .shortened))
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.5))
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity)
+        .background(.white.opacity(0.07), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
     private func refreshUsage() async {
@@ -723,6 +821,8 @@ private struct InboxCaptureList: View {
                     }
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(FlowCueDesktopTheme.canvas)
             .accessibilityLabel(L10n.text("想法列表"))
         }
     }

@@ -176,7 +176,7 @@ final class InboxWindowController: NSWindowController, NSWindowDelegate {
         )
         super.init(window: window)
 
-        window.title = L10n.text("FlowCue 收件箱")
+        window.title = "FlowCue"
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
         window.minSize = NSSize(width: 720, height: 460)
