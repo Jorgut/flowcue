@@ -169,6 +169,7 @@ final class LANRemoteController {
     private(set) var selected: DiscoveredMac?
     private(set) var threads: [RemoteThreadSnapshot] = []
     private(set) var dshApprovals: [DSHRemoteApproval] = []
+    private(set) var dshSessions: [DSHSessionSnapshot] = []
     private(set) var dshBridgeAvailable = false
     private(set) var isLoading = false
     private(set) var isScanning = false
@@ -275,6 +276,7 @@ final class LANRemoteController {
             selected = DiscoveredMac(id: displayName, name: displayName, endpoint: endpoint)
             threads = snapshots.sorted { $0.updatedAt > $1.updatedAt }
             await refreshDSHApprovals()
+            await refreshDSHSessions()
             statusMessage = threads.isEmpty ? "Connected. No sessions are available yet." : "Connected."
             stopDiscovery()
         } catch {
@@ -286,6 +288,7 @@ final class LANRemoteController {
         selected = nil
         threads = []
         dshApprovals = []
+        dshSessions = []
         dshBridgeAvailable = false
         statusMessage = ""
         startDiscovery()
@@ -300,8 +303,31 @@ final class LANRemoteController {
             let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
             threads = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data).sorted { $0.updatedAt > $1.updatedAt }
             await refreshDSHApprovals()
+            await refreshDSHSessions()
         } catch {
             lastError = "Connection lost. Make sure the Mac app is still running on the same Wi-Fi."
+        }
+    }
+
+    private func refreshDSHSessions() async {
+        guard let selected else { return }
+        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/sessions", token: code, body: nil)
+            dshSessions = try JSONDecoder().decode([DSHSessionSnapshot].self, from: data)
+        } catch {
+            dshSessions = []
+        }
+    }
+
+    func dshMessages(for session: DSHSessionSnapshot) async -> [RemoteConversationMessage] {
+        guard let selected else { return [] }
+        let encoded = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
+        do {
+            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/sessions/\(encoded)/messages", token: pairingCode, body: nil)
+            return try JSONDecoder().decode([RemoteConversationMessage].self, from: data)
+        } catch {
+            return []
         }
     }
 
@@ -1075,9 +1101,13 @@ private struct AgentHubView: View {
                         icon: "checkmark.shield.fill",
                         iconColor: FlowCueTheme.mint,
                         title: "DSH",
-                        subtitle: controller.dshApprovals.isEmpty
-                            ? (controller.dshBridgeAvailable ? "No pending approvals" : "Bridge not installed")
-                            : "\(controller.dshApprovals.count) pending approval\(controller.dshApprovals.count == 1 ? "" : "s")"
+                        subtitle: {
+                            var parts: [String] = []
+                            if !controller.dshSessions.isEmpty { parts.append("\(controller.dshSessions.count) session\(controller.dshSessions.count == 1 ? "" : "s")") }
+                            if !controller.dshApprovals.isEmpty { parts.append("\(controller.dshApprovals.count) pending") }
+                            if parts.isEmpty { return controller.dshBridgeAvailable ? "No pending approvals" : "Bridge not installed" }
+                            return parts.joined(separator: " · ")
+                        }()
                     )
                 }
             }
@@ -1154,6 +1184,26 @@ private struct DSHAgentView: View {
 
     var body: some View {
         List {
+            if !controller.dshSessions.isEmpty {
+                Section("Sessions") {
+                    ForEach(controller.dshSessions) { session in
+                        NavigationLink {
+                            DSHSessionDetailView(controller: controller, session: session)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(session.title).font(.headline).lineLimit(1)
+                                HStack {
+                                    Text(session.projectDirectory).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    Spacer()
+                                    Text(session.updatedAt, format: .relative(presentation: .named))
+                                        .font(.caption2).foregroundStyle(.tertiary)
+                                }
+                            }
+                        }
+                        .listRowBackground(FlowCueTheme.surface)
+                    }
+                }
+            }
             Section {
                 if controller.dshApprovals.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
@@ -1185,6 +1235,45 @@ private struct DSHAgentView: View {
         .refreshable { await controller.refresh() }
         .navigationTitle("DSH")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct DSHSessionDetailView: View {
+    @Bindable var controller: LANRemoteController
+    let session: DSHSessionSnapshot
+    @State private var messages: [RemoteConversationMessage] = []
+    @State private var loading = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(session.title).font(.title3.bold())
+                    Text(session.projectDirectory).font(.caption).foregroundStyle(.secondary)
+                }
+                if loading {
+                    ProgressView().frame(maxWidth: .infinity)
+                } else if messages.isEmpty {
+                    ContentUnavailableView("No text history", systemImage: "text.bubble", description: Text("This DSH session has no user/assistant text messages yet."))
+                } else {
+                    ForEach(messages) { message in
+                        ConversationBubble(message: message)
+                    }
+                }
+                Text("Read-only history. To continue this DSH session, use the DSH app on your Mac.")
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .padding(.top, 8)
+            }
+            .padding()
+        }
+        .background(FlowCueTheme.canvas)
+        .navigationTitle("DSH session")
+        .navigationBarTitleDisplayMode(.inline)
+        .task {
+            loading = true
+            messages = await controller.dshMessages(for: session)
+            loading = false
+        }
     }
 }
 

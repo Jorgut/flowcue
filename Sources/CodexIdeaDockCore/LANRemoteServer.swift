@@ -14,6 +14,7 @@ public final class LANRemoteServer {
     private let executor: RemoteCommandExecutor
     private let reader: CodexSessionReplyReader
     private let dshBridge: DSHBridgeClient
+    private let dshSessions: DSHSessionReader
     private var listener: NWListener?
     private var connections: [UUID: HTTPConnection] = [:]
 
@@ -31,6 +32,7 @@ public final class LANRemoteServer {
         self.executor = try RemoteCommandExecutor(executorID: executorID, ledgerURL: ledgerURL, bridge: bridge)
         self.reader = CodexSessionReplyReader(sessionsDirectory: sessionsDirectory ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex/sessions"))
         self.dshBridge = dshBridge
+        self.dshSessions = DSHSessionReader()
     }
 
     public func start() throws {
@@ -112,6 +114,16 @@ public final class LANRemoteServer {
                 )
             }
             return Self.response(status: 200, body: try JSONEncoder().encode(snapshots))
+        case ("GET", "/v1/dsh/sessions"):
+            let sessions = dshSessions.sessions()
+            return Self.response(status: 200, body: try JSONEncoder().encode(sessions))
+        case ("GET", let path) where path.hasPrefix("/v1/dsh/sessions/") && path.hasSuffix("/messages"):
+            let encoded = String(path.dropFirst("/v1/dsh/sessions/".count).dropLast("/messages".count))
+            guard let sessionID = encoded.removingPercentEncoding, !sessionID.isEmpty else {
+                return Self.response(status: 400, body: Data("[]".utf8))
+            }
+            let messages = dshSessions.messages(sessionID: sessionID)
+            return Self.response(status: 200, body: try JSONEncoder().encode(messages))
         case ("GET", "/v1/dsh/approvals"):
             struct Response: Encodable {
                 let available: Bool
