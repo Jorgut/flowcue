@@ -134,6 +134,13 @@ public final class LANRemoteServer {
             } catch {
                 return Self.response(status: 409, body: Data("{}".utf8))
             }
+        case ("GET", let path) where path.hasPrefix("/v1/threads/") && path.hasSuffix("/messages"):
+            let encoded = String(path.dropFirst("/v1/threads/".count).dropLast("/messages".count))
+            guard let threadID = encoded.removingPercentEncoding, !threadID.isEmpty else {
+                return Self.response(status: 400, body: Data("[]".utf8))
+            }
+            let messages = reader.messages(threadID: threadID)
+            return Self.response(status: 200, body: try JSONEncoder().encode(messages))
         case ("POST", "/v1/send"):
             let command = try JSONDecoder().decode(RemoteCommand.self, from: request.body)
             let state = try await executor.execute(command)

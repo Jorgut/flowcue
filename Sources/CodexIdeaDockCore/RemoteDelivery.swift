@@ -156,8 +156,22 @@ public enum RemoteContinuationError: Error {
     case conflictingRequest
 }
 
-/// Reads only the last assistant message from a local Codex rollout. No note text,
-/// tool output, or raw CLI diagnostics are exposed.
+public struct RemoteConversationMessage: Codable, Identifiable, Hashable, Sendable {
+    public let id: String
+    public let role: String
+    public let text: String
+    public let timestamp: Date?
+
+    public init(id: String, role: String, text: String, timestamp: Date? = nil) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.timestamp = timestamp
+    }
+}
+
+/// Reads the local Codex rollout for a thread. It only exposes user/assistant
+/// message text, never tool output or raw CLI diagnostics.
 public struct CodexSessionReplyReader: Sendable {
     private let sessionsDirectory: URL
 
@@ -209,6 +223,52 @@ public struct CodexSessionReplyReader: Sendable {
             if !text.isEmpty { result = String(text.prefix(20_000)) }
         }
         return result
+    }
+
+    public func messages(threadID: String, limit: Int = 80) -> [RemoteConversationMessage] {
+        let target = threadID.lowercased()
+        guard let enumerator = FileManager.default.enumerator(
+            at: sessionsDirectory,
+            includingPropertiesForKeys: [.contentModificationDateKey, .isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        var files: [(URL, Date)] = []
+        for case let url as URL in enumerator {
+            guard url.pathExtension == "jsonl", url.lastPathComponent.lowercased().contains(target) else { continue }
+            let values = try? url.resourceValues(forKeys: [.contentModificationDateKey, .isRegularFileKey])
+            guard values?.isRegularFile == true else { continue }
+            files.append((url, values?.contentModificationDate ?? .distantPast))
+        }
+        guard let newest = files.sorted(by: { $0.1 > $1.1 }).first else { return [] }
+        guard let data = try? Data(contentsOf: newest.0, options: [.mappedIfSafe]) else { return [] }
+
+        var result: [RemoteConversationMessage] = []
+        for line in data.split(separator: UInt8(ascii: "\n")) {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  object["type"] as? String == "response_item",
+                  let payload = object["payload"] as? [String: Any],
+                  payload["type"] as? String == "message",
+                  let role = payload["role"] as? String,
+                  role == "user" || role == "assistant",
+                  let content = payload["content"] as? [[String: Any]] else { continue }
+            let text = content.compactMap { item -> String? in
+                guard let value = item["text"] as? String else { return nil }
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                return trimmed.isEmpty ? nil : trimmed
+            }.joined(separator: "\n")
+            guard !text.isEmpty else { continue }
+            // Codex injects synthetic context/page markers as user messages.
+            if role == "user", text.hasPrefix("<"), text.hasSuffix(">") { continue }
+            let timestamp = (object["timestamp"] as? String).flatMap(Self.isoDate)
+            result.append(RemoteConversationMessage(
+                id: "\(result.count)-\(role)",
+                role: role,
+                text: String(text.prefix(20_000)),
+                timestamp: timestamp
+            ))
+        }
+        return Array(result.suffix(limit))
     }
 
     private static func isoDate(_ value: String) -> Date? {

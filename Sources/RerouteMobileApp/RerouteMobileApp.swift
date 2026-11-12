@@ -337,6 +337,17 @@ final class LANRemoteController {
         }
     }
 
+    func messages(for thread: RemoteThreadSnapshot) async -> [RemoteConversationMessage] {
+        guard let selected else { return [] }
+        let encoded = thread.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? thread.id
+        do {
+            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/threads/\(encoded)/messages", token: pairingCode, body: nil)
+            return try JSONDecoder().decode([RemoteConversationMessage].self, from: data)
+        } catch {
+            return []
+        }
+    }
+
     @discardableResult
     func send(to thread: RemoteThreadSnapshot, text: String) async -> Bool {
         guard let selected else { return false }
@@ -1181,6 +1192,8 @@ private struct AgentDetailView: View {
     @Bindable var controller: LANRemoteController
     let thread: RemoteThreadSnapshot
     @State private var text = ""
+    @State private var messages: [RemoteConversationMessage] = []
+    @State private var loadingMessages = false
     @State private var sending = false
     @FocusState private var focused: Bool
 
@@ -1192,16 +1205,32 @@ private struct AgentDetailView: View {
                     Text(thread.updatedAt, format: .relative(presentation: .named))
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                if !thread.lastReply.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Label("Last reply", systemImage: "text.bubble")
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Label("Context", systemImage: "text.bubble")
                             .font(.caption).foregroundStyle(.secondary)
-                        Text(thread.lastReply)
-                            .font(.body)
-                            .textSelection(.enabled)
-                            .padding(14)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        Spacer()
+                        if loadingMessages { ProgressView().controlSize(.small) }
+                    }
+                    if messages.isEmpty {
+                        if !thread.lastReply.isEmpty {
+                            Text(thread.lastReply)
+                                .font(.body)
+                                .textSelection(.enabled)
+                                .padding(14)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        } else {
+                            Text("No conversation history is available for this session yet.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                                .padding(14)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        }
+                    } else {
+                        ForEach(messages) { message in
+                            ConversationBubble(message: message)
+                        }
                     }
                 }
                 VStack(alignment: .leading, spacing: 6) {
@@ -1221,6 +1250,7 @@ private struct AgentDetailView: View {
                         if sent { text = "" }
                         sending = false
                         await controller.refresh()
+                        messages = await controller.messages(for: thread)
                     }
                 } label: {
                     Label(sending ? "Sending…" : "Send to Mac", systemImage: "paperplane.fill")
@@ -1239,6 +1269,37 @@ private struct AgentDetailView: View {
         .background(FlowCueTheme.canvas)
         .navigationTitle("Session")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            loadingMessages = true
+            messages = await controller.messages(for: thread)
+            loadingMessages = false
+        }
+    }
+}
+
+private struct ConversationBubble: View {
+    let message: RemoteConversationMessage
+
+    var isUser: Bool { message.role == "user" }
+
+    var body: some View {
+        HStack {
+            if isUser { Spacer(minLength: 42) }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(isUser ? "You" : "Agent")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(message.text)
+                    .font(.body)
+                    .textSelection(.enabled)
+            }
+            .padding(12)
+            .background(
+                isUser ? FlowCueTheme.accent.opacity(0.16) : FlowCueTheme.surface,
+                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+            )
+            if !isUser { Spacer(minLength: 42) }
+        }
     }
 }
 
