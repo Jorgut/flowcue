@@ -46,6 +46,12 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>FlowCue connects to your Mac on the same Wi-Fi to continue coding sessions.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_flowcue._tcp</string>
+	</array>
 	<key>FlowCueCloudKitContainer</key>
 	<string>iCloud.com.archintera.FlowCue</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>

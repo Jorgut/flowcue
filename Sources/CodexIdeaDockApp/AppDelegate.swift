@@ -10,9 +10,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var syncController: IdeaSyncController?
     private var syncTask: Task<Void, Never>?
     #if !FLOWCUE_APP_STORE
-    private var remoteService: RemoteContinuationService?
+    private var remoteService: LANRemoteServer?
     private static let remotePreferenceKey = "FlowCue.remoteContinuationEnabled"
     private static let remoteExecutorKey = "FlowCue.remoteExecutorID"
+    private static let remoteCodeKey = "FlowCue.remotePairingCode"
     #endif
     private var statusItem: NSStatusItem?
     private var capturePanelController: CapturePanelController?
@@ -295,13 +296,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         #if !FLOWCUE_APP_STORE
         let remoteItem = NSMenuItem(
-            title: L10n.language == .mandarin ? "允许 iPhone 继续 Codex 会话" : "Allow iPhone to continue Codex sessions",
+            title: L10n.language == .mandarin ? "允许 iPhone 在同一网络继续会话" : "Allow iPhone on this network",
             action: #selector(toggleRemoteContinuation),
             keyEquivalent: ""
         )
         remoteItem.state = UserDefaults.standard.bool(forKey: Self.remotePreferenceKey) ? .on : .off
-        remoteItem.isEnabled = Bundle.main.object(forInfoDictionaryKey: "FlowCueCloudKitContainer") != nil
+        remoteItem.isEnabled = true
         menu.addItem(remoteItem)
+        if let remoteService, remoteService.isRunning {
+            let codeItem = NSMenuItem(
+                title: (L10n.language == .mandarin ? "配对码：" : "Pairing code: ") + remoteService.pairingCode,
+                action: nil,
+                keyEquivalent: ""
+            )
+            codeItem.isEnabled = false
+            menu.addItem(codeItem)
+        }
         #endif
         menu.addItem(.separator())
         menu.addItem(withTitle: L10n.text("退出 FlowCue"), action: #selector(quit), keyEquivalent: "q")
@@ -377,9 +387,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func startRemoteContinuation() {
-        guard remoteService == nil,
-              let containerIdentifier = Bundle.main.object(forInfoDictionaryKey: "FlowCueCloudKitContainer") as? String,
-              !containerIdentifier.isEmpty else { return }
+        guard remoteService == nil else { return }
         let defaults = UserDefaults.standard
         let executorID: UUID
         if let raw = defaults.string(forKey: Self.remoteExecutorKey), let id = UUID(uuidString: raw) {
@@ -388,16 +396,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             executorID = UUID()
             defaults.set(executorID.uuidString, forKey: Self.remoteExecutorKey)
         }
+        let pairingCode: String
+        if let existing = defaults.string(forKey: Self.remoteCodeKey), existing.count == 6 {
+            pairingCode = existing
+        } else {
+            pairingCode = String(format: "%06d", Int.random(in: 0...999_999))
+            defaults.set(pairingCode, forKey: Self.remoteCodeKey)
+        }
         let ledgerURL = URL.applicationSupportDirectory.appendingPathComponent("FlowCueRemote/executor-ledger.json")
         do {
-            let service = try RemoteContinuationService(
+            let server = try LANRemoteServer(
                 executorID: executorID,
+                pairingCode: pairingCode,
                 bridge: CodexBridge(),
-                transport: CloudKitRemoteTransport(containerIdentifier: containerIdentifier),
                 ledgerURL: ledgerURL
             )
-            service.start()
-            remoteService = service
+            try server.start()
+            remoteService = server
         } catch {
             remoteService = nil
         }

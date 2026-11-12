@@ -1,52 +1,38 @@
-# Remote continuation setup
+# Remote continuation (same network)
 
-Status: implemented in the local iOS/CloudKit branch; shipping requires a
-Developer ID provisioning profile with iCloud for the desktop build.
+Status: implemented in the local iOS/Mac branch. It does not use CloudKit or
+iCloud entitlements.
 
 ## What it does
 
-- The Mac publishes recent Codex thread snapshots (title, last assistant reply,
-  timestamp) to the user's private CloudKit database.
-- The iPhone lists those sessions, shows the last reply, and can send the next
-  message. Only an explicit Send action creates a command.
-- The Mac executor validates the command, writes a durable local ledger, then
-  queues the message to Codex. A repeated command is never executed twice; an
-  interrupted attempt is recorded as `uncertain`, not retried.
-- The iCloud account is the pairing boundary. No public records or third-party
-  relay are used.
+- The Mac app advertises a Bonjour service (`_flowcue._tcp`) and exposes a
+  small token-authenticated HTTP API on the local network.
+- The iPhone discovers the Mac, asks for a 6-digit pairing code shown in the
+  Mac menu, lists recent Codex threads, shows the last assistant reply, and can
+  send the next message.
+- The Mac executor keeps a durable local ledger: a repeated command is never
+  executed twice, and an interrupted attempt is marked `uncertain` rather than
+  retried.
+- No public relay and no third-party server are involved.
 
 ## Enable
 
-1. Mac: menu bar → **Allow iPhone to continue Codex sessions** (default off).
-2. iPhone: FlowCue Pro → **Agents**.
-3. Both devices must be signed in to the same iCloud account.
+1. Mac: menu bar → **Allow iPhone on this network**. The menu shows the
+   pairing code while the service is running.
+2. iPhone: FlowCue Pro → Agents, enter the code, connect.
+3. Both devices must be on the same Wi-Fi network.
 
-## Build signatures
+## Why not CloudKit on the desktop?
 
-The App Store build has iCloud but no CLI. The GitHub/Developer ID build has the
-CLI but needs iCloud:
+A Developer ID provisioning profile does not grant iCloud container
+entitlements (the generated profile has an empty
+`com.apple.developer.icloud-container-identifiers` array). iCloud + CloudKit
+remain available to the App Store iOS/Mac builds for note sync; the
+Developer ID Mac app uses the local-network path instead.
 
-```sh
-FLOWCUE_CODE_SIGN_IDENTITY='Developer ID Application: …' \
-FLOWCUE_MAC_PROVISIONING_PROFILE='/path/to/profile.provisionprofile' \
-FLOWCUE_MAC_ENTITLEMENTS="$PWD/Support/Release.entitlements" \
-zsh Scripts/build-app.sh release
-```
+## Files
 
-For local development testing, a Mac Team profile for
-`com.altn.reroute.ideainbox` can be used with:
-
-```sh
-FLOWCUE_MAC_BUNDLE_ID='com.altn.reroute.ideainbox'
-```
-
-The helper is signed without restricted entitlements; only the main executable
-and app bundle receive the iCloud entitlements.
-
-## Remaining shipping requirement
-
-A **Developer ID** provisioning profile that includes the iCloud container for
-the shipping bundle ID is required. The profiles currently on this machine are
-Mac Team development/store profiles and cannot be used for a notarized
-Developer ID release. Until that profile exists, remote continuation works only
-in a locally signed development build.
+- `Sources/CodexIdeaDockCore/LANRemoteServer.swift`
+- `Sources/RerouteMobileApp/RerouteMobileApp.swift` — discovery/client and
+  Agents UI
+- `Support/MobileInfo.plist` — local-network usage description and Bonjour type

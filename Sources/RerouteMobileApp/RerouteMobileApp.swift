@@ -3,6 +3,7 @@ import SwiftData
 import StoreKit
 import Observation
 import UIKit
+import Network
 
 // MARK: - Product identity
 
@@ -120,63 +121,129 @@ final class SubscriptionManager {
     }
 }
 
-// MARK: - Remote continuation
+// MARK: - LAN remote continuation
+
+struct DiscoveredMac: Identifiable {
+    let id: String
+    let name: String
+    let endpoint: NWEndpoint
+}
 
 @MainActor
 @Observable
-final class RemotePhoneController {
-    private let containerIdentifier: String?
-    private let defaults: UserDefaults
+final class LANRemoteController {
+    private(set) var discovered: [DiscoveredMac] = []
+    private(set) var selected: DiscoveredMac?
     private(set) var threads: [RemoteThreadSnapshot] = []
     private(set) var isLoading = false
+    private(set) var isScanning = false
+    var pairingCode = ""
     var statusMessage = ""
     var lastError: String?
 
-    var isAvailable: Bool { containerIdentifier?.isEmpty == false }
+    private var browser: NWBrowser?
 
-    init(containerIdentifier: String?, defaults: UserDefaults = .standard) {
-        self.containerIdentifier = containerIdentifier
-        self.defaults = defaults
+    var isConnected: Bool { selected != nil }
+
+    func startDiscovery() {
+        guard browser == nil else { return }
+        let parameters = NWParameters.tcp
+        let browser = NWBrowser(for: .bonjour(type: "_flowcue._tcp", domain: nil), using: parameters)
+        browser.stateUpdateHandler = { [weak self] state in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch state {
+                case .ready:
+                    self.isScanning = true
+                case .failed, .cancelled:
+                    self.isScanning = false
+                default:
+                    break
+                }
+            }
+        }
+        browser.browseResultsChangedHandler = { [weak self] results, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                var found: [DiscoveredMac] = []
+                for result in results {
+                    guard case .service(let name, _, _, _) = result.endpoint else { continue }
+                    let id = "\(name)-\(result.endpoint)"
+                    if !found.contains(where: { $0.id == id }) {
+                        found.append(DiscoveredMac(id: id, name: name, endpoint: result.endpoint))
+                    }
+                }
+                self.discovered = found.sorted { $0.name < $1.name }
+                self.isScanning = !found.isEmpty
+            }
+        }
+        browser.start(queue: .main)
+        self.browser = browser
+        isScanning = true
     }
 
-    private var transport: CloudKitRemoteTransport? {
-        guard let containerIdentifier, !containerIdentifier.isEmpty else { return nil }
-        return CloudKitRemoteTransport(containerIdentifier: containerIdentifier)
+    func stopDiscovery() {
+        browser?.cancel()
+        browser = nil
+        isScanning = false
     }
 
-    func refresh() async {
-        guard let transport else {
-            lastError = "iCloud is not available in this build."
+    func connect(to server: DiscoveredMac) async {
+        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard code.count == 6 else {
+            lastError = "Enter the 6-digit pairing code shown on your Mac."
             return
         }
         isLoading = true
         defer { isLoading = false }
         do {
-            threads = try await transport.fetchThreads().sorted { $0.updatedAt > $1.updatedAt }
-            if threads.isEmpty {
-                statusMessage = "Waiting for your Mac to share sessions."
-            } else {
-                statusMessage = ""
-            }
+            let data = try await LANHTTP.request(endpoint: server.endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
+            let snapshots = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data)
+            selected = server
+            threads = snapshots.sorted { $0.updatedAt > $1.updatedAt }
+            statusMessage = threads.isEmpty ? "Connected. No sessions are available yet." : "Connected."
+            stopDiscovery()
         } catch {
-            lastError = "Could not reach iCloud. Make sure your Mac is online and signed in to the same account."
+            lastError = "Could not connect. Check the code and that both devices are on the same Wi-Fi."
+        }
+    }
+
+    func disconnect() {
+        selected = nil
+        threads = []
+        statusMessage = ""
+        startDiscovery()
+    }
+
+    func refresh() async {
+        guard let selected else { return }
+        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
+            threads = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data).sorted { $0.updatedAt > $1.updatedAt }
+        } catch {
+            lastError = "Connection lost. Make sure the Mac app is still running on the same Wi-Fi."
         }
     }
 
     @discardableResult
     func send(to thread: RemoteThreadSnapshot, text: String) async -> Bool {
-        guard let transport else { return false }
+        guard let selected else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         let phoneID: UUID
-        if let raw = defaults.string(forKey: "FlowCue.remotePhoneID"), let id = UUID(uuidString: raw) {
+        if let raw = UserDefaults.standard.string(forKey: "FlowCue.remotePhoneID"), let id = UUID(uuidString: raw) {
             phoneID = id
         } else {
             phoneID = UUID()
-            defaults.set(phoneID.uuidString, forKey: "FlowCue.remotePhoneID")
+            UserDefaults.standard.set(phoneID.uuidString, forKey: "FlowCue.remotePhoneID")
         }
+        let command = RemoteCommand(phoneID: phoneID, executorID: thread.executorID, threadID: thread.id, text: trimmed)
         do {
-            try await transport.sendCommand(RemoteCommand(phoneID: phoneID, executorID: thread.executorID, threadID: thread.id, text: trimmed))
+            let body = try JSONEncoder().encode(command)
+            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/send", token: pairingCode, body: body)
             statusMessage = "Sent to your Mac. The reply will appear when it is ready."
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(2))
@@ -184,9 +251,113 @@ final class RemotePhoneController {
             }
             return true
         } catch {
-            lastError = "Could not send. Check that your Mac is online and signed in to iCloud."
+            lastError = "Could not send. Check that your Mac is still online."
             return false
         }
+    }
+}
+
+private enum LANHTTP {
+    static func request(endpoint: NWEndpoint, method: String, path: String, token: String?, body: Data?) async throws -> Data {
+        try await withCheckedThrowingContinuation { continuation in
+            let runner = LANHTTPRunner(endpoint: endpoint, method: method, path: path, token: token, body: body, continuation: continuation)
+            runner.start()
+            DispatchQueue.global().asyncAfter(deadline: .now() + 10) {
+                runner.fail(URLError(.timedOut))
+            }
+        }
+    }
+}
+
+private final class LANHTTPRunner: @unchecked Sendable {
+    private let connection: NWConnection
+    private let requestData: Data
+    private let lock = NSLock()
+    private var buffer = Data()
+    private var finished = false
+    private var continuation: CheckedContinuation<Data, Error>?
+
+    init(endpoint: NWEndpoint, method: String, path: String, token: String?, body: Data?, continuation: CheckedContinuation<Data, Error>) {
+        self.connection = NWConnection(to: endpoint, using: .tcp)
+        var request = "\(method) \(path) HTTP/1.1\r\nHost: flowcue.local\r\nConnection: close\r\n"
+        if let token { request += "Authorization: Bearer \(token)\r\n" }
+        if let body {
+            request += "Content-Type: application/json\r\nContent-Length: \(body.count)\r\n"
+        }
+        request += "\r\n"
+        var data = Data(request.utf8)
+        if let body { data.append(body) }
+        self.requestData = data
+        self.continuation = continuation
+    }
+
+    func start() {
+        connection.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
+            if case .ready = state {
+                self.connection.send(content: self.requestData, completion: .contentProcessed { error in
+                    if let error { self.fail(error) } else { self.receive() }
+                })
+            } else if case .failed(let error) = state {
+                self.fail(error)
+            }
+        }
+        connection.start(queue: .global())
+    }
+
+    func fail(_ error: Error) {
+        lock.lock()
+        guard !finished else { lock.unlock(); return }
+        finished = true
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        connection.cancel()
+        continuation?.resume(throwing: error)
+    }
+
+    private func receive() {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] data, _, isComplete, error in
+            guard let self else { return }
+            if let data { self.buffer.append(data) }
+            if let error { self.fail(error); return }
+            if let body = self.parseResponse() {
+                self.succeed(body)
+            } else if isComplete {
+                self.fail(URLError(.badServerResponse))
+            } else {
+                self.receive()
+            }
+        }
+    }
+
+    private func parseResponse() -> Data? {
+        guard let headerRange = buffer.range(of: Data("\r\n\r\n".utf8)) else { return nil }
+        let header = String(data: buffer[..<headerRange.lowerBound], encoding: .utf8) ?? ""
+        let lines = header.components(separatedBy: "\r\n")
+        guard let statusLine = lines.first, statusLine.contains(" 200 ") else {
+            return nil
+        }
+        var contentLength = 0
+        for line in lines.dropFirst() {
+            if line.lowercased().hasPrefix("content-length:") {
+                contentLength = Int(line.split(separator: ":").dropFirst().joined().trimmingCharacters(in: .whitespaces)) ?? 0
+            }
+        }
+        let bodyStart = headerRange.upperBound
+        guard buffer.count >= bodyStart + contentLength else { return nil }
+        return buffer.subdata(in: bodyStart..<(bodyStart + contentLength))
+    }
+
+    private func succeed(_ body: Data) {
+        lock.lock()
+        guard !finished else { lock.unlock(); return }
+        finished = true
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        connection.cancel()
+        continuation?.resume(returning: body)
     }
 }
 
@@ -197,7 +368,7 @@ struct RerouteMobileApp: App {
     @State private var store: IdeaDockStore?
     @State private var syncController: IdeaSyncController?
     @State private var subscription = SubscriptionManager()
-    @State private var remoteController = RemotePhoneController(containerIdentifier: Bundle.main.object(forInfoDictionaryKey: "FlowCueCloudKitContainer") as? String)
+    @State private var remoteController = LANRemoteController()
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
 
@@ -254,7 +425,7 @@ private enum FlowCueTab: Hashable { case inbox, agents, settings }
 private struct RootTabView: View {
     @Bindable var store: IdeaDockStore
     @Bindable var syncController: IdeaSyncController
-    @Bindable var remoteController: RemotePhoneController
+    @Bindable var remoteController: LANRemoteController
     @Environment(SubscriptionManager.self) private var subscription
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
@@ -576,7 +747,7 @@ private struct IdeaDetailView: View {
 // MARK: - Agents
 
 private struct AgentsView: View {
-    @Bindable var controller: RemotePhoneController
+    @Bindable var controller: LANRemoteController
     @Environment(SubscriptionManager.self) private var subscription
     @State private var showingPaywall = false
 
@@ -586,53 +757,114 @@ private struct AgentsView: View {
                 if !subscription.isPro {
                     ProLockedView(
                         title: "Continue sessions from your phone",
-                        message: "FlowCue Pro connects to your Mac and lets you read the last reply and send the next message — without opening your laptop.",
+                        message: "FlowCue Pro connects directly to your Mac on the same Wi-Fi. Read the last reply and send the next message without opening your laptop.",
                         action: { showingPaywall = true }
                     )
-                } else if controller.threads.isEmpty {
-                    ContentUnavailableView {
-                        Label("No sessions yet", systemImage: "moon.zzz")
-                    } description: {
-                        Text(controller.isLoading ? "Looking for your Mac…" : "On your Mac, open FlowCue and enable “Allow iPhone to continue Codex sessions” in the menu bar. Both devices must use the same iCloud account.")
-                    } actions: {
-                        Button("Refresh") { Task { await controller.refresh() } }
-                    }
+                } else if controller.isConnected {
+                    connectedList
                 } else {
-                    List(controller.threads) { thread in
-                        NavigationLink {
-                            AgentDetailView(controller: controller, thread: thread)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(thread.title).font(.headline).lineLimit(2)
-                                if !thread.lastReply.isEmpty {
-                                    Text(thread.lastReply).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                                }
-                                Text(thread.updatedAt, format: .relative(presentation: .named))
-                                    .font(.caption2).foregroundStyle(.tertiary)
-                            }
-                        }
-                        .listRowBackground(FlowCueTheme.surface)
-                    }
-                    .listStyle(.insetGrouped)
-                    .scrollContentBackground(.hidden)
-                    .background(FlowCueTheme.canvas)
-                    .refreshable { await controller.refresh() }
+                    discoveryList
                 }
             }
             .navigationTitle("Agents")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
-                    Button { Task { await controller.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                    if controller.isConnected {
+                        Button("Disconnect") { controller.disconnect() }
+                    } else {
+                        Button { controller.startDiscovery() } label: { Image(systemName: "arrow.clockwise") }
+                    }
                 }
             }
-            .task { if subscription.isPro { await controller.refresh() } }
+            .onAppear {
+                if subscription.isPro && !controller.isConnected { controller.startDiscovery() }
+            }
+            .onDisappear { controller.stopDiscovery() }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .alert("Connection issue", isPresented: Binding(
+                get: { controller.lastError != nil },
+                set: { if !$0 { controller.lastError = nil } }
+            )) {
+                Button("OK", role: .cancel) { controller.lastError = nil }
+            } message: { Text(controller.lastError ?? "") }
         }
+    }
+
+    private var connectedList: some View {
+        List(controller.threads) { thread in
+            NavigationLink {
+                AgentDetailView(controller: controller, thread: thread)
+            } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(thread.title).font(.headline).lineLimit(2)
+                    if !thread.lastReply.isEmpty {
+                        Text(thread.lastReply).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                    }
+                    Text(thread.updatedAt, format: .relative(presentation: .named))
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+            .listRowBackground(FlowCueTheme.surface)
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(FlowCueTheme.canvas)
+        .refreshable { await controller.refresh() }
+        .overlay {
+            if controller.threads.isEmpty && !controller.isLoading {
+                ContentUnavailableView("No sessions yet", systemImage: "moon.zzz", description: Text("Open a Codex session on your Mac, then pull to refresh."))
+            }
+        }
+    }
+
+    private var discoveryList: some View {
+        List {
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Same Wi-Fi").font(.headline)
+                    Text("On your Mac, choose “Allow iPhone on this network” from the FlowCue menu bar. The pairing code appears there.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    TextField("6-digit pairing code", text: $controller.pairingCode)
+                        .keyboardType(.numberPad)
+                        .textContentType(.oneTimeCode)
+                        .padding(10)
+                        .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 10))
+                }
+                .padding(.vertical, 4)
+            }
+            Section("Macs found") {
+                if controller.discovered.isEmpty {
+                    HStack {
+                        ProgressView()
+                        Text(controller.isScanning ? "Looking for your Mac…" : "No Mac found. Make sure both are on the same Wi-Fi.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                }
+                ForEach(controller.discovered) { mac in
+                    Button {
+                        Task { await controller.connect(to: mac) }
+                    } label: {
+                        HStack {
+                            Image(systemName: "macbook")
+                            Text(mac.name)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
+                        }
+                    }
+                    .disabled(controller.pairingCode.count != 6)
+                }
+            }
+            if !controller.statusMessage.isEmpty {
+                Text(controller.statusMessage).font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(FlowCueTheme.canvas)
     }
 }
 
 private struct AgentDetailView: View {
-    @Bindable var controller: RemotePhoneController
+    @Bindable var controller: LANRemoteController
     let thread: RemoteThreadSnapshot
     @State private var text = ""
     @State private var sending = false
@@ -701,7 +933,7 @@ private struct AgentDetailView: View {
 private struct SettingsView: View {
     @Bindable var store: IdeaDockStore
     @Bindable var syncController: IdeaSyncController
-    @Bindable var remoteController: RemotePhoneController
+    @Bindable var remoteController: LANRemoteController
     let showOnboarding: () -> Void
     @Environment(SubscriptionManager.self) private var subscription
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
