@@ -1166,22 +1166,47 @@ private struct AgentProviderRow: View {
 
 private struct CodexAgentView: View {
     @Bindable var controller: LANRemoteController
+    @State private var expandedProjects: Set<String> = []
+
+    private var projectGroups: [CodexProjectGroup] {
+        let groups = Dictionary(grouping: controller.threads) { thread in
+            let path = thread.projectDirectory?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return path.isEmpty ? "Unfiled" : path
+        }
+        return groups.map { path, threads in
+            CodexProjectGroup(
+                id: path,
+                name: path == "Unfiled" ? "Unfiled" : URL(fileURLWithPath: path).lastPathComponent,
+                path: path,
+                threads: threads.sorted { $0.updatedAt > $1.updatedAt },
+                updatedAt: threads.map(\.updatedAt).max() ?? .distantPast
+            )
+        }.sorted { $0.updatedAt > $1.updatedAt }
+    }
 
     var body: some View {
-        List(controller.threads) { thread in
-            NavigationLink {
-                AgentDetailView(controller: controller, thread: thread)
-            } label: {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(thread.title).font(.headline).lineLimit(2)
-                    if !thread.lastReply.isEmpty {
-                        Text(thread.lastReply).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+        List {
+            ForEach(projectGroups) { group in
+                DisclosureGroup(isExpanded: expansionBinding(group.id)) {
+                    ForEach(group.threads) { thread in
+                        NavigationLink {
+                            AgentDetailView(controller: controller, thread: thread)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(thread.title).font(.headline).lineLimit(2)
+                                if !thread.lastReply.isEmpty {
+                                    Text(thread.lastReply).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                                }
+                                Text(thread.updatedAt, format: .relative(presentation: .named))
+                                    .font(.caption2).foregroundStyle(.tertiary)
+                            }
+                        }
+                        .listRowBackground(FlowCueTheme.surface)
                     }
-                    Text(thread.updatedAt, format: .relative(presentation: .named))
-                        .font(.caption2).foregroundStyle(.tertiary)
+                } label: {
+                    projectLabel(name: group.name, path: group.path, count: group.threads.count)
                 }
             }
-            .listRowBackground(FlowCueTheme.surface)
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -1192,33 +1217,86 @@ private struct CodexAgentView: View {
                 ContentUnavailableView("No sessions yet", systemImage: "moon.zzz", description: Text("Open a Codex session on your Mac, then pull to refresh."))
             }
         }
+        .onAppear {
+            if expandedProjects.isEmpty { expandedProjects = Set(projectGroups.map(\.id)) }
+        }
         .navigationTitle("Codex")
         .navigationBarTitleDisplayMode(.inline)
     }
+
+    private func projectLabel(name: String, path: String, count: Int) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "folder.fill")
+                .foregroundStyle(FlowCueTheme.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.headline).lineLimit(1)
+                if path != "Unfiled" {
+                    Text(path).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer()
+            Text("\(count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func expansionBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedProjects.contains(id) },
+            set: { expandedProjects = $0 ? expandedProjects.union([id]) : expandedProjects.subtracting([id]) }
+        )
+    }
+}
+
+private struct CodexProjectGroup: Identifiable {
+    let id: String
+    let name: String
+    let path: String
+    let threads: [RemoteThreadSnapshot]
+    let updatedAt: Date
 }
 
 private struct DSHAgentView: View {
     @Bindable var controller: LANRemoteController
+    @State private var expandedProjects: Set<String> = []
+
+    private var projectGroups: [DSHProjectGroup] {
+        let groups = Dictionary(grouping: controller.dshSessions) { session in
+            let path = session.projectDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+            return path.isEmpty ? "Unfiled" : path
+        }
+        return groups.map { path, sessions in
+            DSHProjectGroup(
+                id: path,
+                name: path == "Unfiled" ? "Unfiled" : URL(fileURLWithPath: path).lastPathComponent,
+                path: path,
+                sessions: sessions.sorted { $0.updatedAt > $1.updatedAt },
+                updatedAt: sessions.map(\.updatedAt).max() ?? .distantPast
+            )
+        }.sorted { $0.updatedAt > $1.updatedAt }
+    }
 
     var body: some View {
         List {
-            if !controller.dshSessions.isEmpty {
-                Section("Sessions") {
-                    ForEach(controller.dshSessions) { session in
-                        NavigationLink {
-                            DSHSessionDetailView(controller: controller, session: session)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(session.title).font(.headline).lineLimit(1)
-                                HStack {
-                                    Text(session.projectDirectory).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                                    Spacer()
-                                    Text(session.updatedAt, format: .relative(presentation: .named))
-                                        .font(.caption2).foregroundStyle(.tertiary)
+            if !projectGroups.isEmpty {
+                Section("Projects") {
+                    ForEach(projectGroups) { group in
+                        DisclosureGroup(isExpanded: expansionBinding(group.id)) {
+                            ForEach(group.sessions) { session in
+                                NavigationLink {
+                                    DSHSessionDetailView(controller: controller, session: session)
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(session.title).font(.headline).lineLimit(1)
+                                        Text(session.updatedAt, format: .relative(presentation: .named))
+                                            .font(.caption2).foregroundStyle(.tertiary)
+                                    }
                                 }
+                                .listRowBackground(FlowCueTheme.surface)
                             }
+                        } label: {
+                            projectLabel(name: group.name, path: group.path, count: group.sessions.count)
                         }
-                        .listRowBackground(FlowCueTheme.surface)
                     }
                 }
             }
@@ -1253,7 +1331,41 @@ private struct DSHAgentView: View {
         .refreshable { await controller.refresh() }
         .navigationTitle("DSH")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            if expandedProjects.isEmpty { expandedProjects = Set(projectGroups.map(\.id)) }
+        }
     }
+
+    private func projectLabel(name: String, path: String, count: Int) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "folder.fill")
+                .foregroundStyle(FlowCueTheme.mint)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.headline).lineLimit(1)
+                if path != "Unfiled" {
+                    Text(path).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
+            }
+            Spacer()
+            Text("\(count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 2)
+    }
+
+    private func expansionBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { expandedProjects.contains(id) },
+            set: { expandedProjects = $0 ? expandedProjects.union([id]) : expandedProjects.subtracting([id]) }
+        )
+    }
+}
+
+private struct DSHProjectGroup: Identifiable {
+    let id: String
+    let name: String
+    let path: String
+    let sessions: [DSHSessionSnapshot]
+    let updatedAt: Date
 }
 
 private struct DSHSessionDetailView: View {
