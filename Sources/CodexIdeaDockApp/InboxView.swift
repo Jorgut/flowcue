@@ -68,6 +68,7 @@ struct InboxView: View {
     @State private var isMailTriagePresented = false
     @State private var sourceFilter: RouteFilter = .all
     @State private var targetFilter: RouteFilter = .all
+    @State private var isRemoteStatusPresented = false
 
     private var visibleCaptures: [CaptureItem] {
         store.filteredCaptures.filter { capture in
@@ -218,6 +219,9 @@ struct InboxView: View {
             MailTriageView(store: store)
                 .frame(minWidth: 720, minHeight: 700)
         }
+        .sheet(isPresented: $isRemoteStatusPresented) {
+            RemoteStatusSheet(pairingCode: remotePairingCode ?? "")
+        }
         .onChange(of: selectedCaptureID) { _, value in
             if value != nil { presentation.isComposing = false }
         }
@@ -260,17 +264,28 @@ struct InboxView: View {
                 }
                 Spacer()
                 if remotePairingEnabled, let code = remotePairingCode {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(L10n.language == .mandarin ? "iPhone 远程" : "iPhone remote")
-                            .font(.caption2)
-                            .foregroundStyle(.white.opacity(0.6))
-                        Text(code)
-                            .font(.system(.body, design: .monospaced, weight: .semibold))
-                            .foregroundStyle(FlowCueDesktopTheme.mint)
+                    Button {
+                        isRemoteStatusPresented = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Text(L10n.language == .mandarin ? "iPhone 远程" : "iPhone remote")
+                                    .font(.caption2)
+                                    .foregroundStyle(.white.opacity(0.6))
+                                Text(code)
+                                    .font(.system(.body, design: .monospaced, weight: .semibold))
+                                    .foregroundStyle(FlowCueDesktopTheme.mint)
+                            }
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.35))
+                        }
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+                    .buttonStyle(.plain)
+                    .help(L10n.language == .mandarin ? "查看远程状态" : "View remote status")
                 }
                 Button { presentation.compose() } label: {
                     Label(L10n.language == .mandarin ? "新想法" : "New idea", systemImage: "square.and.pencil")
@@ -474,6 +489,147 @@ struct InboxView: View {
             ?? L10n.text("无项目目录")
         let availability = context.isAvailable ? "" : L10n.text(" · 已失效")
         return "\(fallbackTitle) — \(projectLabel) · \(threadID.prefix(8))\(availability)"
+    }
+}
+
+private struct RemoteStatusSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let pairingCode: String
+    @State private var approvals: [DSHRemoteApproval] = []
+    @State private var sessions: [DSHSessionSnapshot] = []
+    @State private var bridgeInstalled = false
+    @State private var loading = true
+    @State private var error: String?
+
+    private let bridge = DSHBridgeClient()
+    private let sessionsReader = DSHSessionReader()
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    HStack(spacing: 14) {
+                        Image(systemName: "macbook.and.iphone")
+                            .font(.system(size: 28, weight: .semibold))
+                            .foregroundStyle(FlowCueDesktopTheme.mint)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(L10n.language == .mandarin ? "同一 Wi-Fi 远程" : "Same-Wi-Fi remote")
+                                .font(.headline)
+                            Text(L10n.language == .mandarin ? "iPhone 配对码" : "iPhone pairing code")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(pairingCode)
+                            .font(.system(.title3, design: .monospaced, weight: .semibold))
+                            .foregroundStyle(FlowCueDesktopTheme.accent)
+                    }
+                    .padding(16)
+                    .background(FlowCueDesktopTheme.card.opacity(0.65), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    GroupBox(L10n.language == .mandarin ? "DSH 待审批" : "DSH approvals") {
+                        if loading {
+                            ProgressView().frame(maxWidth: .infinity)
+                        } else if !bridgeInstalled {
+                            Label(L10n.language == .mandarin ? "DSH 插件未安装" : "DSH bridge plugin not installed", systemImage: "exclamationmark.triangle")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        } else if approvals.isEmpty {
+                            Text(L10n.language == .mandarin ? "没有待审批请求。" : "No pending DSH approvals.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        } else {
+                            VStack(alignment: .leading, spacing: 12) {
+                                ForEach(approvals) { approval in
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text(approval.title).font(.subheadline.weight(.semibold))
+                                        if let tool = approval.toolName {
+                                            Text(tool).font(.caption.monospaced()).foregroundStyle(.secondary)
+                                        }
+                                        HStack {
+                                            Button(L10n.language == .mandarin ? "拒绝" : "Reject", role: .destructive) {
+                                                Task { await decide(approval, "rejected") }
+                                            }
+                                            Button(L10n.language == .mandarin ? "允许一次" : "Allow once") {
+                                                Task { await decide(approval, "allowed-once") }
+                                            }
+                                            .buttonStyle(.borderedProminent)
+                                            .tint(FlowCueDesktopTheme.accent)
+                                        }
+                                    }
+                                    .padding(12)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .background(FlowCueDesktopTheme.canvas.opacity(0.5), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                                }
+                            }
+                        }
+                    }
+
+                    GroupBox(L10n.language == .mandarin ? "DSH 会话" : "DSH sessions") {
+                        if sessions.isEmpty {
+                            Text(L10n.language == .mandarin ? "没有找到 DSH 会话。" : "No DSH sessions found.")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        } else {
+                            VStack(alignment: .leading, spacing: 8) {
+                                ForEach(sessions.prefix(8)) { session in
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(session.title).font(.subheadline.weight(.semibold)).lineLimit(1)
+                                            Text(session.projectDirectory).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                        }
+                                        Spacer()
+                                        Text(session.updatedAt, format: .relative(presentation: .named))
+                                            .font(.caption2).foregroundStyle(.tertiary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if let error {
+                        Text(error).font(.footnote).foregroundStyle(.orange)
+                    }
+
+                    HStack {
+                        Text(L10n.language == .mandarin ? "iPhone 与 Mac 连接后，DSH 审批也会出现在手机 Agents 页。" : "Once paired, DSH approvals also appear in FlowCue on iPhone.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                }
+                .padding(20)
+            }
+            .background(FlowCueDesktopTheme.canvas)
+            .navigationTitle(L10n.language == .mandarin ? "远程与 DSH" : "Remote & DSH")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(L10n.text("关闭")) { dismiss() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button { Task { await refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                }
+            }
+            .task { await refresh() }
+        }
+        .frame(minWidth: 560, minHeight: 520)
+    }
+
+    private func refresh() async {
+        loading = true
+        bridgeInstalled = bridge.isConfigured
+        do {
+            approvals = try await bridge.pending()
+        } catch {
+            approvals = []
+            self.error = error.localizedDescription
+        }
+        sessions = sessionsReader.sessions(limit: 8)
+        loading = false
+    }
+
+    private func decide(_ approval: DSHRemoteApproval, _ decision: String) async {
+        do {
+            try await bridge.decide(id: approval.id, decision: decision)
+            approvals.removeAll { $0.id == approval.id }
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 }
 
