@@ -92,6 +92,7 @@ struct InboxView: View {
     var body: some View {
         VStack(spacing: 0) {
             brandHeader
+                .fixedSize(horizontal: false, vertical: true)
             InboxToolbar(
                 store: store,
                 displayedCount: visibleCaptures.count,
@@ -105,10 +106,11 @@ struct InboxView: View {
                 store.undoArchive(lastArchivedCaptureID)
                 self.lastArchivedCaptureID = nil
             }
+            .fixedSize(horizontal: false, vertical: true)
 
             Divider()
 
-            NavigationSplitView {
+            HSplitView {
                 InboxCaptureList(
                     captures: visibleCaptures,
                     selection: $selectedCaptureID,
@@ -117,8 +119,8 @@ struct InboxView: View {
                     onRestore: restoreCapture,
                     onCopyAndOpenCodex: copyAndOpenCodex
                 )
-                .navigationSplitViewColumnWidth(min: 250, ideal: 300, max: 380)
-            } detail: {
+                .frame(minWidth: 250, idealWidth: 300, maxWidth: 380)
+                Group {
                 if presentation.isComposing {
                     VStack(alignment: .leading, spacing: 16) {
                         VStack(alignment: .leading, spacing: 4) {
@@ -190,8 +192,8 @@ struct InboxView: View {
                         )
                     )
                 }
+                }
             }
-            .navigationSplitViewStyle(.balanced)
 
             if let message = store.notification?.message {
                 Divider()
@@ -210,7 +212,7 @@ struct InboxView: View {
                 .accessibilityElement(children: .combine)
             }
         }
-        .frame(minWidth: 760, minHeight: 500)
+        .frame(minWidth: 820, minHeight: 560)
         .background(FlowCueDesktopTheme.canvas)
         .sheet(isPresented: $isMailTriagePresented) {
             MailTriageView(store: store)
@@ -249,7 +251,7 @@ struct InboxView: View {
                             .font(.system(size: 24, weight: .semibold))
                             .foregroundStyle(FlowCueDesktopTheme.mint)
                         Text("FlowCue")
-                            .font(.system(size: 30, weight: .bold, design: .rounded))
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
                             .foregroundStyle(.white)
                     }
                     Text(L10n.language == .mandarin ? "记录想法，交给你的 coding agent。" : "Capture ideas. Continue with your coding agents.")
@@ -320,11 +322,11 @@ struct InboxView: View {
                 .foregroundStyle(.white.opacity(0.6))
             }
         }
-        .padding(20)
+        .padding(16)
         .background(FlowCueDesktopTheme.headerGradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .padding(.horizontal, 20)
-        .padding(.top, 14)
-        .padding(.bottom, 4)
+        .padding(.horizontal, 16)
+        .padding(.top, 10)
+        .padding(.bottom, 2)
     }
 
     private var remotePairingEnabled: Bool {
@@ -352,7 +354,7 @@ struct InboxView: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.white.opacity(0.85))
                 Spacer()
-                Text("\(Int(window.remainingPercent))%")
+                Text("\(Int(window.usedPercent))% used")
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(FlowCueDesktopTheme.mint)
             }
@@ -680,96 +682,92 @@ private struct InboxToolbar: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
-            HStack(spacing: 10) {
-                Image(systemName: "tray.full")
-                    .font(.title3)
-                    .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+        HStack(spacing: 10) {
+            Image(systemName: "tray.full")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
 
-                Text(L10n.text("想法收件箱"))
-                    .font(.headline)
+            Text(L10n.text("想法收件箱"))
+                .font(.headline)
 
-                Text("\(displayedCount)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 2)
-                    .background(.quaternary, in: .capsule)
-                    .accessibilityLabel("\(displayedCount) " + L10n.text("条想法"))
+            Text("\(displayedCount)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(.quaternary, in: .capsule)
+                .accessibilityLabel("\(displayedCount) " + L10n.text("条想法"))
 
-                Spacer()
+            Spacer(minLength: 8)
 
-                TextField(
-                    AppDistribution.supportsDirectQueue ? L10n.text("搜索内容、来源或目标") : L10n.text("搜索内容"),
-                    text: $store.searchText
-                )
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 250)
-                    .accessibilityLabel(L10n.text("搜索想法"))
+            TextField(
+                L10n.text("搜索想法"),
+                text: $store.searchText
+            )
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 200)
+                .accessibilityLabel(L10n.text("搜索想法"))
 
-                Button(action: onUndoArchive) {
-                    Label(L10n.text("撤销归档"), systemImage: "arrow.uturn.backward")
-                }
-                .disabled(!canUndoArchive || store.isQueueing)
-                .help(L10n.text("撤销最近一次归档"))
-                .accessibilityLabel(L10n.text("撤销最近一次归档"))
+            filterMenu
 
-                if AppDistribution.supportsDirectQueue {
-                    Button {
-                        Task { @MainActor in
-                            await store.refreshThreads()
-                        }
-                    } label: {
-                        if store.isLoadingContexts {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                        }
-                    }
-                    .disabled(store.isLoadingContexts || store.isQueueing)
-                    .help(L10n.text("刷新 Codex 任务"))
-                    .accessibilityLabel(store.isLoadingContexts ? L10n.text("正在刷新 Codex 任务") : L10n.text("刷新 Codex 任务"))
-                }
+            Button(action: onUndoArchive) {
+                Label(L10n.text("撤销归档"), systemImage: "arrow.uturn.backward")
             }
+            .disabled(!canUndoArchive || store.isQueueing)
+            .help(L10n.text("撤销最近一次归档"))
+            .accessibilityLabel(L10n.text("撤销最近一次归档"))
 
-            HStack(spacing: 10) {
-                Text(L10n.text("筛选"))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if AppDistribution.supportsDirectQueue {
-                    RouteFilterPicker(
-                        label: L10n.text("来源"),
-                        selection: $sourceFilter,
-                        options: sourceFilterOptions
-                    )
-
-                    RouteFilterPicker(
-                        label: L10n.text("目标"),
-                        selection: $targetFilter,
-                        options: targetFilterOptions
-                    )
-                }
-
-                Picker(L10n.text("状态"), selection: $store.statusFilter) {
-                    Text(L10n.text("全部状态"))
-                        .tag(nil as CaptureStatus?)
-                    ForEach(availableStatuses, id: \.self) { status in
-                        Text(status.displayName)
-                            .tag(Optional(status))
+            if AppDistribution.supportsDirectQueue {
+                Button {
+                    Task { @MainActor in
+                        await store.refreshThreads()
+                    }
+                } label: {
+                    if store.isLoadingContexts {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
                     }
                 }
-                .labelsHidden()
-                .frame(width: 140)
-                .accessibilityLabel(L10n.text("按状态筛选"))
-
-                Spacer()
+                .disabled(store.isLoadingContexts || store.isQueueing)
+                .help(L10n.text("刷新 Codex 任务"))
+                .accessibilityLabel(store.isLoadingContexts ? L10n.text("正在刷新 Codex 任务") : L10n.text("刷新 Codex 任务"))
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.vertical, 8)
+        .background(FlowCueDesktopTheme.canvas)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var filterMenu: some View {
+        Menu {
+            if AppDistribution.supportsDirectQueue {
+                Section(L10n.text("来源")) {
+                    Button(L10n.text("全部") + " " + L10n.text("来源")) { sourceFilter = .all }
+                    ForEach(sourceFilterOptions) { option in
+                        Button(option.title) { sourceFilter = option.filter }
+                    }
+                }
+                Section(L10n.text("目标")) {
+                    Button(L10n.text("全部") + " " + L10n.text("目标")) { targetFilter = .all }
+                    ForEach(targetFilterOptions) { option in
+                        Button(option.title) { targetFilter = option.filter }
+                    }
+                }
+            }
+            Section(L10n.text("状态")) {
+                Button(L10n.text("全部状态")) { store.statusFilter = nil }
+                ForEach(availableStatuses, id: \.self) { status in
+                    Button(status.displayName) { store.statusFilter = status }
+                }
+            }
+        } label: {
+            Label(L10n.text("筛选"), systemImage: "line.3.horizontal.decrease.circle")
+        }
+        .help(L10n.text("筛选想法"))
+        .accessibilityLabel(L10n.text("筛选想法"))
     }
 }
 
