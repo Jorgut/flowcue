@@ -53,7 +53,7 @@
 		<string>_flowcue._tcp</string>
 	</array>
 	<key>FlowCueCloudKitContainer</key>
-	<string>iCloud.com.archintera.FlowCue</string>
+	<string>iCloud.com.altn.reroute.ideainbox</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
