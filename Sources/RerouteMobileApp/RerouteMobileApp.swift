@@ -151,6 +151,11 @@ struct DSHRemoteDecision: Codable {
     let decision: String
 }
 
+struct DSHRemoteApprovalsResponse: Codable {
+    let available: Bool
+    let pending: [DSHRemoteApproval]
+}
+
 struct DiscoveredMac: Identifiable {
     let id: String
     let name: String
@@ -164,6 +169,7 @@ final class LANRemoteController {
     private(set) var selected: DiscoveredMac?
     private(set) var threads: [RemoteThreadSnapshot] = []
     private(set) var dshApprovals: [DSHRemoteApproval] = []
+    private(set) var dshBridgeAvailable = false
     private(set) var isLoading = false
     private(set) var isScanning = false
     var pairingCode = ""
@@ -280,6 +286,7 @@ final class LANRemoteController {
         selected = nil
         threads = []
         dshApprovals = []
+        dshBridgeAvailable = false
         statusMessage = ""
         startDiscovery()
     }
@@ -303,9 +310,12 @@ final class LANRemoteController {
         let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
             let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/approvals", token: code, body: nil)
-            dshApprovals = try JSONDecoder().decode([DSHRemoteApproval].self, from: data)
+            let response = try JSONDecoder().decode(DSHRemoteApprovalsResponse.self, from: data)
+            dshBridgeAvailable = response.available
+            dshApprovals = response.pending
         } catch {
             // The DSH bridge is optional; an absent plugin must not break Codex.
+            dshBridgeAvailable = false
             dshApprovals = []
         }
     }
@@ -865,7 +875,7 @@ private struct AgentsView: View {
                         action: { showingPaywall = true }
                     )
                 } else if controller.isConnected {
-                    connectedList
+                    AgentHubView(controller: controller)
                 } else {
                     discoveryList
                 }
@@ -899,50 +909,6 @@ private struct AgentsView: View {
             )) {
                 Button("OK", role: .cancel) { controller.lastError = nil }
             } message: { Text(controller.lastError ?? "") }
-        }
-    }
-
-    private var connectedList: some View {
-        List {
-            if !controller.dshApprovals.isEmpty {
-                Section {
-                    ForEach(controller.dshApprovals) { approval in
-                        DSHApprovalCard(approval: approval) { decision in
-                            _ = await controller.decideDSH(approval, decision: decision)
-                        }
-                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-                        .listRowBackground(FlowCueTheme.canvas)
-                    }
-                } header: {
-                    Label("DSH approvals", systemImage: "checkmark.shield")
-                } footer: {
-                    Text("Approve or reject DSH tool calls from your phone. These requests stay pending until you answer.")
-                }
-            }
-            ForEach(controller.threads) { thread in
-            NavigationLink {
-                AgentDetailView(controller: controller, thread: thread)
-            } label: {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(thread.title).font(.headline).lineLimit(2)
-                    if !thread.lastReply.isEmpty {
-                        Text(thread.lastReply).font(.caption).foregroundStyle(.secondary).lineLimit(3)
-                    }
-                    Text(thread.updatedAt, format: .relative(presentation: .named))
-                        .font(.caption2).foregroundStyle(.tertiary)
-                }
-            }
-            .listRowBackground(FlowCueTheme.surface)
-            }
-        }
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .background(FlowCueTheme.canvas)
-        .refreshable { await controller.refresh() }
-        .overlay {
-            if controller.threads.isEmpty && !controller.isLoading {
-                ContentUnavailableView("No sessions yet", systemImage: "moon.zzz", description: Text("Open a Codex session on your Mac, then pull to refresh."))
-            }
         }
     }
 
@@ -1056,6 +1022,158 @@ private struct DSHApprovalCard: View {
         }
         .padding(14)
         .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+    }
+}
+
+private struct AgentHubView: View {
+    @Bindable var controller: LANRemoteController
+
+    var body: some View {
+        List {
+            Section {
+                HStack(spacing: 12) {
+                    Image(systemName: "macbook.and.iphone")
+                        .font(.title3)
+                        .foregroundStyle(FlowCueTheme.accent)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Connected to Mac").font(.subheadline.weight(.semibold))
+                        Text(controller.statusMessage.isEmpty ? "Same Wi-Fi" : controller.statusMessage)
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Circle().fill(FlowCueTheme.mint).frame(width: 8, height: 8)
+                }
+                .padding(.vertical, 4)
+            }
+
+            Section("Agents") {
+                NavigationLink {
+                    CodexAgentView(controller: controller)
+                } label: {
+                    AgentProviderRow(
+                        icon: "chevron.left.forwardslash.chevron.right",
+                        iconColor: FlowCueTheme.accent,
+                        title: "Codex",
+                        subtitle: controller.threads.isEmpty ? "No sessions yet" : "\(controller.threads.count) session\(controller.threads.count == 1 ? "" : "s")"
+                    )
+                }
+                NavigationLink {
+                    DSHAgentView(controller: controller)
+                } label: {
+                    AgentProviderRow(
+                        icon: "checkmark.shield.fill",
+                        iconColor: FlowCueTheme.mint,
+                        title: "DSH",
+                        subtitle: controller.dshApprovals.isEmpty
+                            ? (controller.dshBridgeAvailable ? "No pending approvals" : "Bridge not installed")
+                            : "\(controller.dshApprovals.count) pending approval\(controller.dshApprovals.count == 1 ? "" : "s")"
+                    )
+                }
+            }
+
+            Section {
+                Text("Choose an agent to see its sessions or approvals. Both use the same secure Wi-Fi connection to your Mac.")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(FlowCueTheme.canvas)
+        .navigationTitle("Agents")
+        .refreshable { await controller.refresh() }
+    }
+}
+
+private struct AgentProviderRow: View {
+    let icon: String
+    let iconColor: Color
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.title3)
+                .foregroundStyle(iconColor)
+                .frame(width: 30)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.headline)
+                Text(subtitle).font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+}
+
+private struct CodexAgentView: View {
+    @Bindable var controller: LANRemoteController
+
+    var body: some View {
+        List(controller.threads) { thread in
+            NavigationLink {
+                AgentDetailView(controller: controller, thread: thread)
+            } label: {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(thread.title).font(.headline).lineLimit(2)
+                    if !thread.lastReply.isEmpty {
+                        Text(thread.lastReply).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                    }
+                    Text(thread.updatedAt, format: .relative(presentation: .named))
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+            }
+            .listRowBackground(FlowCueTheme.surface)
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(FlowCueTheme.canvas)
+        .refreshable { await controller.refresh() }
+        .overlay {
+            if controller.threads.isEmpty && !controller.isLoading {
+                ContentUnavailableView("No sessions yet", systemImage: "moon.zzz", description: Text("Open a Codex session on your Mac, then pull to refresh."))
+            }
+        }
+        .navigationTitle("Codex")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct DSHAgentView: View {
+    @Bindable var controller: LANRemoteController
+
+    var body: some View {
+        List {
+            Section {
+                if controller.dshApprovals.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Label("No pending approvals", systemImage: "checkmark.shield.fill")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(FlowCueTheme.mint)
+                        Text("Switch DSH to Ask and run a command that needs confirmation. The request will appear here for one-tap approval.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    .padding(.vertical, 6)
+                } else {
+                    ForEach(controller.dshApprovals) { approval in
+                        DSHApprovalCard(approval: approval) { decision in
+                            _ = await controller.decideDSH(approval, decision: decision)
+                        }
+                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                        .listRowBackground(FlowCueTheme.canvas)
+                    }
+                }
+            } header: {
+                Label("Approvals", systemImage: "checkmark.shield")
+            } footer: {
+                Text("DSH is the DeepSeek Harness agent on your Mac. Approvals stay pending until you answer here or on the desktop.")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
+        .background(FlowCueTheme.canvas)
+        .refreshable { await controller.refresh() }
+        .navigationTitle("DSH")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

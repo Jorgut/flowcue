@@ -113,13 +113,18 @@ public final class LANRemoteServer {
             }
             return Self.response(status: 200, body: try JSONEncoder().encode(snapshots))
         case ("GET", "/v1/dsh/approvals"):
+            struct Response: Encodable {
+                let available: Bool
+                let pending: [DSHRemoteApproval]
+            }
+            guard dshBridge.isConfigured else {
+                return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: false, pending: [])))
+            }
             do {
                 let approvals = try await dshBridge.pending()
-                return Self.response(status: 200, body: try JSONEncoder().encode(approvals))
-            } catch DSHBridgeError.notInstalled {
-                return Self.response(status: 200, body: Data("[]".utf8))
+                return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: true, pending: approvals)))
             } catch {
-                return Self.response(status: 503, body: Data("{}".utf8))
+                return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: true, pending: [])))
             }
         case ("POST", "/v1/dsh/decide"):
             let decision = try JSONDecoder().decode(DSHRemoteDecision.self, from: request.body)
