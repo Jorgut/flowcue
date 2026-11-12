@@ -1637,6 +1637,11 @@ final class VoiceDictation {
             request.shouldReportPartialResults = true
             let input = engine.inputNode
             let format = input.inputFormat(forBus: 0)
+            guard format.channelCount > 0, format.sampleRate > 0 else {
+                self.error = "No microphone input is available."
+                try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+                return
+            }
             input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
                 request.append(buffer)
             }

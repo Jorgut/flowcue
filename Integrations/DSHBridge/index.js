@@ -6,7 +6,7 @@
  * the paired iPhone. The bridge never binds beyond 127.0.0.1 and requires a
  * per-install bearer token stored in ~/.flowcue/dsh-bridge.json.
  */
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -88,8 +88,10 @@ export function apply(ctx) {
           ?? ctx.agents.get(body.sessionId);
         if (!agent) return json(res, 409, { error: "DSH session is not live; open it in DSH first" });
         await agent.followup({
+          id: randomUUID(),
+          role: "user",
           content: [{ type: "text", text: body.text.trim() }],
-          source: { kind: "user" },
+          source: { kind: "user", rpcId: randomUUID() },
         });
         return json(res, 200, { ok: true });
       }
