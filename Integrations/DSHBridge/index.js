@@ -105,7 +105,7 @@ export function apply(ctx) {
     yield ctx.on("approval/request", async (request, next) => {
       if (closed) return next();
       const id = randomBytes(12).toString("hex");
-      const decision = await new Promise((resolve) => {
+      const bridged = new Promise((resolve) => {
         pending.set(id, { request, resolve, createdAt: Date.now() });
         request.signal?.addEventListener?.("abort", () => {
           if (!pending.has(id)) return;
@@ -113,7 +113,15 @@ export function apply(ctx) {
           resolve("cancelled");
         }, { once: true });
       });
-      return decision;
+      // Keep the desktop approval path alive: if the normal DSH answerer
+      // resolves first, stop waiting for the phone. If it reports unavailable,
+      // wait for the bridge so a phone-only setup still works.
+      const downstream = next().then((outcome) => {
+        if (outcome !== "unavailable") pending.delete(id);
+        return outcome;
+      }, () => "unavailable");
+      const first = await Promise.race([bridged, downstream]);
+      return first === "unavailable" ? await bridged : first;
     });
 
     yield async () => {
