@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "FlowCue DSH bridge",
+    "description": "Sends pending DeepSeek Harness approval requests to the paired FlowCue iPhone and returns the decision."
+  }
+}

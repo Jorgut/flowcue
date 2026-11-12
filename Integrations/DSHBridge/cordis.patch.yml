@@ -1,0 +1,4 @@
+- insert:
+    - id: flowcue-dsh-bridge
+      name: flowcue-dsh-bridge
+      config: {}
