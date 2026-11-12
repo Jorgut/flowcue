@@ -278,13 +278,20 @@ struct InboxView: View {
                 .buttonStyle(.borderedProminent)
                 .tint(FlowCueDesktopTheme.accent)
                 .keyboardShortcut("n", modifiers: .command)
-                Button {
-                    isMailTriagePresented = true
+                Menu {
+                    Section(L10n.text("实验功能")) {
+                        Button {
+                            isMailTriagePresented = true
+                        } label: {
+                            Label(L10n.text("从邮件提取待办"), systemImage: "envelope")
+                        }
+                    }
                 } label: {
-                    Label(L10n.text("邮件分诊"), systemImage: "envelope")
+                    Label(L10n.text("更多"), systemImage: "ellipsis")
                 }
-                .buttonStyle(.bordered)
-                .tint(.white)
+                .menuStyle(.borderlessButton)
+                .foregroundStyle(.white)
+                .accessibilityLabel(L10n.text("更多"))
             }
 
             if let usage {
@@ -533,20 +540,20 @@ private struct MailTriageView: View {
                         }
                     }
 
-                    Text(L10n.text("邮件内容由你手动粘贴。复制指令后，请自行决定是否把邮件交给外部 AI；Reroute 不读取邮箱，也不会自动发送邮件。"))
+                    Text(L10n.text("邮件内容由你手动粘贴。复制指令后，请自行决定是否把邮件交给外部 AI；FlowCue 不读取邮箱，也不会自动发送邮件。"))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .padding(20)
             }
-            .navigationTitle(L10n.text("邮件分诊"))
+            .navigationTitle(L10n.text("从邮件提取待办"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(L10n.text("关闭")) { dismiss() }
                 }
             }
-            .alert(L10n.text("邮件分诊"), isPresented: isAlertPresented) {
+            .alert(L10n.text("从邮件提取待办"), isPresented: isAlertPresented) {
                 Button(L10n.text("关闭"), role: .cancel) { alertMessage = nil }
             } message: {
                 Text(alertMessage ?? "")
