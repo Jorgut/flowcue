@@ -17,12 +17,15 @@ paired iPhone.
 
 ## Install (after review)
 
+Run from the repository:
+
 ```bash
-dsh plugin --profile desktop add /path/to/FlowCue/Integrations/DSHBridge
+Scripts/install-dsh-bridge.sh desktop
 ```
 
-Then add the plugin to the desktop profile patch and restart DSH. Do not install
-this on a profile you are not prepared to restart.
+This installs the local package into the profile, adds the profile patch entry,
+and asks you to quit and reopen DeepSeek Harness. Do not install this on a
+profile you are not prepared to restart.
 
 ## Status
 
