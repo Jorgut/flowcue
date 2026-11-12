@@ -1265,6 +1265,7 @@ private struct DSHSessionDetailView: View {
     @State private var sending = false
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -1308,6 +1309,19 @@ private struct DSHSessionDetailView: View {
             loading = true
             messages = await controller.dshMessages(for: session)
             loading = false
+            await scrollToBottom(proxy)
+        }
+        .onChange(of: messages.count) { _, _ in
+            Task { await scrollToBottom(proxy) }
+        }
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) async {
+        guard let last = messages.last else { return }
+        try? await Task.sleep(for: .milliseconds(80))
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo(last.id, anchor: .bottom)
         }
     }
 }
@@ -1322,6 +1336,7 @@ private struct AgentDetailView: View {
     @FocusState private var focused: Bool
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 6) {
@@ -1354,6 +1369,7 @@ private struct AgentDetailView: View {
                     } else {
                         ForEach(messages) { message in
                             ConversationBubble(message: message)
+                                .id(message.id)
                         }
                     }
                 }
@@ -1384,6 +1400,19 @@ private struct AgentDetailView: View {
             loadingMessages = true
             messages = await controller.messages(for: thread)
             loadingMessages = false
+            await scrollToBottom(proxy)
+        }
+        .onChange(of: messages.count) { _, _ in
+            Task { await scrollToBottom(proxy) }
+        }
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) async {
+        guard let last = messages.last else { return }
+        try? await Task.sleep(for: .milliseconds(80))
+        withAnimation(.easeOut(duration: 0.2)) {
+            proxy.scrollTo(last.id, anchor: .bottom)
         }
     }
 }
