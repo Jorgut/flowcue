@@ -135,6 +135,22 @@ final class SubscriptionManager {
 
 // MARK: - LAN remote continuation
 
+struct DSHRemoteApproval: Codable, Identifiable, Hashable {
+    let id: String
+    let toolName: String?
+    let callId: String?
+    let reason: String?
+    let displayReason: String?
+    let createdAt: String?
+
+    var title: String { displayReason ?? reason ?? toolName ?? "DSH approval" }
+}
+
+struct DSHRemoteDecision: Codable {
+    let id: String
+    let decision: String
+}
+
 struct DiscoveredMac: Identifiable {
     let id: String
     let name: String
@@ -147,6 +163,7 @@ final class LANRemoteController {
     private(set) var discovered: [DiscoveredMac] = []
     private(set) var selected: DiscoveredMac?
     private(set) var threads: [RemoteThreadSnapshot] = []
+    private(set) var dshApprovals: [DSHRemoteApproval] = []
     private(set) var isLoading = false
     private(set) var isScanning = false
     var pairingCode = ""
@@ -251,6 +268,7 @@ final class LANRemoteController {
             let snapshots = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data)
             selected = DiscoveredMac(id: displayName, name: displayName, endpoint: endpoint)
             threads = snapshots.sorted { $0.updatedAt > $1.updatedAt }
+            await refreshDSHApprovals()
             statusMessage = threads.isEmpty ? "Connected. No sessions are available yet." : "Connected."
             stopDiscovery()
         } catch {
@@ -261,6 +279,7 @@ final class LANRemoteController {
     func disconnect() {
         selected = nil
         threads = []
+        dshApprovals = []
         statusMessage = ""
         startDiscovery()
     }
@@ -273,8 +292,38 @@ final class LANRemoteController {
         do {
             let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
             threads = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data).sorted { $0.updatedAt > $1.updatedAt }
+            await refreshDSHApprovals()
         } catch {
             lastError = "Connection lost. Make sure the Mac app is still running on the same Wi-Fi."
+        }
+    }
+
+    private func refreshDSHApprovals() async {
+        guard let selected else { return }
+        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/approvals", token: code, body: nil)
+            dshApprovals = try JSONDecoder().decode([DSHRemoteApproval].self, from: data)
+        } catch {
+            // The DSH bridge is optional; an absent plugin must not break Codex.
+            dshApprovals = []
+        }
+    }
+
+    @discardableResult
+    func decideDSH(_ approval: DSHRemoteApproval, decision: String) async -> Bool {
+        guard let selected else { return false }
+        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        do {
+            let body = try JSONEncoder().encode(DSHRemoteDecision(id: approval.id, decision: decision))
+            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/decide", token: code, body: body)
+            dshApprovals.removeAll { $0.id == approval.id }
+            statusMessage = decision == "allowed-once" ? "DSH approved." : "DSH rejected."
+            return true
+        } catch {
+            lastError = "DSH approval expired or the bridge is unavailable."
+            await refreshDSHApprovals()
+            return false
         }
     }
 
@@ -854,7 +903,23 @@ private struct AgentsView: View {
     }
 
     private var connectedList: some View {
-        List(controller.threads) { thread in
+        List {
+            if !controller.dshApprovals.isEmpty {
+                Section {
+                    ForEach(controller.dshApprovals) { approval in
+                        DSHApprovalCard(approval: approval) { decision in
+                            _ = await controller.decideDSH(approval, decision: decision)
+                        }
+                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
+                        .listRowBackground(FlowCueTheme.canvas)
+                    }
+                } header: {
+                    Label("DSH approvals", systemImage: "checkmark.shield")
+                } footer: {
+                    Text("Approve or reject DSH tool calls from your phone. These requests stay pending until you answer.")
+                }
+            }
+            ForEach(controller.threads) { thread in
             NavigationLink {
                 AgentDetailView(controller: controller, thread: thread)
             } label: {
@@ -868,6 +933,7 @@ private struct AgentsView: View {
                 }
             }
             .listRowBackground(FlowCueTheme.surface)
+            }
         }
         .listStyle(.insetGrouped)
         .scrollContentBackground(.hidden)
@@ -942,6 +1008,54 @@ private struct AgentsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(FlowCueTheme.canvas)
+    }
+}
+
+private struct DSHApprovalCard: View {
+    let approval: DSHRemoteApproval
+    let decide: (String) async -> Void
+    @State private var busy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "shield.lefthalf.filled")
+                    .foregroundStyle(FlowCueTheme.accent)
+                Text(approval.title)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(3)
+                Spacer()
+                if let tool = approval.toolName {
+                    Text(tool)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            if let reason = approval.reason, reason != approval.title {
+                Text(reason)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(4)
+            }
+            HStack(spacing: 10) {
+                Button("Reject", role: .destructive) {
+                    busy = true
+                    Task { await decide("rejected"); busy = false }
+                }
+                .buttonStyle(.bordered)
+                .disabled(busy)
+                Button("Approve once") {
+                    busy = true
+                    Task { await decide("allowed-once"); busy = false }
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(FlowCueTheme.accent)
+                .disabled(busy)
+                if busy { ProgressView().controlSize(.small) }
+            }
+        }
+        .padding(14)
+        .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
 

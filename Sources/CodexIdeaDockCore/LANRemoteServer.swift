@@ -13,6 +13,7 @@ public final class LANRemoteServer {
     private let executorID: UUID
     private let executor: RemoteCommandExecutor
     private let reader: CodexSessionReplyReader
+    private let dshBridge: DSHBridgeClient
     private var listener: NWListener?
     private var connections: [UUID: HTTPConnection] = [:]
 
@@ -21,13 +22,15 @@ public final class LANRemoteServer {
         pairingCode: String,
         bridge: any CodexBridging,
         ledgerURL: URL,
-        sessionsDirectory: URL? = nil
+        sessionsDirectory: URL? = nil,
+        dshBridge: DSHBridgeClient = DSHBridgeClient()
     ) throws {
         self.executorID = executorID
         self.pairingCode = pairingCode
         self.bridge = bridge
         self.executor = try RemoteCommandExecutor(executorID: executorID, ledgerURL: ledgerURL, bridge: bridge)
         self.reader = CodexSessionReplyReader(sessionsDirectory: sessionsDirectory ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex/sessions"))
+        self.dshBridge = dshBridge
     }
 
     public func start() throws {
@@ -109,6 +112,23 @@ public final class LANRemoteServer {
                 )
             }
             return Self.response(status: 200, body: try JSONEncoder().encode(snapshots))
+        case ("GET", "/v1/dsh/approvals"):
+            do {
+                let approvals = try await dshBridge.pending()
+                return Self.response(status: 200, body: try JSONEncoder().encode(approvals))
+            } catch DSHBridgeError.notInstalled {
+                return Self.response(status: 200, body: Data("[]".utf8))
+            } catch {
+                return Self.response(status: 503, body: Data("{}".utf8))
+            }
+        case ("POST", "/v1/dsh/decide"):
+            let decision = try JSONDecoder().decode(DSHRemoteDecision.self, from: request.body)
+            do {
+                try await dshBridge.decide(id: decision.id, decision: decision.decision)
+                return Self.response(status: 200, body: Data("{}".utf8))
+            } catch {
+                return Self.response(status: 409, body: Data("{}".utf8))
+            }
         case ("POST", "/v1/send"):
             let command = try JSONDecoder().decode(RemoteCommand.self, from: request.body)
             let state = try await executor.execute(command)
