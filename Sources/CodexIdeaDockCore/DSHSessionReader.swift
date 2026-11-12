@@ -4,9 +4,14 @@ import Foundation
 /// messages are exposed; reasoning, tool calls, and tool output stay local.
 public struct DSHSessionReader: Sendable {
     private let sessionsDirectory: URL
+    private let projectionCacheDirectory: URL
 
-    public init(sessionsDirectory: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".dsh/sessions")) {
+    public init(
+        sessionsDirectory: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".dsh/sessions"),
+        projectionCacheDirectory: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".dsh/storages/session_projcache/sessions")
+    ) {
         self.sessionsDirectory = sessionsDirectory
+        self.projectionCacheDirectory = projectionCacheDirectory
     }
 
     public func sessions(limit: Int = 30) -> [DSHSessionSnapshot] {
@@ -27,15 +32,33 @@ public struct DSHSessionReader: Sendable {
                 let log = session.appendingPathComponent("session.v4.jsonl.zstd")
                 guard FileManager.default.fileExists(atPath: log.path) else { continue }
                 let date = (try? log.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                let id = session.lastPathComponent
+                let cached = cachedMetadata(sessionID: id)
                 found.append(DSHSessionSnapshot(
-                    id: session.lastPathComponent,
-                    title: Self.projectName(project.lastPathComponent),
-                    projectDirectory: Self.decodeProjectPath(project.lastPathComponent),
+                    id: id,
+                    title: cached?.title ?? Self.projectName(project.lastPathComponent),
+                    projectDirectory: cached?.cwd ?? Self.decodeProjectPath(project.lastPathComponent),
                     updatedAt: date
                 ))
             }
         }
         return Array(found.sorted { $0.updatedAt > $1.updatedAt }.prefix(limit))
+    }
+
+    private func cachedMetadata(sessionID: String) -> (cwd: String, title: String?)? {
+        let url = projectionCacheDirectory.appendingPathComponent("\(sessionID).json")
+        guard let data = try? Data(contentsOf: url),
+              let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let record = root["record"] as? [String: Any],
+              let identity = record["identity"] as? [String: Any],
+              let cwd = identity["cwd"] as? String, !cwd.isEmpty else { return nil }
+        var title: String?
+        if let rows = record["rows"] as? [String: Any],
+           let titleRow = rows["title"] as? [String: Any],
+           let value = titleRow["val"] as? String, !value.isEmpty {
+            title = value
+        }
+        return (cwd, title)
     }
 
     public func messages(sessionID: String, limit: Int = 100) -> [RemoteConversationMessage] {

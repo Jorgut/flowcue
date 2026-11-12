@@ -1148,6 +1148,7 @@ private struct AgentHubView: View {
         .background(FlowCueTheme.canvas)
         .navigationTitle("Agents")
         .refreshable { await controller.refresh() }
+        .safeAreaInset(edge: .bottom) { Color.clear.frame(height: 12) }
     }
 }
 
@@ -1230,6 +1231,7 @@ private struct CodexAgentView: View {
         }
         .navigationTitle("Codex")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 
     private func projectLabel(name: String, path: String, count: Int) -> some View {
@@ -1339,6 +1341,7 @@ private struct DSHAgentView: View {
         .refreshable { await controller.refresh() }
         .navigationTitle("DSH")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .onAppear {
             if expandedProjects.isEmpty { expandedProjects = Set(projectGroups.map(\.id)) }
         }
@@ -1436,6 +1439,7 @@ private struct DSHSessionDetailView: View {
         .background(FlowCueTheme.canvas)
         .navigationTitle("DSH session")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .task {
             loading = true
             messages = await controller.dshMessages(for: session)
@@ -1547,6 +1551,7 @@ private struct AgentDetailView: View {
         .background(FlowCueTheme.canvas)
         .navigationTitle("Session")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .task {
             loadingMessages = true
             messages = await controller.messages(for: thread)
@@ -1680,7 +1685,7 @@ private struct AgentComposer: View {
         VStack(alignment: .leading, spacing: 8) {
             TextEditor(text: $text)
                 .scrollContentBackground(.hidden)
-                .frame(minHeight: 100)
+                .frame(minHeight: 76, maxHeight: 120)
                 .padding(8)
                 .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .overlay(alignment: .topLeading) {
@@ -1727,6 +1732,7 @@ private struct AgentComposer: View {
                 .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }
+        .frame(maxHeight: 190, alignment: .top)
     }
 }
 
