@@ -1184,6 +1184,12 @@ private struct AgentHubView: View {
         .background(FlowCueTheme.canvas)
         .navigationTitle("Agents")
         .refreshable { await controller.refresh() }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { Task { await controller.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                    .accessibilityLabel("Refresh sessions")
+            }
+        }
     }
 }
 
@@ -1292,6 +1298,12 @@ private struct CodexAgentView: View {
         .navigationTitle("Codex")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .task {
+            while !Task.isCancelled {
+                await controller.refresh()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
     }
 
     private func projectLabel(name: String, path: String, count: Int) -> some View {
@@ -1403,6 +1415,12 @@ private struct DSHAgentView: View {
         .navigationTitle("DSH")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
+        .task {
+            while !Task.isCancelled {
+                await controller.refresh()
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
         .onAppear {
             if expandedProjects.isEmpty { expandedProjects = Set(projectGroups.map(\.id)) }
         }
@@ -1950,7 +1968,7 @@ private struct SettingsView: View {
                     Link("Privacy Policy", destination: FlowCueProduct.privacyURL)
                     Link("Terms of Use", destination: FlowCueProduct.termsURL)
                 } header: { Text("About") } footer: {
-                    Text("FlowCue \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") · Independent app, not affiliated with any agent provider.")
+                    Text("FlowCue \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?")) · Independent app, not affiliated with any agent provider.")
                 }
             }
             .navigationTitle("Settings")
