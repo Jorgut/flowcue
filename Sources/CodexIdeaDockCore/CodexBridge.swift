@@ -774,6 +774,39 @@ public struct CodexBridge: CodexBridging, Sendable {
         throw CodexBridgeError.tooManyPages
     }
 
+    public func queue(message: String, to threadID: String, imagePaths: [String]) async -> QueueDeliveryOutcome {
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Image attachment" : message
+        guard !threadID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.emptyTarget.rawValue)
+        }
+        guard UUID(uuidString: threadID) != nil else {
+            return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.invalidTarget.rawValue)
+        }
+        let executableURL: URL
+        do {
+            executableURL = try executableResolver()
+        } catch {
+            return .failed(exitCode: nil, message: CodexBridgeError.executableNotFound.localizedDescription)
+        }
+        do {
+            var arguments = ["queue", "--thread", threadID, "--message", text]
+            for path in imagePaths { arguments += ["--image", path] }
+            let result = try await processRunner.run(
+                executableURL: executableURL,
+                arguments: arguments,
+                standardInput: nil,
+                timeout: queueTimeout
+            )
+            if result.timedOut { return .unknown(message: QueueDeliveryDiagnostic.confirmationTimedOut.rawValue) }
+            if result.terminationReason != .exit { return .unknown(message: QueueDeliveryDiagnostic.resultUnclear.rawValue) }
+            if result.exitCode == 0 { return .queued(exitCode: result.exitCode) }
+            if let diagnostic = Self.classifyQueueFailure(result.stderr) { return .failed(exitCode: result.exitCode, message: diagnostic.rawValue) }
+            return .unknown(message: QueueDeliveryDiagnostic.resultUnclear.rawValue)
+        } catch {
+            return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.launchFailed.rawValue)
+        }
+    }
+
     public func queue(message: String, to threadID: String) async -> QueueDeliveryOutcome {
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.emptyMessage.rawValue)

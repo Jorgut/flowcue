@@ -424,10 +424,10 @@ final class LANRemoteController {
     }
 
     @discardableResult
-    func send(to thread: RemoteThreadSnapshot, text: String) async -> Bool {
+    func send(to thread: RemoteThreadSnapshot, text: String, images: [Data] = []) async -> Bool {
         guard let selected else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
+        guard !trimmed.isEmpty || !images.isEmpty else { return false }
         let phoneID: UUID
         if let raw = UserDefaults.standard.string(forKey: "FlowCue.remotePhoneID"), let id = UUID(uuidString: raw) {
             phoneID = id
@@ -435,7 +435,14 @@ final class LANRemoteController {
             phoneID = UUID()
             UserDefaults.standard.set(phoneID.uuidString, forKey: "FlowCue.remotePhoneID")
         }
-        let command = RemoteCommand(phoneID: phoneID, executorID: thread.executorID, threadID: thread.id, text: trimmed)
+        let encodedImages = images.map { $0.base64EncodedString() }
+        let command = RemoteCommand(
+            phoneID: phoneID,
+            executorID: thread.executorID,
+            threadID: thread.id,
+            text: trimmed,
+            images: encodedImages.isEmpty ? nil : encodedImages
+        )
         do {
             let body = try JSONEncoder().encode(command)
             _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/send", token: pairingCode, body: body)
@@ -1642,10 +1649,10 @@ private struct AgentDetailView: View {
                     }
                     .padding(.horizontal, 16)
                 }
-                AgentComposer(text: $text, placeholder: "Next message", sending: sending, allowsImages: false) { _ in
+                AgentComposer(text: $text, placeholder: "Next message", sending: sending, allowsImages: true) { images in
                     sending = true
                     Task {
-                        let sent = await controller.send(to: thread, text: text)
+                        let sent = await controller.send(to: thread, text: text, images: images)
                         if sent { text = "" }
                         sending = false
                         await controller.refresh()

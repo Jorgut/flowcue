@@ -123,14 +123,16 @@ public struct RemoteCommand: Codable, Equatable, Sendable, Identifiable {
     public let executorID: UUID
     public let threadID: String
     public let text: String
+    public let images: [String]?
     public let createdAt: Date
 
-    public init(id: UUID = UUID(), phoneID: UUID, executorID: UUID, threadID: String, text: String, createdAt: Date = Date()) {
+    public init(id: UUID = UUID(), phoneID: UUID, executorID: UUID, threadID: String, text: String, images: [String]? = nil, createdAt: Date = Date()) {
         self.id = id
         self.phoneID = phoneID
         self.executorID = executorID
         self.threadID = threadID
         self.text = text
+        self.images = images
         self.createdAt = createdAt
     }
 }
@@ -355,7 +357,7 @@ public final class RemoteCommandExecutor {
     public func execute(_ command: RemoteCommand) async throws -> RemoteDeliveryState {
         guard command.executorID == executorID else { throw RemoteContinuationError.wrongExecutor }
         guard UUID(uuidString: command.threadID) != nil else { throw RemoteContinuationError.invalidThread }
-        guard !command.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard !command.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !(command.images?.isEmpty ?? true) else {
             throw RemoteContinuationError.emptyMessage
         }
         let key = command.id.uuidString
@@ -365,19 +367,37 @@ public final class RemoteCommandExecutor {
             entries.removeValue(forKey: key)
             throw error
         }
-        let outcome = await bridge.queue(message: command.text, to: command.threadID)
-        let state: RemoteDeliveryState
-        switch outcome {
-        case .queued: state = .delivered
-        case .failed: state = .failed
-        case .unknown: state = .uncertain
-        }
-        entries[key] = Entry(state: state)
-        do { try persist() } catch {
-            entries[key] = Entry(state: .uncertain)
+        var imagePaths: [String] = []
+        let tempDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("FlowCueImages-\(command.id.uuidString)", isDirectory: true)
+        do {
+            if let images = command.images, !images.isEmpty {
+                try FileManager.default.createDirectory(at: tempDirectory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+                for (index, encoded) in images.enumerated() {
+                    guard let data = Data(base64Encoded: encoded) else { throw RemoteContinuationError.emptyMessage }
+                    let url = tempDirectory.appendingPathComponent("\(index).jpg")
+                    try data.write(to: url, options: .atomic)
+                    imagePaths.append(url.path)
+                }
+            }
+            let outcome = await bridge.queue(message: command.text, to: command.threadID, imagePaths: imagePaths)
+            try? FileManager.default.removeItem(at: tempDirectory)
+            let state: RemoteDeliveryState
+            switch outcome {
+            case .queued: state = .delivered
+            case .failed: state = .failed
+            case .unknown: state = .uncertain
+            }
+            entries[key] = Entry(state: state)
+            do { try persist() } catch {
+                entries[key] = Entry(state: .uncertain)
+                throw error
+            }
+            return state
+        } catch {
+            try? FileManager.default.removeItem(at: tempDirectory)
             throw error
         }
-        return state
     }
 
     private func persist() throws {
