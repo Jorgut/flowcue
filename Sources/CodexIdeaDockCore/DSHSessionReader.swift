@@ -103,7 +103,7 @@ public struct DSHSessionReader: Sendable {
 
     public func messages(sessionID: String, limit: Int = 100) -> [RemoteConversationMessage] {
         guard let log = logURL(sessionID: sessionID) else { return [] }
-        guard let data = Self.decompress(path: log.path, maxBytes: 24_000_000) else { return [] }
+        guard let data = Self.decompress(path: log.path, maxBytes: 80_000_000) else { return [] }
         var result: [RemoteConversationMessage] = []
         var title: String?
         for line in data.split(separator: UInt8(ascii: "\n")) {
