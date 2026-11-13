@@ -27,6 +27,8 @@
 		D00000000000000000000007 = {isa = PBXBuildFile; fileRef = A00000000000000000000007; };
 		D00000000000000000000008 = {isa = PBXBuildFile; fileRef = A00000000000000000000008; };
 		D00000000000000000000009 = {isa = PBXBuildFile; fileRef = A00000000000000000000009; };
+		D0000000000000000000000A /* DSHBridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000A /* DSHBridgeClient.swift */; };
+		D0000000000000000000000B /* DSHSessionReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000000B /* DSHSessionReader.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -53,6 +55,8 @@
 		A00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitIdeaTransport.swift; sourceTree = "<group>"; };
 		A00000000000000000000008 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDelivery.swift; sourceTree = "<group>"; };
 		A00000000000000000000009 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeaSyncController.swift; sourceTree = "<group>"; };
+		A0000000000000000000000A /* DSHBridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHBridgeClient.swift; sourceTree = "<group>"; };
+		A0000000000000000000000B /* DSHSessionReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHSessionReader.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -104,6 +108,8 @@
 				A00000000000000000000008,
 				A00000000000000000000007,
 				A00000000000000000000006,
+				A0000000000000000000000A,
+				A0000000000000000000000B,
 			);
 			path = CodexIdeaDockCore;
 			sourceTree = "<group>";
@@ -223,6 +229,8 @@
 				D00000000000000000000017 /* InboxView.swift in Sources */,
 				D00000000000000000000018 /* NativeTextEditor.swift in Sources */,
 				D00000000000000000000019 /* WindowControllers.swift in Sources */,
+				D0000000000000000000000A /* DSHBridgeClient.swift in Sources */,
+				D0000000000000000000000B /* DSHSessionReader.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
