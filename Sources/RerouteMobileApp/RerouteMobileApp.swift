@@ -1870,7 +1870,7 @@ private struct ConversationBubble: View {
         if isUser {
             HStack(alignment: .bottom) {
                 Spacer(minLength: 54)
-                Text(message.text)
+                InlineMarkdownText(text: message.text)
                     .font(.body)
                     .textSelection(.enabled)
                     .padding(.horizontal, 14)
@@ -1879,12 +1879,231 @@ private struct ConversationBubble: View {
             }
             .padding(.vertical, 2)
         } else {
-            Text(message.text)
-                .font(.body)
-                .lineSpacing(3)
-                .textSelection(.enabled)
+            MarkdownMessageView(text: message.text)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 6)
+                .padding(.vertical, 4)
+        }
+    }
+}
+
+private struct InlineMarkdownText: View {
+    let text: String
+
+    var body: some View {
+        if let attributed = try? AttributedString(
+            markdown: text,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        ) {
+            Text(attributed)
+        } else {
+            Text(text)
+        }
+    }
+}
+
+private enum MarkdownBlock {
+    case paragraph(String)
+    case heading(level: Int, text: String)
+    case code(language: String?, text: String)
+    case bullet([String])
+    case numbered([String])
+    case quote(String)
+    case rule
+}
+
+private enum MarkdownParser {
+    static func parse(_ source: String) -> [MarkdownBlock] {
+        let lines = source.components(separatedBy: .newlines)
+        var blocks: [MarkdownBlock] = []
+        var index = 0
+
+        while index < lines.count {
+            let line = lines[index]
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+
+            if trimmed.isEmpty {
+                index += 1
+                continue
+            }
+
+            if trimmed.hasPrefix("```") {
+                let language = String(trimmed.dropFirst(3)).trimmingCharacters(in: .whitespaces)
+                index += 1
+                var code: [String] = []
+                while index < lines.count, !lines[index].trimmingCharacters(in: .whitespaces).hasPrefix("```") {
+                    code.append(lines[index])
+                    index += 1
+                }
+                if index < lines.count { index += 1 }
+                blocks.append(.code(language: language.isEmpty ? nil : language, text: code.joined(separator: "\n")))
+                continue
+            }
+
+            if trimmed.hasPrefix("#") {
+                let hashes = trimmed.prefix { $0 == "#" }.count
+                let heading = String(trimmed.dropFirst(hashes)).trimmingCharacters(in: .whitespaces)
+                if !heading.isEmpty {
+                    blocks.append(.heading(level: min(hashes, 4), text: heading))
+                    index += 1
+                    continue
+                }
+            }
+
+            if trimmed == "---" || trimmed == "***" {
+                blocks.append(.rule)
+                index += 1
+                continue
+            }
+
+            if trimmed.hasPrefix(">") {
+                var quoted: [String] = []
+                while index < lines.count {
+                    let value = lines[index].trimmingCharacters(in: .whitespaces)
+                    guard value.hasPrefix(">") else { break }
+                    quoted.append(String(value.dropFirst()).trimmingCharacters(in: .whitespaces))
+                    index += 1
+                }
+                blocks.append(.quote(quoted.joined(separator: "\n")))
+                continue
+            }
+
+            if trimmed.hasPrefix("- ") || trimmed.hasPrefix("* ") || trimmed.hasPrefix("+ ") {
+                var items: [String] = []
+                while index < lines.count {
+                    let value = lines[index].trimmingCharacters(in: .whitespaces)
+                    guard value.hasPrefix("- ") || value.hasPrefix("* ") || value.hasPrefix("+ ") else { break }
+                    items.append(String(value.dropFirst(2)))
+                    index += 1
+                }
+                blocks.append(.bullet(items))
+                continue
+            }
+
+            if let range = trimmed.range(of: #"^[0-9]+[.)]\s"#, options: .regularExpression) {
+                var items: [String] = []
+                while index < lines.count {
+                    let value = lines[index].trimmingCharacters(in: .whitespaces)
+                    guard value.range(of: #"^[0-9]+[.)]\s"#, options: .regularExpression) != nil else { break }
+                    items.append(value.replacingOccurrences(of: #"^[0-9]+[.)]\s"#, with: "", options: .regularExpression))
+                    index += 1
+                }
+                blocks.append(.numbered(items))
+                _ = range
+                continue
+            }
+
+            var paragraph: [String] = []
+            while index < lines.count {
+                let value = lines[index].trimmingCharacters(in: .whitespaces)
+                if value.isEmpty || value.hasPrefix("```") || value.hasPrefix("#") || value == "---" || value == "***" || value.hasPrefix(">") || value.hasPrefix("- ") || value.hasPrefix("* ") || value.hasPrefix("+ ") || value.range(of: #"^[0-9]+[.)]\s"#, options: .regularExpression) != nil {
+                    break
+                }
+                paragraph.append(value)
+                index += 1
+            }
+            if !paragraph.isEmpty {
+                blocks.append(.paragraph(paragraph.joined(separator: "\n")))
+            }
+        }
+        return blocks
+    }
+}
+
+private struct MarkdownMessageView: View {
+    let text: String
+
+    private var blocks: [MarkdownBlock] { MarkdownParser.parse(text) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
+                blockView(block)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func blockView(_ block: MarkdownBlock) -> some View {
+        switch block {
+        case .paragraph(let text):
+            InlineMarkdownText(text: text)
+                .font(.body)
+                .lineSpacing(4)
+                .textSelection(.enabled)
+        case .heading(let level, let text):
+            InlineMarkdownText(text: text)
+                .font(level <= 2 ? .title3.weight(.semibold) : .headline)
+                .padding(.top, 4)
+        case .code(let language, let text):
+            CodeBlockView(language: language, code: text)
+        case .bullet(let items):
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 9) {
+                        Circle().fill(FlowCueTheme.accent).frame(width: 5, height: 5)
+                        InlineMarkdownText(text: item).font(.body).lineSpacing(3)
+                    }
+                }
+            }
+        case .numbered(let items):
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(Array(items.enumerated()), id: \.offset) { index, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 9) {
+                        Text("\(index + 1).").font(.body.monospacedDigit()).foregroundStyle(.secondary)
+                        InlineMarkdownText(text: item).font(.body).lineSpacing(3)
+                    }
+                }
+            }
+        case .quote(let text):
+            HStack(alignment: .top, spacing: 10) {
+                Rectangle().fill(FlowCueTheme.accent.opacity(0.6)).frame(width: 3)
+                InlineMarkdownText(text: text).font(.body).foregroundStyle(.secondary)
+            }
+            .padding(.vertical, 2)
+        case .rule:
+            Divider()
+        }
+    }
+}
+
+private struct CodeBlockView: View {
+    let language: String?
+    let code: String
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(language?.uppercased() ?? "CODE")
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button {
+                    UIPasteboard.general.string = code
+                    copied = true
+                    Task {
+                        try? await Task.sleep(for: .seconds(1.2))
+                        copied = false
+                    }
+                } label: {
+                    Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
+                        .font(.caption2)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(FlowCueTheme.accent)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                Text(code)
+                    .font(.system(.footnote, design: .monospaced))
+                    .textSelection(.enabled)
+                    .padding(.bottom, 4)
+            }
+        }
+        .padding(12)
+        .background(Color.black.opacity(0.28), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.07), lineWidth: 1)
         }
     }
 }
