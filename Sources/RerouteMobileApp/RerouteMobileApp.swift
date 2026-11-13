@@ -6,6 +6,7 @@ import UIKit
 import Network
 import Speech
 import AVFoundation
+import PhotosUI
 
 // MARK: - Product identity
 
@@ -337,12 +338,17 @@ final class LANRemoteController {
     }
 
     @discardableResult
-    func sendDSH(to session: DSHSessionSnapshot, text: String) async -> Bool {
+    func sendDSH(to session: DSHSessionSnapshot, text: String, images: [Data] = []) async -> Bool {
         guard let selected else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return false }
+        guard !trimmed.isEmpty || !images.isEmpty else { return false }
         do {
-            let body = try JSONEncoder().encode(DSHRemoteMessage(sessionId: session.id, text: trimmed))
+            let encodedImages = images.map { $0.base64EncodedString() }
+            let body = try JSONEncoder().encode(DSHRemoteMessage(
+                sessionId: session.id,
+                text: trimmed.isEmpty ? "Image attachment" : trimmed,
+                images: encodedImages.isEmpty ? nil : encodedImages
+            ))
             _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/send", token: pairingCode, body: body)
             statusMessage = "Sent to DSH."
             return true
@@ -1525,10 +1531,10 @@ private struct DSHSessionDetailView: View {
                     }
                     .padding(.horizontal, 16)
                 }
-                AgentComposer(text: $text, placeholder: "Message this DSH session", sending: sending) {
+                AgentComposer(text: $text, placeholder: "Message this DSH session", sending: sending, allowsImages: true) { images in
                     sending = true
                     Task {
-                        let sent = await controller.sendDSH(to: session, text: text)
+                        let sent = await controller.sendDSH(to: session, text: text, images: images)
                         if sent {
                             text = ""
                             messages = await controller.dshMessages(for: session)
@@ -1635,7 +1641,7 @@ private struct AgentDetailView: View {
                     }
                     .padding(.horizontal, 16)
                 }
-                AgentComposer(text: $text, placeholder: "Next message", sending: sending) {
+                AgentComposer(text: $text, placeholder: "Next message", sending: sending, allowsImages: false) { _ in
                     sending = true
                     Task {
                         let sent = await controller.send(to: thread, text: text)
@@ -1792,13 +1798,44 @@ private struct AgentComposer: View {
     @Binding var text: String
     let placeholder: String
     let sending: Bool
-    let onSend: () -> Void
+    let allowsImages: Bool
+    let onSend: ([Data]) -> Void
     @State private var dictation = VoiceDictation()
     @State private var baseText = ""
+    @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var images: [Data] = []
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 8) {
+            if !images.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(images.enumerated()), id: \.offset) { _, data in
+                            if let image = UIImage(data: data) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 58, height: 58)
+                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            }
+                        }
+                    }
+                }
+            }
+
             HStack(alignment: .bottom, spacing: 8) {
+                if allowsImages {
+                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 3, matching: .images) {
+                        Image(systemName: "photo")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 34, height: 34)
+                            .background(FlowCueTheme.canvas.opacity(0.8), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Attach images")
+                }
+
                 Button {
                     if dictation.isRecording {
                         dictation.stop()
@@ -1826,21 +1863,23 @@ private struct AgentComposer: View {
 
                 Button {
                     dictation.stop()
-                    onSend()
+                    onSend(images)
+                    images = []
+                    pickerItems = []
                 } label: {
                     Image(systemName: sending ? "ellipsis" : "arrow.up")
                         .font(.system(size: 16, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 34, height: 34)
                         .background(
-                            text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending
+                            (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty) || sending
                                 ? Color.secondary.opacity(0.25)
                                 : FlowCueTheme.accent,
                             in: Circle()
                         )
                 }
                 .buttonStyle(.plain)
-                .disabled(sending || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .disabled(sending || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty))
                 .accessibilityLabel("Send message")
             }
             .padding(.horizontal, 8)
@@ -1849,6 +1888,19 @@ private struct AgentComposer: View {
             .overlay {
                 RoundedRectangle(cornerRadius: 24, style: .continuous)
                     .strokeBorder(FlowCueTheme.hairline.opacity(0.45), lineWidth: 1)
+            }
+            .onChange(of: pickerItems) { _, items in
+                Task {
+                    var loaded: [Data] = []
+                    for item in items {
+                        if let data = try? await item.loadTransferable(type: Data.self),
+                           let image = UIImage(data: data),
+                           let jpeg = image.jpegData(compressionQuality: 0.82) {
+                            loaded.append(jpeg)
+                        }
+                    }
+                    images = loaded
+                }
             }
 
             if dictation.isRecording {

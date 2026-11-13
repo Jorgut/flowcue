@@ -159,10 +159,12 @@ public enum RemoteContinuationError: Error {
 public struct DSHRemoteMessage: Codable, Sendable {
     public let sessionId: String
     public let text: String
+    public let images: [String]?
 
-    public init(sessionId: String, text: String) {
+    public init(sessionId: String, text: String, images: [String]? = nil) {
         self.sessionId = sessionId
         self.text = text
+        self.images = images
     }
 }
 

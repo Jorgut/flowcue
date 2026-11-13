@@ -147,7 +147,7 @@ public final class LANRemoteServer {
         case ("POST", "/v1/dsh/send"):
             let message = try JSONDecoder().decode(DSHRemoteMessage.self, from: request.body)
             do {
-                try await dshBridge.send(sessionID: message.sessionId, text: message.text)
+                try await dshBridge.send(sessionID: message.sessionId, text: message.text, images: message.images ?? [])
                 return Self.response(status: 200, body: Data("{}".utf8))
             } catch {
                 return Self.response(status: 409, body: Data("{}".utf8))

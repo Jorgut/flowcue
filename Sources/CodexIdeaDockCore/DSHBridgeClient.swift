@@ -86,9 +86,9 @@ public final class DSHBridgeClient: @unchecked Sendable {
         return try JSONDecoder().decode(Response.self, from: data).pending
     }
 
-    public func send(sessionID: String, text: String) async throws {
+    public func send(sessionID: String, text: String, images: [String] = []) async throws {
         var request = try authorizedRequest(path: "/v1/message", method: "POST")
-        request.httpBody = try JSONEncoder().encode(DSHRemoteMessage(sessionId: sessionID, text: text))
+        request.httpBody = try JSONEncoder().encode(DSHRemoteMessage(sessionId: sessionID, text: text, images: images.isEmpty ? nil : images))
         let (_, response) = try await configuration.session.data(for: request)
         try validate(response)
     }
