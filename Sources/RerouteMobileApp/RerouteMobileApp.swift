@@ -1943,18 +1943,50 @@ private struct ConversationBubble: View {
         if isUser {
             HStack(alignment: .bottom) {
                 Spacer(minLength: 54)
-                InlineMarkdownText(text: message.text)
-                    .font(.body)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(FlowCueTheme.accent.opacity(0.18), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                VStack(alignment: .trailing, spacing: 8) {
+                    if let images = message.images, !images.isEmpty {
+                        MessageImageGrid(images: images)
+                    }
+                    if !message.text.isEmpty {
+                        InlineMarkdownText(text: message.text)
+                            .font(.body)
+                            .textSelection(.enabled)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 9)
+                .background(FlowCueTheme.accent.opacity(0.18), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
             }
             .padding(.vertical, 2)
         } else {
-            MarkdownMessageView(text: message.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.vertical, 4)
+            VStack(alignment: .leading, spacing: 10) {
+                if let images = message.images, !images.isEmpty {
+                    MessageImageGrid(images: images)
+                }
+                if !message.text.isEmpty {
+                    MarkdownMessageView(text: message.text)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+        }
+    }
+}
+
+private struct MessageImageGrid: View {
+    let images: [RemoteMessageImage]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(images) { image in
+                if let data = Data(base64Encoded: image.base64), let uiImage = UIImage(data: data) {
+                    Image(uiImage: uiImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(maxWidth: 260, maxHeight: 260)
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
         }
     }
 }

@@ -5,13 +5,16 @@ import Foundation
 public struct DSHSessionReader: Sendable {
     private let sessionsDirectory: URL
     private let projectionCacheDirectory: URL
+    private let attachmentsDirectory: URL
 
     public init(
         sessionsDirectory: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".dsh/sessions"),
-        projectionCacheDirectory: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".dsh/storages/session_projcache/sessions")
+        projectionCacheDirectory: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".dsh/storages/session_projcache/sessions"),
+        attachmentsDirectory: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".dsh/attachments/v1/objects")
     ) {
         self.sessionsDirectory = sessionsDirectory
         self.projectionCacheDirectory = projectionCacheDirectory
+        self.attachmentsDirectory = attachmentsDirectory
     }
 
     public func sessions(limit: Int = 30) -> [DSHSessionSnapshot] {
@@ -135,8 +138,9 @@ public struct DSHSessionReader: Sendable {
                 guard let payload = object["data"] as? [String: Any],
                       let content = payload["content"] as? [[String: Any]] else { continue }
                 let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
-                if !text.isEmpty && !Self.isSyntheticUserMessage(text) {
-                    result.append(RemoteConversationMessage(id: "u-\(result.count)", role: "user", text: String(text.prefix(20_000)), timestamp: time))
+                let images = imageParts(in: content)
+                if (!text.isEmpty || !images.isEmpty) && !Self.isSyntheticUserMessage(text) {
+                    result.append(RemoteConversationMessage(id: "u-\(result.count)", role: "user", text: String(text.prefix(20_000)), timestamp: time, images: images.isEmpty ? nil : images))
                 }
             case "assistant/message":
                 guard let payload = object["data"] as? [String: Any],
@@ -147,8 +151,9 @@ public struct DSHSessionReader: Sendable {
                     let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
                     return trimmed.isEmpty ? nil : trimmed
                 }.joined(separator: "\n")
-                if !text.isEmpty {
-                    result.append(RemoteConversationMessage(id: "a-\(result.count)", role: "assistant", text: String(text.prefix(20_000)), timestamp: time))
+                let images = imageParts(in: content)
+                if !text.isEmpty || !images.isEmpty {
+                    result.append(RemoteConversationMessage(id: "a-\(result.count)", role: "assistant", text: String(text.prefix(20_000)), timestamp: time, images: images.isEmpty ? nil : images))
                 }
             default:
                 break
@@ -168,6 +173,22 @@ public struct DSHSessionReader: Sendable {
             return title
         }
         return nil
+    }
+
+    private func imageParts(in content: [[String: Any]]) -> [RemoteMessageImage] {
+        content.compactMap { part -> RemoteMessageImage? in
+            guard part["type"] as? String == "image",
+                  let attachment = part["attachment"] as? [String: Any],
+                  let rawID = attachment["attachmentId"] as? String else { return nil }
+            let hash = rawID.replacingOccurrences(of: "sha256:", with: "")
+            guard hash.count > 2 else { return nil }
+            let object = attachmentsDirectory
+                .appendingPathComponent(String(hash.prefix(2)))
+                .appendingPathComponent(hash)
+            guard let data = try? Data(contentsOf: object), data.count <= 12_000_000 else { return nil }
+            let mediaType = attachment["mediaType"] as? String ?? "image/jpeg"
+            return RemoteMessageImage(id: hash, mediaType: mediaType, base64: data.base64EncodedString())
+        }
     }
 
     private static func isSyntheticUserMessage(_ text: String) -> Bool {

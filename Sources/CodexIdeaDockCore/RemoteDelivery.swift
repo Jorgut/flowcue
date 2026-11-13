@@ -195,17 +195,37 @@ public struct DSHSessionSnapshot: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+public struct RemoteMessageImage: Codable, Identifiable, Hashable, Sendable {
+    public let id: String
+    public let mediaType: String
+    public let base64: String
+
+    public init(id: String, mediaType: String, base64: String) {
+        self.id = id
+        self.mediaType = mediaType
+        self.base64 = base64
+    }
+}
+
 public struct RemoteConversationMessage: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let role: String
     public let text: String
     public let timestamp: Date?
+    public let images: [RemoteMessageImage]?
 
-    public init(id: String, role: String, text: String, timestamp: Date? = nil) {
+    public init(
+        id: String,
+        role: String,
+        text: String,
+        timestamp: Date? = nil,
+        images: [RemoteMessageImage]? = nil
+    ) {
         self.id = id
         self.role = role
         self.text = text
         self.timestamp = timestamp
+        self.images = images
     }
 }
 
@@ -296,7 +316,19 @@ public struct CodexSessionReplyReader: Sendable {
                 let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
                 return trimmed.isEmpty ? nil : trimmed
             }.joined(separator: "\n")
-            guard !text.isEmpty else { continue }
+            let images = content.compactMap { item -> RemoteMessageImage? in
+                guard item["type"] as? String == "input_image",
+                      let url = item["image_url"] as? String,
+                      let comma = url.firstIndex(of: ",") else { return nil }
+                let header = String(url[..<comma])
+                let encoded = String(url[url.index(after: comma)...])
+                guard header.contains(";base64") else { return nil }
+                let mediaType = header
+                    .replacingOccurrences(of: "data:", with: "")
+                    .replacingOccurrences(of: ";base64", with: "")
+                return RemoteMessageImage(id: "\(role)-\(result.count)-img-\(UUID().uuidString)", mediaType: mediaType, base64: encoded)
+            }
+            guard !text.isEmpty || !images.isEmpty else { continue }
             // Codex injects synthetic context/page markers as user messages.
             if role == "user", text.hasPrefix("<"), text.hasSuffix(">") { continue }
             let timestamp = (object["timestamp"] as? String).flatMap(Self.isoDate)
@@ -304,7 +336,8 @@ public struct CodexSessionReplyReader: Sendable {
                 id: "\(result.count)-\(role)",
                 role: role,
                 text: String(text.prefix(20_000)),
-                timestamp: timestamp
+                timestamp: timestamp,
+                images: images.isEmpty ? nil : images
             ))
         }
         return Array(result.suffix(limit))
