@@ -1477,35 +1477,6 @@ private struct DSHSessionDetailView: View {
         ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(session.title).font(.title3.bold())
-                    Text(session.projectDirectory).font(.caption).foregroundStyle(.secondary)
-                }
-                if !subagents.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("\(subagents.count) subagent\(subagents.count == 1 ? "" : "s")", systemImage: "person.2.fill")
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(FlowCueTheme.accent)
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(subagents) { subagent in
-                                    NavigationLink {
-                                        DSHSessionDetailView(controller: controller, session: subagent)
-                                    } label: {
-                                        Text(subagent.title)
-                                            .font(.caption)
-                                            .lineLimit(1)
-                                            .padding(.horizontal, 10)
-                                            .padding(.vertical, 6)
-                                            .background(FlowCueTheme.accent.opacity(0.14), in: Capsule())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                            }
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
                 if loading {
                     ProgressView().frame(maxWidth: .infinity)
                 } else if messages.isEmpty {
@@ -1521,6 +1492,7 @@ private struct DSHSessionDetailView: View {
             }
             .padding()
         }
+        .safeAreaInset(edge: .top, spacing: 0) { dshPinnedHeader }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 6) {
                 if messages.last?.role == "user" {
@@ -1574,6 +1546,39 @@ private struct DSHSessionDetailView: View {
         }
     }
 
+    private var dshPinnedHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(session.title).font(.headline).lineLimit(2)
+            Text(session.projectDirectory).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            if !subagents.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 7) {
+                        Label("\(subagents.count) subagents", systemImage: "person.2.fill")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(FlowCueTheme.accent)
+                        ForEach(subagents) { subagent in
+                            NavigationLink {
+                                DSHSessionDetailView(controller: controller, session: subagent)
+                            } label: {
+                                Text(subagent.title)
+                                    .font(.caption2)
+                                    .lineLimit(1)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(FlowCueTheme.accent.opacity(0.12), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(FlowCueTheme.canvas)
+        .overlay(alignment: .bottom) { Divider().opacity(0.4) }
+    }
+
     private func scrollToBottom(_ proxy: ScrollViewProxy) async {
         guard let last = messages.last else { return }
         try? await Task.sleep(for: .milliseconds(80))
@@ -1596,11 +1601,6 @@ private struct AgentDetailView: View {
         ScrollViewReader { proxy in
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(thread.title).font(.title3.bold())
-                    Text(thread.updatedAt, format: .relative(presentation: .named))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
                 VStack(alignment: .leading, spacing: 10) {
                     if loadingMessages { ProgressView().controlSize(.small) }
                     if messages.isEmpty {
@@ -1631,6 +1631,7 @@ private struct AgentDetailView: View {
             }
             .padding()
         }
+        .safeAreaInset(edge: .top, spacing: 0) { codexPinnedHeader }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 6) {
                 if messages.last?.role == "user" {
@@ -1680,6 +1681,19 @@ private struct AgentDetailView: View {
             Task { await scrollToBottom(proxy) }
         }
         }
+    }
+
+    private var codexPinnedHeader: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(thread.title).font(.headline).lineLimit(2)
+            Text(thread.updatedAt, format: .relative(presentation: .named))
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(FlowCueTheme.canvas)
+        .overlay(alignment: .bottom) { Divider().opacity(0.4) }
     }
 
     private func scrollToBottom(_ proxy: ScrollViewProxy) async {

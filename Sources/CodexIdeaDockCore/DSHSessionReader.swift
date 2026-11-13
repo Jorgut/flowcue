@@ -34,9 +34,14 @@ public struct DSHSessionReader: Sendable {
                 let date = (try? log.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
                 let id = session.lastPathComponent
                 let cached = cachedMetadata(sessionID: id)
+                let projectName = Self.projectName(project.lastPathComponent)
+                var title = cached?.title ?? projectName
+                if title.trimmingCharacters(in: .whitespacesAndNewlines) == projectName {
+                    title = cached?.firstPrompt ?? "Untitled session"
+                }
                 found.append(DSHSessionSnapshot(
                     id: id,
-                    title: cached?.title ?? Self.projectName(project.lastPathComponent),
+                    title: title,
                     projectDirectory: cached?.cwd ?? Self.decodeProjectPath(project.lastPathComponent),
                     updatedAt: date
                 ))
@@ -85,7 +90,7 @@ public struct DSHSessionReader: Sendable {
         return object[key]
     }
 
-    private func cachedMetadata(sessionID: String) -> (cwd: String, title: String?)? {
+    private func cachedMetadata(sessionID: String) -> (cwd: String, title: String?, firstPrompt: String?)? {
         let url = projectionCacheDirectory.appendingPathComponent("\(sessionID).json")
         guard let data = try? Data(contentsOf: url),
               let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -93,12 +98,23 @@ public struct DSHSessionReader: Sendable {
               let identity = record["identity"] as? [String: Any],
               let cwd = identity["cwd"] as? String, !cwd.isEmpty else { return nil }
         var title: String?
-        if let rows = record["rows"] as? [String: Any],
-           let titleRow = rows["title"] as? [String: Any],
-           let value = titleRow["val"] as? String, !value.isEmpty {
-            title = value
+        var firstPrompt: String?
+        if let rows = record["rows"] as? [String: Any] {
+            if let titleRow = rows["title"] as? [String: Any],
+               let value = titleRow["val"] as? String, !value.isEmpty {
+                title = value
+            }
+            if let outline = rows["turnOutline"] as? [String: Any],
+               let value = outline["val"] as? [String: Any],
+               let turns = value["turns"] as? [[String: Any]] {
+                firstPrompt = turns.lazy.compactMap { turn -> String? in
+                    guard let prompt = turn["prompt"] as? String else { return nil }
+                    let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+                    return trimmed.isEmpty ? nil : String(trimmed.prefix(80))
+                }.first
+            }
         }
-        return (cwd, title)
+        return (cwd, title, firstPrompt)
     }
 
     public func messages(sessionID: String, limit: Int = 100) -> [RemoteConversationMessage] {
