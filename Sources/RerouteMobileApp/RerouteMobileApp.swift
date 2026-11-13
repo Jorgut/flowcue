@@ -1839,7 +1839,7 @@ private struct AgentComposer: View {
 
             HStack(alignment: .bottom, spacing: 8) {
                 if allowsImages {
-                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 3, matching: .images) {
+                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 20, matching: .images) {
                         Image(systemName: "photo")
                             .font(.system(size: 17, weight: .medium))
                             .foregroundStyle(.secondary)
