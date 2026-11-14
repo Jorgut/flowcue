@@ -1430,7 +1430,7 @@ private struct InboxCaptureList: View {
             )
         } else {
             List(captures, selection: $selection) { capture in
-                CaptureRow(capture: capture)
+                CaptureRow(capture: capture, onRetry: { onQueue(capture.id) })
                     .tag(capture.id)
                     .contextMenu {
                         captureActions(for: capture)
@@ -1471,6 +1471,7 @@ private struct InboxCaptureList: View {
 
 private struct CaptureRow: View {
     let capture: CaptureItem
+    var onRetry: (() -> Void)? = nil
 
     private var dotColor: Color {
         switch capture.status {
@@ -1496,7 +1497,22 @@ private struct CaptureRow: View {
 
                 Spacer(minLength: 4)
 
-                CaptureStatusBadge(status: capture.status)
+                if capture.status == .failed, let onRetry {
+                    Button {
+                        onRetry()
+                    } label: {
+                        Text(L10n.text("重试"))
+                            .font(.system(size: 11, weight: .medium))
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(FlowCueDesktopTheme.accent.opacity(0.18)))
+                            .foregroundStyle(FlowCueDesktopTheme.accent)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.text("重试投递"))
+                } else {
+                    CaptureStatusBadge(status: capture.status)
+                }
             }
 
             HStack(spacing: 4) {
