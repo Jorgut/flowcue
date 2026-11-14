@@ -169,7 +169,7 @@ final class InboxWindowController: NSWindowController, NSWindowDelegate {
     private let presentation = InboxPresentation()
     init(store: IdeaDockStore) {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 1100, height: 720),
+            contentRect: NSRect(x: 0, y: 0, width: 1040, height: 680),
             styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
@@ -179,13 +179,15 @@ final class InboxWindowController: NSWindowController, NSWindowDelegate {
         window.title = "FlowCue"
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
-        window.minSize = NSSize(width: 940, height: 620)
+        window.minSize = NSSize(width: 460, height: 520)
+        window.collectionBehavior.insert(.fullScreenPrimary)
         window.isReleasedWhenClosed = false
         // Compatibility key: keep the existing window restoration state across the rebrand.
         window.setFrameAutosaveName("CodexIdeaDock.Inbox")
         window.center()
         window.delegate = self
         window.contentViewController = NSHostingController(rootView: InboxView(store: store, presentation: presentation).environment(\.locale, Locale(identifier: L10n.language.rawValue)))
+        window.setContentSize(NSSize(width: 1040, height: 680))
     }
 
     required init?(coder: NSCoder) {

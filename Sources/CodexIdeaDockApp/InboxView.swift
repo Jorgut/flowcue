@@ -72,6 +72,7 @@ struct InboxView: View {
     @State private var isMailTriagePresented = false
     @State private var statusFilter: CaptureStatus?
     @AppStorage("FlowCue.inboxLayout") private var layoutRaw = InboxLayout.three.rawValue
+    @State private var windowWidth: CGFloat = 1000
     private var layout: InboxLayout { InboxLayout(rawValue: layoutRaw) ?? .three }
     @State private var sourceFilter: RouteFilter = .all
     @State private var targetFilter: RouteFilter = .all
@@ -122,7 +123,7 @@ struct InboxView: View {
                 .accessibilityElement(children: .combine)
             }
         }
-        .frame(minWidth: 940, minHeight: 620)
+        .frame(minWidth: 460, minHeight: 520)
         .background(FlowCueDesktopTheme.canvas)
         .sheet(isPresented: $isMailTriagePresented) {
             MailTriageView(store: store)
@@ -139,6 +140,11 @@ struct InboxView: View {
             composerFocused = true
         }
         .onAppear { composerFocused = presentation.isComposing }
+        .background(GeometryReader { proxy in
+            Color.clear
+                .onAppear { windowWidth = proxy.size.width }
+                .onChange(of: proxy.size.width) { windowWidth = $0 }
+        })
         .task {
             #if !FLOWCUE_APP_STORE
             while !Task.isCancelled {
@@ -181,26 +187,67 @@ struct InboxView: View {
 
     @ViewBuilder
     private var layoutBody: some View {
+        GeometryReader { geo in
+            if geo.size.width < 780 {
+                compactBody
+            } else {
+                regularBody
+            }
+        }
+    }
+
+    /// 分屏/半屏：只留一栏，详情用返回切换
+    @ViewBuilder
+    private var compactBody: some View {
+        if presentation.isComposing || selectedCaptureID != nil {
+            VStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    Button {
+                        presentation.isComposing = false
+                        selectedCaptureID = nil
+                    } label: {
+                        Label(L10n.text("返回"), systemImage: "chevron.left")
+                            .font(.system(size: 12))
+                    }
+                    .buttonStyle(.plain)
+                    Spacer()
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                Divider()
+                detailPane
+            }
+        } else {
+            listPane
+        }
+    }
+
+    @ViewBuilder
+    private var regularBody: some View {
         switch layout {
         case .three:
-            HSplitView {
-                listPane.frame(minWidth: 250, idealWidth: 300, maxWidth: 380)
-                detailPane.frame(minWidth: 420, maxWidth: .infinity)
+            HStack(spacing: 0) {
+                listPane.frame(width: 320)
+                Divider()
+                detailPane.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         case .bottom:
             VStack(spacing: 0) {
-                HSplitView {
-                    listPane.frame(minWidth: 250, idealWidth: 300, maxWidth: 380)
-                    detailPane.frame(minWidth: 420, maxWidth: .infinity)
+                HStack(spacing: 0) {
+                    listPane.frame(width: 320)
+                    Divider()
+                    detailPane.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
                 Divider()
                 quickComposer
             }
         case .sidebar:
-            HSplitView {
-                sidebarPane.frame(minWidth: 160, idealWidth: 180, maxWidth: 220)
-                listPane.frame(minWidth: 240, idealWidth: 280, maxWidth: 340)
-                detailPane.frame(minWidth: 420, maxWidth: .infinity)
+            HStack(spacing: 0) {
+                sidebarPane.frame(width: 200)
+                Divider()
+                listPane.frame(width: 300)
+                Divider()
+                detailPane.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
     }
@@ -371,7 +418,7 @@ struct InboxView: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(L10n.language == .mandarin ? "新想法" : "New idea")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(size: 22, weight: .bold, design: .rounded))
                 Text(L10n.language == .mandarin ? "先记下来，之后再决定交给谁。" : "Capture it first. Route it when you're ready.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -489,7 +536,57 @@ struct InboxView: View {
         }
     }
 
+    @ViewBuilder
     private var brandHeader: some View {
+        if windowWidth < 620 {
+            narrowHeader
+        } else {
+            regularHeader
+        }
+    }
+
+    private var narrowHeader: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(FlowCueDesktopTheme.mint)
+                .accessibilityHidden(true)
+            Text("FlowCue")
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+            Spacer(minLength: 6)
+            Button {
+                presentation.compose()
+            } label: {
+                Image(systemName: "square.and.pencil")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(FlowCueDesktopTheme.accent)
+            .accessibilityLabel(L10n.text("新想法"))
+
+            Menu {
+                Section(L10n.text("布局")) {
+                    ForEach(InboxLayout.allCases, id: \.rawValue) { mode in
+                        Button(mode.title) { layoutRaw = mode.rawValue }
+                    }
+                }
+                Button(L10n.text("刷新")) { Task { await refreshUsage() } }
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel(L10n.text("更多"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var regularHeader: some View {
         HStack(alignment: .center, spacing: 12) {
             Image(systemName: "sparkles")
                 .font(.system(size: 18, weight: .semibold))
@@ -506,6 +603,8 @@ struct InboxView: View {
                     Text(agentStatusText)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize()
                 }
             }
 
