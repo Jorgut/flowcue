@@ -363,5 +363,6 @@ public enum L10n {
         "已安装": "Installed",
         "装好 hooks 后，Codex 跑完才会回来通知这条想法。": "With hooks installed, Codex reports back when it finishes.",
         "查看安装指引": "Install guide",
+        "个会话": "sessions",
     ]
 }
