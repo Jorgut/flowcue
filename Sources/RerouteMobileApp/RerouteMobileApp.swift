@@ -21,20 +21,19 @@ enum FlowCueProduct {
 
 private enum FlowCueTheme {
     static let ink = Color(red: 0.11, green: 0.10, blue: 0.16)
-    static let accent = Color(red: 0.52, green: 0.43, blue: 1.0
-    )
-    static let mint = Color(red: 0.36, green: 0.85, blue: 0.72)
-    static let surface = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.12, green: 0.12, blue: 0.14, alpha: 1)
-            : UIColor.secondarySystemGroupedBackground
-    })
-    static let canvas = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor(red: 0.055, green: 0.055, blue: 0.065, alpha: 1)
-            : UIColor.systemGroupedBackground
-    })
-    static let hairline = Color(uiColor: .separator)
+
+    private static func token(_ key: @escaping (FlowCueTokens) -> String) -> Color {
+        Color(uiColor: UIColor { traits in
+            let tokens = FlowCueTokens.tokens(for: traits.userInterfaceStyle == .dark ? .dark : .light)
+            return UIColor(flowCueHex: key(tokens))
+        })
+    }
+
+    static let accent = token { $0.accent }
+    static let mint = token { $0.success }
+    static let surface = token { $0.surface }
+    static let canvas = token { $0.canvas }
+    static let hairline = token { $0.border }
 
     static var heroGradient: LinearGradient {
         LinearGradient(colors: [ink, Color(red: 0.18, green: 0.14, blue: 0.30)], startPoint: .topLeading, endPoint: .bottomTrailing)
@@ -794,12 +793,26 @@ private struct InboxView: View {
 private struct IdeaRow: View {
     let capture: CaptureItem
 
+    private var dotColor: Color {
+        switch capture.status {
+        case .failed, .unknown: Color(flowCueHex: FlowCueTokens.airyDark.failure)
+        case .queued, .queueing: FlowCueTheme.accent
+        case .saved: Color(flowCueHex: FlowCueTokens.airyDark.success)
+        case .archived: Color(flowCueHex: FlowCueTokens.airyDark.textTertiary)
+        default: Color(flowCueHex: FlowCueTokens.airyDark.textSecondary)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(capture.text)
                 .font(.body)
                 .lineLimit(4)
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
                 Text(capture.updatedAt, format: .relative(presentation: .named))
                 if capture.status == .archived {
                     Text("·")

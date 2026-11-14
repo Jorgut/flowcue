@@ -29,3 +29,15 @@ enum FlowCueMobileTheme {
     static func surface(_ s: ColorScheme) -> Color { Color(hex: tokens(for: s).surface) }
     static func canvas(_ s: ColorScheme) -> Color { Color(hex: tokens(for: s).canvas) }
 }
+
+extension UIColor {
+    convenience init(flowCueHex hex: String) {
+        let s = hex.hasPrefix("#") ? String(hex.dropFirst()) : hex
+        var v: UInt64 = 0
+        Scanner(string: s).scanHexInt64(&v)
+        self.init(red: CGFloat((v >> 16) & 0xFF) / 255,
+                  green: CGFloat((v >> 8) & 0xFF) / 255,
+                  blue: CGFloat(v & 0xFF) / 255,
+                  alpha: 1)
+    }
+}
