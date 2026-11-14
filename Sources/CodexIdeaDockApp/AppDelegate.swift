@@ -18,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem?
     private var capturePanelController: CapturePanelController?
     private var inboxWindowController: InboxWindowController?
+    private var agentWindowController: AgentWindowController?
     private var globalHotKey: GlobalHotKey?
     private var hotKeyRegistrationFailed = false
     private var captureHostState = CaptureHostState()
@@ -63,6 +64,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configureApplicationMenu()
         #endif
         configureGlobalHotKey()
+        if ProcessInfo.processInfo.arguments.contains("-agents") {
+            DispatchQueue.main.async { [weak self] in self?.showAgents() }
+        }
         observePendingCount()
         showCapturePanel()
 
@@ -261,6 +265,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.autoenablesItems = false
         menu.addItem(withTitle: L10n.text("记录想法…"), action: #selector(showCapturePanel), keyEquivalent: "")
         menu.addItem(withTitle: L10n.text("收件箱…"), action: #selector(showInbox), keyEquivalent: "")
+        menu.addItem(withTitle: L10n.text("本机 Agent…"), action: #selector(showAgents), keyEquivalent: "")
         menu.addItem(.separator())
 
         #if !FLOWCUE_APP_STORE
@@ -359,6 +364,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func showInbox() {
         capturePanelController?.hide()
         inboxWindowController?.show()
+    }
+
+    @objc
+    private func showAgents() {
+        // 调试入口：`open -a FlowCue --args -agents`
+        if ProcessInfo.processInfo.arguments.contains("-agents"), agentWindowController == nil {
+            agentWindowController = AgentWindowController()
+        }
+        if agentWindowController == nil {
+            agentWindowController = AgentWindowController()
+        }
+        agentWindowController?.show()
     }
 
     #if !FLOWCUE_APP_STORE
