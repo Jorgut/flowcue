@@ -129,8 +129,57 @@ private struct CaptureHeader: View {
     let onOpenInbox: () -> Void
     let onClose: () -> Void
 
+    private var statusText: String {
+        if isQueueing { return L10n.text("投递中") }
+        if isRefreshing { return L10n.text("读取 Codex 任务…") }
+        return "Codex · \(contexts.count) " + L10n.text("个会话")
+    }
+
     var body: some View {
-        HStack(spacing: 8) {
+        VStack(spacing: 8) {
+            HStack(spacing: 6) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Color(hex: FlowCueTokens.airyDark.success))
+                Text("FlowCue")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("›")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+                Text(L10n.text("收件箱"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                Spacer(minLength: 8)
+
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(isQueueing ? Color(hex: FlowCueTokens.airyDark.accent)
+                                         : Color(hex: FlowCueTokens.airyDark.success))
+                        .frame(width: 5, height: 5)
+                    Text(statusText)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+
+                Button(action: onOpenInbox) {
+                    Image(systemName: "tray.full")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .help(L10n.text("打开收件箱"))
+                .accessibilityLabel(L10n.text("打开收件箱"))
+
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .help(L10n.text("隐藏悬浮窗，保留草稿"))
+                .accessibilityLabel(L10n.text("隐藏悬浮窗并保留草稿"))
+            }
+
+            HStack(spacing: 8) {
             ThreadContextPicker(
                 label: L10n.text("来源"),
                 selectedContext: source,
@@ -171,20 +220,7 @@ private struct CaptureHeader: View {
                 }
             }
             .disabled(isQueueing)
-
-            Button(action: onOpenInbox) {
-                Image(systemName: "tray.full")
             }
-            .buttonStyle(.plain)
-            .help(L10n.text("打开收件箱"))
-            .accessibilityLabel(L10n.text("打开收件箱"))
-
-            Button(action: onClose) {
-                Image(systemName: "xmark")
-            }
-            .buttonStyle(.plain)
-            .help(L10n.text("隐藏悬浮窗，保留草稿"))
-            .accessibilityLabel(L10n.text("隐藏悬浮窗并保留草稿"))
         }
     }
 }
@@ -239,20 +275,14 @@ private struct ThreadContextPicker: View {
                 }
             }
         } label: {
-            VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: 4) {
                 Text(label)
-                    .font(.caption2)
+                    .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                 Text(selectedContext?.selectionDisplayTitle ?? L10n.text("选择 Codex 任务"))
-                    .font(.caption.weight(.medium))
+                    .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
-                if let selectedContext {
-                    Text(selectedContext.selectionMetadata)
-                        .font(.caption2.monospacedDigit())
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                }
             }
             .frame(width: 150, alignment: .leading)
             .contentShape(.rect)
