@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var capturePanelController: CapturePanelController?
     private var inboxWindowController: InboxWindowController?
     private var agentWindowController: AgentWindowController?
+    private var settingsWindowController: SettingsWindowController?
     private var globalHotKey: GlobalHotKey?
     private var hotKeyRegistrationFailed = false
     private var captureHostState = CaptureHostState()
@@ -66,6 +67,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configureGlobalHotKey()
         if ProcessInfo.processInfo.arguments.contains("-agents") {
             DispatchQueue.main.async { [weak self] in self?.showAgents() }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-settings") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                guard let self else { return }
+                self.showSettings()
+                let settingsWindow = self.settingsWindowController?.window
+                for window in NSApp.windows where window !== settingsWindow { window.orderOut(nil) }
+            }
         }
         if ProcessInfo.processInfo.arguments.contains("-panel") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
@@ -281,6 +290,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(withTitle: L10n.text("记录想法…"), action: #selector(showCapturePanel), keyEquivalent: "")
         menu.addItem(withTitle: L10n.text("收件箱…"), action: #selector(showInbox), keyEquivalent: "")
         menu.addItem(withTitle: L10n.text("本机 Agent…"), action: #selector(showAgents), keyEquivalent: "")
+        menu.addItem(withTitle: L10n.text("设置…"), action: #selector(showSettings), keyEquivalent: ",")
         menu.addItem(.separator())
 
         #if !FLOWCUE_APP_STORE
@@ -379,6 +389,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func showInbox() {
         capturePanelController?.hide()
         inboxWindowController?.show()
+    }
+
+    @objc
+    private func showSettings() {
+        if settingsWindowController == nil { settingsWindowController = SettingsWindowController() }
+        settingsWindowController?.show()
     }
 
     @objc

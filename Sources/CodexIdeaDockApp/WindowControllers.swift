@@ -243,3 +243,33 @@ final class AgentWindowController: NSWindowController, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 }
+
+
+final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    init() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 544),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        super.init(window: window)
+        window.title = L10n.text("设置")
+        window.titlebarAppearsTransparent = true
+        window.minSize = NSSize(width: 760, height: 520)
+        window.isReleasedWhenClosed = false
+        window.setFrameAutosaveName("FlowCue.Settings")
+        window.center()
+        window.delegate = self
+        window.contentViewController = NSHostingController(rootView: SettingsView())
+        window.setContentSize(NSSize(width: 900, height: 544))
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func show() {
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}
