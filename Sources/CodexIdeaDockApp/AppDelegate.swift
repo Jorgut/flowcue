@@ -67,6 +67,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if ProcessInfo.processInfo.arguments.contains("-agents") {
             DispatchQueue.main.async { [weak self] in self?.showAgents() }
         }
+        if ProcessInfo.processInfo.arguments.contains("-inbox") {
+            DispatchQueue.main.async { [weak self] in self?.showInbox() }
+        }
         observePendingCount()
         showCapturePanel()
 

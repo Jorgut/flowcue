@@ -1019,6 +1019,7 @@ private struct StatusFilterRow: View {
         .padding(.horizontal, FlowCueMetrics.space16)
         .padding(.bottom, 6)
         .background(FlowCueDesktopTheme.canvas)
+        .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -1065,10 +1066,10 @@ private struct InboxToolbar: View {
                 text: $store.searchText
             )
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 200)
+                .frame(minWidth: 140, idealWidth: 180, maxWidth: 220)
                 .accessibilityLabel(L10n.text("搜索想法"))
 
-            filterMenu
+            filterMenu.fixedSize()
 
             Button(action: onUndoArchive) {
                 Label(L10n.text("撤销归档"), systemImage: "arrow.uturn.backward")
@@ -1096,7 +1097,8 @@ private struct InboxToolbar: View {
         }
         .padding(.horizontal, 14)
         .padding(.top, 8)
-        .padding(.bottom, 2)
+        .padding(.bottom, 6)
+        .fixedSize(horizontal: false, vertical: true)
         }
         .background(FlowCueDesktopTheme.canvas)
         .overlay(alignment: .bottom) { Divider() }
