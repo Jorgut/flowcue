@@ -364,5 +364,8 @@ public enum L10n {
         "装好 hooks 后，Codex 跑完才会回来通知这条想法。": "With hooks installed, Codex reports back when it finishes.",
         "查看安装指引": "Install guide",
         "个会话": "sessions",
+        "模板": "Templates",
+        "插入模板": "Insert template",
+        "插入模板：今日待办 / 会议纪要 / 工作小结": "Insert a template: today's plan, meeting notes, or a work summary",
     ]
 }
