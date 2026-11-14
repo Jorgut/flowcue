@@ -122,7 +122,7 @@ struct InboxView: View {
                 .accessibilityElement(children: .combine)
             }
         }
-        .frame(minWidth: 820, minHeight: 560)
+        .frame(minWidth: 940, minHeight: 620)
         .background(FlowCueDesktopTheme.canvas)
         .sheet(isPresented: $isMailTriagePresented) {
             MailTriageView(store: store)
@@ -490,75 +490,84 @@ struct InboxView: View {
     }
 
     private var brandHeader: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 24, weight: .semibold))
-                            .foregroundStyle(FlowCueDesktopTheme.mint)
-                        Text("FlowCue")
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
-                            .foregroundStyle(.white)
-                    }
-                    Text(L10n.language == .mandarin ? "记录想法，交给你的 coding agent。" : "Capture ideas. Continue with your coding agents.")
-                        .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.68))
+        HStack(alignment: .center, spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(FlowCueDesktopTheme.mint)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text("FlowCue")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(agentStatusColor)
+                        .frame(width: 5, height: 5)
+                    Text(agentStatusText)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
-                Spacer()
-                layoutPicker
-                if remotePairingEnabled, let code = remotePairingCode {
-                    Button {
-                        isRemoteStatusPresented = true
-                    } label: {
-                        HStack(spacing: 8) {
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text(L10n.language == .mandarin ? "iPhone 远程" : "iPhone remote")
-                                    .font(.caption2)
-                                    .foregroundStyle(.white.opacity(0.6))
-                                Text(code)
-                                    .font(.system(.body, design: .monospaced, weight: .semibold))
-                                    .foregroundStyle(FlowCueDesktopTheme.mint)
-                            }
-                            Image(systemName: "chevron.right")
-                                .font(.caption2)
-                                .foregroundStyle(.white.opacity(0.35))
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(.white.opacity(0.08), in: RoundedRectangle(cornerRadius: 9, style: .continuous))
-                    }
-                    .buttonStyle(.plain)
-                    .help(L10n.language == .mandarin ? "查看远程状态" : "View remote status")
-                }
-                Button { presentation.compose() } label: {
-                    Label(L10n.language == .mandarin ? "新想法" : "New idea", systemImage: "square.and.pencil")
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(FlowCueDesktopTheme.accent)
-                .keyboardShortcut("n", modifiers: .command)
-                Menu {
-                    Section(L10n.text("实验功能")) {
-                        Button {
-                            isMailTriagePresented = true
-                        } label: {
-                            Label(L10n.text("从邮件提取待办"), systemImage: "envelope")
-                        }
-                    }
-                } label: {
-                    Label(L10n.text("更多"), systemImage: "ellipsis")
-                }
-                .menuStyle(.borderlessButton)
-                .foregroundStyle(.white)
-                .accessibilityLabel(L10n.text("更多"))
             }
 
+            Spacer(minLength: 8)
+
+            layoutPicker
+
+            if remotePairingEnabled, let code = remotePairingCode {
+                Button {
+                    isRemoteStatusPresented = true
+                } label: {
+                    Label(code, systemImage: "iphone")
+                        .font(.system(size: 11))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(L10n.text("远程配对码") + " " + code)
+            }
+
+            Button {
+                presentation.compose()
+            } label: {
+                Label(L10n.text("新想法"), systemImage: "square.and.pencil")
+                    .font(.system(size: 12))
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+            .tint(FlowCueDesktopTheme.accent)
+
+            Menu {
+                Button(L10n.text("刷新")) { Task { await refreshUsage() } }
+                if lastArchivedCaptureID != nil {
+                    Button(L10n.text("撤销归档")) { store.undoArchive(lastArchivedCaptureID!) }
+                }
+                Button(L10n.text("打开 Codex")) {
+                    if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
+                        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .accessibilityLabel(L10n.text("更多"))
         }
-        .padding(16)
-        .background(FlowCueDesktopTheme.headerGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 2)
+        .padding(.vertical, 10)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    private var agentStatusColor: Color {
+        if store.isQueueing { return FlowCueDesktopTheme.accent }
+        if store.notification != nil { return FlowCueDesktopTheme.warning }
+        return FlowCueDesktopTheme.mint
+    }
+
+    private var agentStatusText: String {
+        if store.isQueueing { return L10n.text("投递中") }
+        if store.isLoadingContexts { return L10n.text("读取 Codex 任务…") }
+        return L10n.text("本机 · \(visibleCaptures.count) 条想法")
     }
 
     private var remotePairingEnabled: Bool {
