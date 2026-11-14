@@ -35,9 +35,29 @@ private enum FlowCueTheme {
     static let canvas = token { $0.canvas }
     static let hairline = token { $0.border }
 
+    /// Hero 卡：暗色沿用深紫渐变；浅色改成极浅的紫灰，文字用主色。
     static var heroGradient: LinearGradient {
-        LinearGradient(colors: [ink, Color(red: 0.18, green: 0.14, blue: 0.30)], startPoint: .topLeading, endPoint: .bottomTrailing)
+        LinearGradient(
+            colors: [Color(uiColor: UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(red: 0.07, green: 0.07, blue: 0.11, alpha: 1)
+                    : UIColor(red: 0.945, green: 0.941, blue: 0.988, alpha: 1)
+            }), Color(uiColor: UIColor { traits in
+                traits.userInterfaceStyle == .dark
+                    ? UIColor(red: 0.15, green: 0.12, blue: 0.25, alpha: 1)
+                    : UIColor(red: 0.898, green: 0.894, blue: 0.973, alpha: 1)
+            })],
+            startPoint: .topLeading, endPoint: .bottomTrailing)
     }
+
+    static let heroTitle = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark ? .white : UIColor(red: 0.09, green: 0.09, blue: 0.12, alpha: 1)
+    })
+    static let heroBody = Color(uiColor: UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor.white.withAlphaComponent(0.72)
+            : UIColor(red: 0.33, green: 0.33, blue: 0.40, alpha: 1)
+    })
 }
 
 // MARK: - Subscription
@@ -757,10 +777,10 @@ private struct InboxView: View {
                         .foregroundStyle(FlowCueTheme.mint)
                     Text("A quiet place for ideas\nthat deserve a next step.")
                         .font(.system(.title2, design: .rounded, weight: .bold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(FlowCueTheme.heroTitle)
                     Text("Capture now. Continue with your coding agents later.")
                         .font(.subheadline)
-                        .foregroundStyle(.white.opacity(0.72))
+                        .foregroundStyle(FlowCueTheme.heroBody)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(22)
