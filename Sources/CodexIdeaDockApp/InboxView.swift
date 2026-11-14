@@ -102,24 +102,6 @@ struct InboxView: View {
         VStack(spacing: 0) {
             brandHeader
                 .fixedSize(horizontal: false, vertical: true)
-            InboxToolbar(
-                store: store,
-                displayedCount: visibleCaptures.count,
-                sourceFilter: $sourceFilter,
-                targetFilter: $targetFilter,
-                sourceFilterOptions: sourceFilterOptions,
-                targetFilterOptions: targetFilterOptions,
-                canUndoArchive: lastArchivedCaptureID != nil
-            ) {
-                guard let lastArchivedCaptureID else { return }
-                store.undoArchive(lastArchivedCaptureID)
-                self.lastArchivedCaptureID = nil
-            }
-            .fixedSize(horizontal: false, vertical: true)
-
-            StatusFilterRow(selection: $statusFilter)
-            Divider()
-
             layoutBody
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -224,14 +206,104 @@ struct InboxView: View {
     }
 
     private var listPane: some View {
-        InboxCaptureList(
-            captures: visibleCaptures,
-            selection: $selectedCaptureID,
-            onQueue: queueCapture,
-            onArchive: archiveCapture,
-            onRestore: restoreCapture,
-            onCopyAndOpenCodex: copyAndOpenCodex
-        )
+        VStack(spacing: 0) {
+            listHeader
+            Divider()
+            InboxCaptureList(
+                captures: visibleCaptures,
+                selection: $selectedCaptureID,
+                onQueue: queueCapture,
+                onArchive: archiveCapture,
+                onRestore: restoreCapture,
+                onCopyAndOpenCodex: copyAndOpenCodex
+            )
+        }
+    }
+
+    private var compactFilterMenu: some View {
+        Menu {
+            Section(L10n.text("来源")) {
+                Button(L10n.text("全部")) { sourceFilter = .all }
+                ForEach(sourceFilterOptions) { option in
+                    Button(option.title) { sourceFilter = option.filter }
+                }
+            }
+            if AppDistribution.supportsDirectQueue {
+                Section(L10n.text("目标")) {
+                    Button(L10n.text("全部")) { targetFilter = .all }
+                    ForEach(targetFilterOptions) { option in
+                        Button(option.title) { targetFilter = option.filter }
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.caption)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityLabel(L10n.text("筛选"))
+    }
+
+    /// 列表栏顶部：捕获条 + 搜索 + 状态筛选（设计稿里都在左栏内）
+    private var listHeader: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if layout != .bottom {
+                Button {
+                    presentation.compose()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "square.and.pencil")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Text(L10n.text("写下一个想法…"))
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 0)
+                        Image(systemName: "arrow.up")
+                            .font(.caption.weight(.semibold))
+                            .frame(width: 22, height: 22)
+                            .background(Circle().fill(FlowCueDesktopTheme.accent))
+                            .foregroundStyle(Color(hex: "#0A0A12"))
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(FlowCueDesktopTheme.card.opacity(0.6),
+                                in: RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.text("写下一个想法"))
+            }
+
+            HStack(spacing: 8) {
+                HStack(spacing: 5) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    TextField(L10n.text("搜索想法"), text: $store.searchText)
+                        .textFieldStyle(.plain)
+                        .font(.caption)
+                        .accessibilityLabel(L10n.text("搜索想法"))
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(.quaternary.opacity(0.5),
+                            in: RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous))
+
+                compactFilterMenu
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                StatusFilterRow(selection: $statusFilter)
+                    .padding(.horizontal, -FlowCueMetrics.space16)
+            }
+            .frame(height: 30)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(FlowCueDesktopTheme.canvas)
     }
 
     @ViewBuilder
@@ -339,9 +411,17 @@ struct InboxView: View {
             Image(systemName: "square.and.pencil")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            TextField(L10n.text("写下一个想法…"), text: $store.draftText, axis: .vertical)
-                .textFieldStyle(.plain)
-                .lineLimit(1...4)
+            ZStack(alignment: .leading) {
+                if store.draftText.isEmpty {
+                    Text(L10n.text("写下一个想法…"))
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .allowsHitTesting(false)
+                }
+                TextField("", text: $store.draftText, axis: .vertical)
+                    .textFieldStyle(.plain)
+                    .lineLimit(1...4)
+            }
             Button {
                 saveDraft()
             } label: {
@@ -473,40 +553,6 @@ struct InboxView: View {
                 .accessibilityLabel(L10n.text("更多"))
             }
 
-            if let usage {
-                HStack(spacing: 10) {
-                    ForEach(Array([usage.primary, usage.secondary].compactMap { $0 }.enumerated()), id: \.offset) { _, window in
-                        usageCard(window)
-                    }
-                    Button { Task { await refreshUsage() } } label: {
-                        Image(systemName: "arrow.clockwise")
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .disabled(usageLoading)
-                    .accessibilityLabel("Refresh usage")
-                    Button(L10n.language == .mandarin ? "打开 Codex" : "Open Codex") {
-                        if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
-                            NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.white)
-                }
-            } else {
-                HStack(spacing: 8) {
-                    Image(systemName: "chart.bar")
-                    Text(usageLoading
-                         ? (L10n.language == .mandarin ? "正在读取 Codex 用量…" : "Reading Codex usage…")
-                         : (L10n.language == .mandarin ? "Codex 用量暂不可用" : "Codex usage unavailable"))
-                    Spacer()
-                    Button { Task { await refreshUsage() } } label: { Image(systemName: "arrow.clockwise") }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.white.opacity(0.7))
-                }
-                .font(.caption)
-                .foregroundStyle(.white.opacity(0.6))
-            }
         }
         .padding(16)
         .background(FlowCueDesktopTheme.headerGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
