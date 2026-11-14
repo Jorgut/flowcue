@@ -7,7 +7,7 @@ import SwiftUI
 
 @MainActor
 final class CapturePanelController: NSWindowController {
-    private static let panelSize = NSSize(width: 520, height: 260)
+    private static let panelSize = NSSize(width: 520, height: 280)
     private let store: IdeaDockStore
     private var presentationGeneration = 0
 
