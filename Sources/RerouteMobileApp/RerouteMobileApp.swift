@@ -2132,10 +2132,12 @@ private struct AgentsView: View {
     @Bindable var controller: LANRemoteController
     @Binding var tab: FlowCueTab
     @Environment(SubscriptionManager.self) private var subscription
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var showingPaywall = false
     @State private var showingPairing = AgentsPreview.requestedState == "pairing"
     @State private var showingAddAgent = AgentsPreview.requestedState == "addAgent"
     @State private var showingRemote = AgentsPreview.requestedState == "remote"
+    @State private var showingCodex = AgentsPreview.requestedState == "codex"
     @State private var network = FlowCueNetworkMonitor()
 
     var body: some View {
@@ -2170,6 +2172,9 @@ private struct AgentsView: View {
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showingRemote) {
                 RemoteDeviceView(controller: controller)
+            }
+            .navigationDestination(isPresented: $showingCodex) {
+                CodexAgentView(controller: controller)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 FlowCueTabBar(selection: $tab)
@@ -2224,7 +2229,7 @@ private struct AgentsView: View {
                 }
             }
         }
-        .frame(height: 44)
+        .frame(minHeight: 44)
         .padding(.top, 10)
     }
 
@@ -2407,7 +2412,7 @@ private struct AgentsView: View {
                 .foregroundStyle(FlowCueTheme.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(2)
-                .frame(maxWidth: 260)
+                .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : 260)
                 .padding(.top, 6)
             Button {
                 showingPairing = true
@@ -2416,7 +2421,8 @@ private struct AgentsView: View {
                     .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
                     .foregroundStyle(FlowCueTheme.onAccent)
                     .padding(.horizontal, 20)
-                    .frame(height: 40)
+                    .padding(.vertical, 8)
+                    .frame(minHeight: 40)
                     .background(Capsule().fill(FlowCueTheme.accent))
             }
             .buttonStyle(.plain)
@@ -2593,7 +2599,8 @@ private struct PairMacSheet: View {
                 .foregroundStyle(FlowCueTheme.textPrimary)
                 .focused($codeFocused)
                 .frame(maxWidth: .infinity)
-                .frame(height: 54)
+                .padding(.vertical, 8)
+                .frame(minHeight: 54)
                 .background(
                     RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
                         .fill(FlowCueTheme.surface)
@@ -2992,7 +2999,7 @@ private struct RemoteDeviceView: View {
                 Spacer()
             }
         }
-        .frame(height: 44)
+        .frame(minHeight: 44)
         .padding(.top, 10)
     }
 
