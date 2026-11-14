@@ -1,0 +1,69 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1600px;height:1200px;overflow:hidden}
+body{font-family:"SF Pro Text",-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(1000px 700px at 12% 112%,rgba(92,76,190,.16),transparent 70%),linear-gradient(158deg,#0C0C10,#08080A 58%,#0A0910);color:#F5F5F7}
+.stage{width:1600px;height:1200px;padding:44px 52px;display:flex;flex-direction:column}
+.k{font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.32)}
+h1{font-size:34px;font-weight:600;margin-top:8px}
+.sub{font-size:14.5px;color:rgba(255,255,255,.42);margin-top:8px}
+.body{flex:1;display:flex;gap:44px;margin-top:22px;min-height:0}
+.tablewrap{flex:1.15;background:rgba(255,255,255,.025);border-radius:22px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);padding:22px 24px}
+table{width:100%;border-collapse:collapse;font-size:13.5px}
+th{text-align:left;font-weight:500;color:rgba(255,255,255,.45);font-size:11px;letter-spacing:.1em;text-transform:uppercase;padding:0 0 10px}
+td{padding:9px 0;border-top:1px solid rgba(255,255,255,.06);font-family:ui-monospace,Menlo,monospace;font-size:13px}
+td:first-child{font-family:"SF Pro Text",sans-serif;display:flex;align-items:center;gap:8px}
+.dot{width:12px;height:12px;border-radius:4px;display:inline-block}
+.bad{color:#FF8A8A}
+.pass{color:#5CD9B8;font-size:10.5px;letter-spacing:.1em}
+.fixed{color:#F0B429;font-size:9.5px;letter-spacing:.08em}
+.fail{color:#FF6B6B;font-size:10.5px;letter-spacing:.1em}
+.notes{flex:1;display:flex;flex-direction:column;gap:14px}
+.note{background:rgba(255,255,255,.025);border-radius:18px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);padding:16px 18px}
+.note h3{font-size:14px;font-weight:600;margin-bottom:6px}
+.note p{font-size:12px;color:rgba(255,255,255,.55);line-height:1.6}
+.foot{display:flex;justify-content:space-between;align-items:flex-end;padding-top:14px;border-top:1px solid rgba(255,255,255,.06);font-size:12.5px;color:rgba(255,255,255,.3);font-family:ui-monospace,Menlo,monospace;letter-spacing:.05em}
+</style></head>
+<body><div class="stage">
+<div class="k">FLOWCUE · iOS · ACCESSIBILITY</div><h1>对比度审计</h1>
+<div class="sub">WCAG 2.2 AA：正文 ≥ 4.5:1，大字号与 UI 元素 ≥ 3:1。八个主题逐项计算。</div>
+<div class="body">
+  <div class="tablewrap"><table>
+    <tr><th>主题</th><th>正文 / 底</th><th>次级 / 底</th><th>强调 / 底</th><th>强调 / 文字</th><th>结果</th></tr>
+    <tr>
+      <td><span class="dot" style="background:#212121;box-shadow:inset 0 0 0 1px #333"></span>Neutral</td>
+      <td>13.6</td><td>5.72</td><td>13.6</td><td>16.7</td>
+      <td><span class="pass">AA</span></td></tr><tr>
+      <td><span class="dot" style="background:#191A1F;box-shadow:inset 0 0 0 1px #333"></span>Halo</td>
+      <td>14.9</td><td>6.26</td><td>6.5</td><td>7.4</td>
+      <td><span class="pass">AA</span></td></tr><tr>
+      <td><span class="dot" style="background:#0E1A1D;box-shadow:inset 0 0 0 1px #333"></span>Editorial</td>
+      <td>15.2</td><td>6.91</td><td>7.4</td><td>8.3</td>
+      <td><span class="pass">AA</span></td></tr><tr>
+      <td><span class="dot" style="background:#1F1F1F;box-shadow:inset 0 0 0 1px #333"></span>Blueprint</td>
+      <td>13.7</td><td>6.24</td><td>7.8</td><td>9.4</td>
+      <td><span class="pass">AA</span></td></tr><tr>
+      <td><span class="dot" style="background:#000000;box-shadow:inset 0 0 0 1px #333"></span>Mono</td>
+      <td>21.0</td><td>6.08</td><td>21.0</td><td>19.7</td>
+      <td><span class="pass">AA</span></td></tr><tr>
+      <td><span class="dot" style="background:#08090B;box-shadow:inset 0 0 0 1px #333"></span>Terminal</td>
+      <td>16.3</td><td>4.85 <span class="fixed">修正</span></td><td>6.3</td><td>6.2</td>
+      <td><span class="pass">AA</span></td></tr><tr>
+      <td><span class="dot" style="background:#101014;box-shadow:inset 0 0 0 1px #333"></span>Airy Dark</td>
+      <td>16.7</td><td>5.86</td><td>6.0</td><td>6.2</td>
+      <td><span class="pass">AA</span></td></tr><tr>
+      <td><span class="dot" style="background:#0E0E10;box-shadow:inset 0 0 0 1px #333"></span>Paper</td>
+      <td>16.2</td><td>5.54</td><td>6.1</td><td>6.2</td>
+      <td><span class="pass">AA</span></td></tr>
+  </table>
+    <div style="margin-top:18px;padding-top:14px;border-top:1px solid rgba(255,255,255,.06);font-size:12px;color:rgba(255,255,255,.5);line-height:1.7">
+      所有主题的正文 ≥ 13.6:1、次级 ≥ 4.85:1、强调 ≥ 5.9:1，均满足 AA。<br>
+      Terminal 的次级灰由 <code>#6F7680</code> 调整为 <code>#767E88</code>（4.34 → 4.85）。
+    </div></div>
+  <div class="notes">
+    <div class="note"><h3>唯一的问题：Terminal 的次级灰</h3><p><code>#6F7680</code> 在 <code>#08090B</code> 上只有 4.34:1，低于 AA。改成 <code>#767E88</code> 后为 4.85:1，其余主题全部通过。</p></div>
+    <div class="note"><h3>不只靠颜色</h3><p>状态永远是「文字 + 颜色」：DRAFT / QUEUED / SENT 先读字，色点只是辅助。色盲用户不依赖色相。</p></div>
+    <div class="note"><h3>强调色当文字时要反算</h3><p>发送键上的深色字 <code>#0A0A12</code> 对八个强调色的对比度在 6.2–19.7 之间，全部可读。</p></div>
+  </div>
+</div>
+<div class="foot"><span>contrast · 8 themes</span><span>FLOWCUE · iOS</span></div>
+</div></body></html>

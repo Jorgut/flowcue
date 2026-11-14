@@ -1,0 +1,67 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1600px;height:1200px;overflow:hidden}
+body{font-family:-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(1000px 700px at 15% 112%,rgba(92,76,190,.18),transparent 70%),
+             linear-gradient(158deg,#0C0C10,#08080A 58%,#0A0910);color:#F5F5F7}
+.wrap{width:1600px;height:1200px;padding:70px 90px;display:flex;flex-direction:column}
+.k{font-size:19px;letter-spacing:.3em;color:rgba(255,255,255,.36)}
+h1{font-size:58px;font-weight:700;letter-spacing:-.02em;margin-top:18px}
+.sub{font-size:21px;color:rgba(255,255,255,.42);margin-top:16px;line-height:1.55}
+.row{flex:1;display:flex;align-items:center;justify-content:center;gap:150px}
+.col{display:flex;flex-direction:column;align-items:center;gap:16px;width:420px}
+.big{width:320px;height:320px;border-radius:40px;background:rgba(255,255,255,.02);
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);display:flex;align-items:center;justify-content:center}
+.bar{width:320px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center}
+.light{background:#F2F0EA}.dark{background:#1E1E22;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08)}
+.nm{font-size:24px;font-weight:600;margin-top:6px}
+.nums{font-size:17px;color:rgba(255,255,255,.45);font-family:ui-monospace,Menlo,monospace}
+.foot{display:flex;justify-content:space-between;align-items:flex-end;padding-top:24px;
+  border-top:1px solid rgba(255,255,255,.06);font-size:15px;color:rgba(255,255,255,.28);
+  letter-spacing:.22em;font-family:ui-monospace,Menlo,monospace}
+</style></head><body><div class="wrap">
+  <div class="k">FLOWCUE · MENU BAR</div>
+  <h1>菜单栏图标的两套比例</h1>
+  <div class="sub">笔画比例几乎一样，真正的差别只有间隙。18px 下 1.28 会糊成一条，所以保留光学补偿。</div>
+  <div class="row">
+    <div class="col">
+      <div class="big"><svg width="320" height="320" viewBox="0 0 18 18">
+      <rect x="12.65" y="2.60" width="2.30" height="4.45" rx="1.15" fill="#fff"/>
+      <path d="M 13.80 9.98 V 10.72 C 13.80 11.90 12.96 12.74 11.79 12.74 H 4.69" stroke="#fff" stroke-width="2.30" stroke-linecap="round" fill="none"/>
+      <path d="M 6.00 10.96 L 4.13 12.74 L 6.00 14.51" stroke="#fff" stroke-width="1.78" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg></div>
+      <div class="bar light"><svg width="18" height="18" viewBox="0 0 18 18">
+      <rect x="12.65" y="2.60" width="2.30" height="4.45" rx="1.15" fill="#000"/>
+      <path d="M 13.80 9.98 V 10.72 C 13.80 11.90 12.96 12.74 11.79 12.74 H 4.69" stroke="#000" stroke-width="2.30" stroke-linecap="round" fill="none"/>
+      <path d="M 6.00 10.96 L 4.13 12.74 L 6.00 14.51" stroke="#000" stroke-width="1.78" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg></div>
+      <div class="bar dark"><svg width="18" height="18" viewBox="0 0 18 18">
+      <rect x="12.65" y="2.60" width="2.30" height="4.45" rx="1.15" fill="#fff"/>
+      <path d="M 13.80 9.98 V 10.72 C 13.80 11.90 12.96 12.74 11.79 12.74 H 4.69" stroke="#fff" stroke-width="2.30" stroke-linecap="round" fill="none"/>
+      <path d="M 6.00 10.96 L 4.13 12.74 L 6.00 14.51" stroke="#fff" stroke-width="1.78" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg></div>
+      <div class="nm" style="color:#F5F5F7">当前 · 光学补偿</div>
+      <div class="nums">笔画 2.30 (12.8%)　间隙 1.78 (11.1%)</div>
+    </div>
+    <div class="col">
+      <div class="big"><svg width="320" height="320" viewBox="0 0 18 18">
+      <rect x="11.32" y="3.49" width="2.06" height="3.92" rx="1.03" fill="#fff"/>
+      <path d="M 12.35 9.72 V 10.39 C 12.35 11.42 11.61 12.17 10.57 12.17 H 5.95" stroke="#fff" stroke-width="2.06" stroke-linecap="round" fill="none"/>
+      <path d="M 7.08 10.59 L 5.43 12.17 L 7.08 13.75" stroke="#fff" stroke-width="1.59" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg></div>
+      <div class="bar light"><svg width="18" height="18" viewBox="0 0 18 18">
+      <rect x="11.32" y="3.49" width="2.06" height="3.92" rx="1.03" fill="#000"/>
+      <path d="M 12.35 9.72 V 10.39 C 12.35 11.42 11.61 12.17 10.57 12.17 H 5.95" stroke="#000" stroke-width="2.06" stroke-linecap="round" fill="none"/>
+      <path d="M 7.08 10.59 L 5.43 12.17 L 7.08 13.75" stroke="#000" stroke-width="1.59" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg></div>
+      <div class="bar dark"><svg width="18" height="18" viewBox="0 0 18 18">
+      <rect x="11.32" y="3.49" width="2.06" height="3.92" rx="1.03" fill="#fff"/>
+      <path d="M 12.35 9.72 V 10.39 C 12.35 11.42 11.61 12.17 10.57 12.17 H 5.95" stroke="#fff" stroke-width="2.06" stroke-linecap="round" fill="none"/>
+      <path d="M 7.08 10.59 L 5.43 12.17 L 7.08 13.75" stroke="#fff" stroke-width="1.59" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    </svg></div>
+      <div class="nm" style="color:#9A9AA6">严格等比</div>
+      <div class="nums">笔画 2.06 (12.9%)　间隙 1.28 (8.0%)</div>
+    </div>
+  </div>
+  <div class="foot"><span>18 / 36 · OPTICAL</span><span>FLOWCUE</span></div>
+</div></body></html>

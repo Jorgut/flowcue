@@ -1,0 +1,47 @@
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><style>*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1600px;height:1200px;overflow:hidden}
+body{font-family:"SF Pro Text",-apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;-webkit-font-smoothing:antialiased;
+  background:radial-gradient(1000px 700px at 12% 112%,rgba(92,76,190,.16),transparent 70%),linear-gradient(158deg,#0C0C10,#08080A 58%,#0A0910);color:#F5F5F7}
+.stage{width:1600px;height:1200px;padding:44px 52px;display:flex;flex-direction:column}
+.k{font-size:12.5px;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.32)}
+h1{font-size:34px;font-weight:600;margin-top:8px}
+.sub{font-size:14.5px;color:rgba(255,255,255,.42);margin-top:8px}
+.grid{flex:1;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:22px;margin-top:22px}
+.card{background:rgba(255,255,255,.025);border-radius:22px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);padding:20px 22px;display:flex;flex-direction:column}
+.card h2{font-size:17px;font-weight:600}
+.card .why{font-size:12px;color:rgba(255,255,255,.42);margin-top:5px}
+.frames{flex:1;display:flex;align-items:center;gap:16px;margin-top:12px}
+.f{display:flex;flex-direction:column;align-items:center;gap:7px}
+.f .box{width:120px;height:120px;border-radius:16px;background:rgba(255,255,255,.03);display:flex;align-items:center;justify-content:center}
+.f .t{font-size:10.5px;color:rgba(255,255,255,.45);font-family:ui-monospace,Menlo,monospace}
+.spec{display:flex;gap:18px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07);font-size:11.5px;color:rgba(255,255,255,.55);font-family:ui-monospace,Menlo,monospace}
+.spec b{color:rgba(255,255,255,.85);font-weight:500}
+.foot{display:flex;justify-content:space-between;align-items:flex-end;padding-top:14px;border-top:1px solid rgba(255,255,255,.06);font-size:12.5px;color:rgba(255,255,255,.3);font-family:ui-monospace,Menlo,monospace;letter-spacing:.05em}
+</style></head>
+<body><div class="stage">
+<div class="k">FLOWCUE · iOS · MOTION</div><h1>动效规范</h1>
+<div class="sub">四个关键动作。总原则：短、可打断、不炫技；Reduce Motion 下只保留淡入。</div>
+<div class="grid">
+  <div class="card"><h2>① 眨眼</h2><div class="why">唤起时连眨三次，发送时眨一次 —— 角色是"活着的光标"。</div>
+    <div class="frames"><div class="f"><div class="box"><svg width="84" height="84" viewBox="0 0 96 96"><circle cx="32" cy="34" r="9" fill="#F0F0F4"/><circle cx="64" cy="34" r="9" fill="#F0F0F4"/>
+      <rect x="42" y="40" width="12" height="18" rx="6" fill="#F0F0F4"/>
+      <path d="M 26 64 A 26 26 0 0 0 70 64" stroke="#7E84FF" stroke-width="14" stroke-linecap="round" fill="none"/></svg></div><div class="t">0ms</div></div><div class="f"><div class="box"><svg width="84" height="84" viewBox="0 0 96 96"><rect x="23" y="31" width="18" height="6" rx="3" fill="#F0F0F4"/><rect x="55" y="31" width="18" height="6" rx="3" fill="#F0F0F4"/>
+      <rect x="42" y="40" width="12" height="18" rx="6" fill="#F0F0F4"/>
+      <path d="M 26 64 A 26 26 0 0 0 70 64" stroke="#7E84FF" stroke-width="14" stroke-linecap="round" fill="none"/></svg></div><div class="t">45ms</div></div><div class="f"><div class="box"><svg width="84" height="84" viewBox="0 0 96 96"><path d="M23 34h18M55 34h18" stroke="#F0F0F4" stroke-width="6" stroke-linecap="round"/>
+      <rect x="42" y="40" width="12" height="18" rx="6" fill="#F0F0F4"/>
+      <path d="M 26 64 A 26 26 0 0 0 70 64" stroke="#7E84FF" stroke-width="14" stroke-linecap="round" fill="none"/></svg></div><div class="t">90ms</div></div><div class="f"><div class="box"><svg width="84" height="84" viewBox="0 0 96 96"><circle cx="32" cy="34" r="9" fill="#F0F0F4"/><circle cx="64" cy="34" r="9" fill="#F0F0F4"/>
+      <rect x="42" y="40" width="12" height="18" rx="6" fill="#F0F0F4"/>
+      <path d="M 26 64 A 26 26 0 0 0 70 64" stroke="#7E84FF" stroke-width="14" stroke-linecap="round" fill="none"/></svg></div><div class="t">180ms</div></div></div>
+    <div class="spec"><span>时长 <b>90ms</b> × 3</span><span>曲线 <b>ease-in-out</b></span><span>触发 <b>唤醒 / 发送</b></span></div></div>
+  <div class="card"><h2>② 发送回执</h2><div class="why">输入框收成一条回执，1.6 秒后自动消失，不打断下一次捕捉。</div>
+    <div class="frames"><div class="f"><div class="box" style="align-items:flex-end;padding-bottom:10px"><div style="width:104px;height:34px;border-radius:17px;background:#16161C;border:1px solid #24242E;display:flex;align-items:center;justify-content:center;gap:5px;font-size:9px;color:#8E8E9A">＋ capture</div></div><div class="t">0ms</div></div><div class="f"><div class="box" style="align-items:flex-end;padding-bottom:10px"><div style="width:104px;height:22px;border-radius:11px;background:#16161C;border:1px solid #24242E;display:flex;align-items:center;justify-content:center;gap:5px;font-size:9px;color:#8E8E9A">✓ Saved · Inbox</div></div><div class="t">240ms</div></div><div class="f"><div class="box" style="align-items:flex-end;padding-bottom:10px"><div style="width:104px;height:14px;border-radius:7px;background:#16161C;border:1px solid #24242E;display:flex;align-items:center;justify-content:center;gap:5px;font-size:9px;color:#8E8E9A">✓</div></div><div class="t">+1.6s</div></div></div>
+    <div class="spec"><span>收起 <b>240ms</b></span><span>停留 <b>1.6s</b></span><span>曲线 <b>spring(.35,.85)</b></span></div></div>
+  <div class="card"><h2>③ 捕获 Sheet</h2><div class="why">从底部弹出，和系统 sheet 同源；键盘跟随，不遮挡输入。</div>
+    <div class="frames"><div class="f"><div style="width:120px;height:220px;border-radius:22px;background:#101014;border:1px solid #2A2A34;position:relative;overflow:hidden"><div style="position:absolute;inset:0;background:#101014"></div><div style="position:absolute;left:0;right:0;bottom:-120px;height:120px;background:#16161C;border-top:1px solid #2A2A34;border-radius:14px 14px 0 0"></div></div><div class="t">0ms</div></div><div class="f"><div style="width:120px;height:220px;border-radius:22px;background:#101014;border:1px solid #2A2A34;position:relative;overflow:hidden"><div style="position:absolute;inset:0;background:#101014"></div><div style="position:absolute;left:0;right:0;bottom:-40px;height:120px;background:#16161C;border-top:1px solid #2A2A34;border-radius:14px 14px 0 0"></div></div><div class="t">160ms</div></div><div class="f"><div style="width:120px;height:220px;border-radius:22px;background:#101014;border:1px solid #2A2A34;position:relative;overflow:hidden"><div style="position:absolute;inset:0;background:#101014"></div><div style="position:absolute;left:0;right:0;bottom:-0px;height:120px;background:#16161C;border-top:1px solid #2A2A34;border-radius:14px 14px 0 0"></div></div><div class="t">320ms</div></div></div>
+    <div class="spec"><span>时长 <b>320ms</b></span><span>曲线 <b>spring(.34,.86)</b></span><span>可下拉关闭</span></div></div>
+  <div class="card"><h2>④ 页面推入</h2><div class="why">标准 iOS push，返回手势可中断；只有页面内容移动，背景不动。</div>
+    <div class="frames"><div class="f"><div style="width:120px;height:220px;border-radius:22px;background:#101014;border:1px solid #2A2A34;position:relative;overflow:hidden"><div style="position:absolute;inset:0;background:#101014"><div style="position:absolute;inset:0;background:#0B0B0E;transform:translateX(-40px)"></div><div style="position:absolute;inset:0;background:#101014;transform:translateX(120px);border-left:1px solid #2A2A34"><div style="height:24px;background:#16161C"></div><div style="margin:10px;height:7px;width:62%;background:#2A2A34;border-radius:4px"></div><div style="margin:0 10px;height:7px;width:44%;background:#2A2A34;border-radius:4px"></div></div></div></div><div class="t">0ms</div></div><div class="f"><div style="width:120px;height:220px;border-radius:22px;background:#101014;border:1px solid #2A2A34;position:relative;overflow:hidden"><div style="position:absolute;inset:0;background:#101014"><div style="position:absolute;inset:0;background:#0B0B0E;transform:translateX(-16px)"></div><div style="position:absolute;inset:0;background:#101014;transform:translateX(50px);border-left:1px solid #2A2A34"><div style="height:24px;background:#16161C"></div><div style="margin:10px;height:7px;width:62%;background:#2A2A34;border-radius:4px"></div><div style="margin:0 10px;height:7px;width:44%;background:#2A2A34;border-radius:4px"></div></div></div></div><div class="t">150ms</div></div><div class="f"><div style="width:120px;height:220px;border-radius:22px;background:#101014;border:1px solid #2A2A34;position:relative;overflow:hidden"><div style="position:absolute;inset:0;background:#101014"><div style="position:absolute;inset:0;background:#0B0B0E;transform:translateX(-0px)"></div><div style="position:absolute;inset:0;background:#101014;transform:translateX(0px);border-left:1px solid #2A2A34"><div style="height:24px;background:#16161C"></div><div style="margin:10px;height:7px;width:62%;background:#2A2A34;border-radius:4px"></div><div style="margin:0 10px;height:7px;width:44%;background:#2A2A34;border-radius:4px"></div></div></div></div><div class="t">300ms</div></div></div>
+    <div class="spec"><span>时长 <b>300ms</b></span><span>曲线 <b>ease-out</b></span><span>可中断</span></div></div>
+</div>
+<div class="foot"><span>motion · 4 specs</span><span>FLOWCUE · iOS</span></div>
+</div></body></html>
