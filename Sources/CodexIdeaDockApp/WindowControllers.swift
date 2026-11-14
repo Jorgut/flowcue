@@ -273,3 +273,40 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 }
+
+
+final class FirstRunWindowController: NSWindowController, NSWindowDelegate {
+    private let onFinish: () -> Void
+
+    init(onFinish: @escaping () -> Void) {
+        self.onFinish = onFinish
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 880, height: 430),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        super.init(window: window)
+        window.title = L10n.text("欢迎使用 FlowCue")
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.delegate = self
+        window.contentViewController = NSHostingController(
+            rootView: FirstRunView { [weak self] in
+                self?.window?.close()
+                self?.onFinish()
+            }
+        )
+        window.setContentSize(NSSize(width: 880, height: 430))
+    }
+
+    required init?(coder: NSCoder) { nil }
+
+    func show() {
+        showWindow(nil)
+        window?.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}

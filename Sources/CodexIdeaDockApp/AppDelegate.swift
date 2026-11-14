@@ -20,6 +20,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var inboxWindowController: InboxWindowController?
     private var agentWindowController: AgentWindowController?
     private var settingsWindowController: SettingsWindowController?
+    private var firstRunWindowController: FirstRunWindowController?
     private var globalHotKey: GlobalHotKey?
     private var hotKeyRegistrationFailed = false
     private var captureHostState = CaptureHostState()
@@ -68,7 +69,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if ProcessInfo.processInfo.arguments.contains("-agents") {
             DispatchQueue.main.async { [weak self] in self?.showAgents() }
         }
-        if ProcessInfo.processInfo.arguments.contains("-settings") {
+        let args = ProcessInfo.processInfo.arguments
+        let needsFirstRun = !UserDefaults.standard.bool(forKey: "FlowCue.firstRunCompleted")
+        if args.contains("-firstrun") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                guard let self else { return }
+                self.showFirstRun()
+                let firstRunWindow = self.firstRunWindowController?.window
+                for window in NSApp.windows where window !== firstRunWindow { window.orderOut(nil) }
+                firstRunWindow?.makeKeyAndOrderFront(nil)
+            }
+        } else if needsFirstRun {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.showFirstRun()
+            }
+        }
+        if args.contains("-settings") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
                 guard let self else { return }
                 self.showSettings()
@@ -389,6 +405,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func showInbox() {
         capturePanelController?.hide()
         inboxWindowController?.show()
+    }
+
+    @objc
+    private func showFirstRun() {
+        if firstRunWindowController == nil {
+            firstRunWindowController = FirstRunWindowController { [weak self] in
+                self?.firstRunWindowController = nil
+            }
+        }
+        firstRunWindowController?.show()
     }
 
     @objc
