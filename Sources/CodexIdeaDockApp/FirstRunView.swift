@@ -30,12 +30,17 @@ struct FirstRunView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(28)
+            VStack {
+                Spacer(minLength: 0)
+                content
+                    .frame(maxWidth: 520, alignment: .leading)
+                Spacer(minLength: 0)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 40)
             footer
         }
-        .frame(width: 880, height: 430)
+        .frame(width: 680, height: 400)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             if agents.isEmpty { agents = AgentDiscovery.scan() }
@@ -93,14 +98,16 @@ struct FirstRunView: View {
     }
 
     private var pairing: some View {
-        VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .center, spacing: 20) {
+            VStack(alignment: .center, spacing: 4) {
                 Text(L10n.text("连接你的 iPhone"))
                     .font(.system(size: 20, weight: .semibold))
                 Text(L10n.text("在 iPhone 上打开 FlowCue → 配对，输入这串码。"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
 
             HStack(spacing: 8) {
                 ForEach(Array(pairingCode.enumerated()), id: \.offset) { _, character in
@@ -118,6 +125,8 @@ struct FirstRunView: View {
             Text(L10n.text("配对码也可以只在本机局域网使用。"))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
         }
     }
 
