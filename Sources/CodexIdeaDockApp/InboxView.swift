@@ -7,8 +7,12 @@ import Observation
 import SwiftUI
 
 private enum FlowCueDesktopTheme {
-    static let accent = Color(red: 0.494, green: 0.518, blue: 1.0)   // #7E84FF，与 iOS / 图标一致
-    static let mint = Color(red: 0.36, green: 0.85, blue: 0.72)
+    private static let tokens = FlowCueTokens.airyDark
+    static let accent = Color(hex: tokens.accent)      // #7E84FF，与 iOS / 图标一致
+    static let mint = Color(hex: tokens.success)
+    static let warning = Color(hex: tokens.warning)
+    static let failure = Color(hex: tokens.failure)
+    static let border = Color(hex: tokens.border)
     static let ink = Color(red: 0.10, green: 0.09, blue: 0.15)
     static let canvas = Color(nsColor: .windowBackgroundColor)
     static let card = Color(nsColor: .controlBackgroundColor)

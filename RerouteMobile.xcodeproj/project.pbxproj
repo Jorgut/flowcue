@@ -15,6 +15,8 @@
 		E00000000000000000000002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000002 /* PrivacyInfo.xcprivacy */; };
 		D00000000000000000000005 = {isa = PBXBuildFile; fileRef = A00000000000000000000005; };
 		D00000000000000000000020 = {isa = PBXBuildFile; fileRef = B00000000000000000000010; };
+		D00000000000000000000040 = {isa = PBXBuildFile; fileRef = B00000000000000000000040; };
+		D00000000000000000000050 = {isa = PBXBuildFile; fileRef = B00000000000000000000050; };
 		D00000000000000000000006 = {isa = PBXBuildFile; fileRef = A00000000000000000000006; };
 		D00000000000000000000007 = {isa = PBXBuildFile; fileRef = A00000000000000000000007; };
 		D00000000000000000000008 = {isa = PBXBuildFile; fileRef = A00000000000000000000008; };
@@ -33,6 +35,8 @@
 		C00000000000000000000004 /* AppStore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AppStore.entitlements; sourceTree = "<group>"; };
 		A00000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
 		B00000000000000000000010 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RerouteMobileApp.swift; sourceTree = "<group>"; };
+		B00000000000000000000040 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowCueMobileTheme.swift; sourceTree = "<group>"; };
+		B00000000000000000000050 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../CodexIdeaDockCore/FlowCueDesignTokens.swift; sourceTree = "<group>"; };
 		A00000000000000000000006 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedIdeaSync.swift; sourceTree = "<group>"; };
 		A00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitIdeaTransport.swift; sourceTree = "<group>"; };
 		A00000000000000000000008 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDelivery.swift; sourceTree = "<group>"; };
@@ -96,6 +100,8 @@
 			isa = PBXGroup;
 			children = (
                 B00000000000000000000010,
+                B00000000000000000000040,
+                B00000000000000000000050,
 			);
 			path = RerouteMobileApp;
 			sourceTree = "<group>";
@@ -191,6 +197,8 @@
 				D00000000000000000000007,
 				D00000000000000000000006,
                 D00000000000000000000020,
+                D00000000000000000000040,
+                D00000000000000000000050,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

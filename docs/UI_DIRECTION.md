@@ -108,6 +108,23 @@ Mono 与 Terminal 不提供明亮版（它们的气质依赖纯黑）。
 
 ---
 
+### 2.5 Token 层（代码）
+
+双端共用一份语义 token，不各写各的：
+
+| 文件 | 作用 |
+|---|---|
+| `Sources/CodexIdeaDockCore/FlowCueDesignTokens.swift` | 语义颜色（accent / success / warning / failure / canvas / surface / border / text）× 明暗两套；三档圆角、间距刻度、关键窗口尺寸 |
+| `Sources/CodexIdeaDockApp/FlowCueTheme.swift` | macOS 桥接：`Color(hex:)` + 按 `colorScheme` 取色 |
+| `Sources/RerouteMobileApp/FlowCueMobileTheme.swift` | iOS 桥接，同一份 token |
+
+规则：
+
+- **界面里不写十六进制**，一律走 token
+- 主题扩展点时只改 `FlowCueTokens` 的 preset，不改视图
+- 圆角只用 `radiusPanel 16 / radiusCard 14 / radiusInline 10` 三档
+
+
 ## 3. 图标系统
 
 ### 3.1 应用图标（B1-L，1024）
