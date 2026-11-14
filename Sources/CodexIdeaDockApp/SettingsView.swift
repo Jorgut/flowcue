@@ -41,14 +41,23 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var isReady: Bool {
         switch self {
-        case .general, .agents, .integrations: true
+        case .general, .panel, .agents, .integrations, .remote, .sync: true
         default: false
         }
     }
 }
 
 struct SettingsView: View {
-    @State private var section: SettingsSection = .general
+    @State private var section: SettingsSection = SettingsView.initialSection
+
+    static var initialSection: SettingsSection {
+        let args = ProcessInfo.processInfo.arguments
+        if let index = args.firstIndex(of: "-settingsPage"), index + 1 < args.count,
+           let value = SettingsSection(rawValue: args[index + 1]) {
+            return value
+        }
+        return .general
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -137,6 +146,9 @@ struct SettingsView: View {
     private var subtitle: String {
         switch section {
         case .general: L10n.text("语言、外观与收件箱布局")
+        case .panel: L10n.text("快捷键、尺寸与关闭行为")
+        case .remote: L10n.text("这台 Mac 的配对与远程会话")
+        case .sync: L10n.text("iCloud 同步与本地存储")
         case .agents: L10n.text("这台机器上能用的 coding agent")
         case .integrations: L10n.text("Codex、DSH、Claude Code 的连接状态")
         default: L10n.text("这个页面还在设计中")
@@ -147,8 +159,11 @@ struct SettingsView: View {
     private var content: some View {
         switch section {
         case .general: GeneralSettingsPage()
+        case .panel: PanelSettingsPage()
         case .agents: AgentsSettingsPage()
         case .integrations: IntegrationsSettingsPage()
+        case .remote: RemoteSettingsPage()
+        case .sync: SyncSettingsPage()
         default: PlaceholderPage()
         }
     }
@@ -318,6 +333,99 @@ private struct IntegrationsSettingsPage: View {
     }
 }
 
+private struct PanelSettingsPage: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsGroup(title: L10n.text("快捷键")) {
+                SettingsRow(title: L10n.text("唤起面板")) {
+                    Text("⌃⌥Space").font(.system(size: 11).monospaced())
+                }
+                SettingsRow(title: L10n.text("保存")) {
+                    Text("⌘ ↩").font(.system(size: 11).monospaced())
+                }
+                SettingsRow(title: L10n.text("排队")) {
+                    Text("⌘ ⇧ ↩").font(.system(size: 11).monospaced())
+                }
+            }
+            SettingsGroup(title: L10n.text("尺寸"), footnote: L10n.text("固定尺寸，保证写作区域稳定。")) {
+                SettingsRow(title: L10n.text("面板")) {
+                    Text("520 × 280").font(.system(size: 11).monospaced())
+                }
+            }
+            SettingsGroup(title: L10n.text("行为"), footnote: L10n.text("这些行为当前固定，后续在实验室里开放。")) {
+                SettingsRow(title: L10n.text("失去焦点自动收起")) { Text(L10n.text("开")).font(.system(size: 11)).foregroundStyle(.secondary) }
+                SettingsRow(title: L10n.text("保存后收起")) { Text(L10n.text("开")).font(.system(size: 11)).foregroundStyle(.secondary) }
+            }
+        }
+    }
+}
+
+private struct RemoteSettingsPage: View {
+    @AppStorage("FlowCue.remoteContinuationEnabled") private var enabled = false
+    @State private var code: String = UserDefaults.standard.string(forKey: "FlowCue.remotePairingCode") ?? "------"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsGroup(title: L10n.text("这台 Mac")) {
+                SettingsRow(title: L10n.text("允许远程会话")) {
+                    Toggle("", isOn: $enabled)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .tint(Color(hex: FlowCueTokens.airyDark.accent))
+                }
+                SettingsRow(title: L10n.text("配对码")) {
+                    HStack(spacing: 8) {
+                        Text(code).font(.system(size: 12).monospaced())
+                        Button(L10n.text("重新生成")) {
+                            let new = String(format: "%06d", Int.random(in: 0...999_999))
+                            UserDefaults.standard.set(new, forKey: "FlowCue.remotePairingCode")
+                            code = new
+                        }
+                        .controlSize(.small)
+                    }
+                }
+            }
+            Text(L10n.text("重新生成后，已配对的设备需要重新输入。"))
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+
+            SettingsGroup(title: L10n.text("已配对设备")) {
+                HStack(spacing: 8) {
+                    Circle().fill(Color(hex: FlowCueTokens.airyDark.textTertiary)).frame(width: 6, height: 6)
+                    Text(L10n.text("暂无设备")).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+                .frame(minHeight: 30)
+            }
+        }
+    }
+}
+
+private struct SyncSettingsPage: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsGroup(title: L10n.text("iCloud")) {
+                SettingsRow(title: L10n.text("同步想法与会话")) {
+                    Text(L10n.text("随本机设置")).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
+            }
+            SettingsGroup(title: L10n.text("存储")) {
+                SettingsRow(title: L10n.text("本机数据库")) {
+                    Text(localSize).font(.system(size: 11).monospaced()).foregroundStyle(.secondary)
+                }
+            }
+            Text(L10n.text("iCloud 同步的开关在菜单栏里，这一页只做只读展示。"))
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private var localSize: String {
+        let url = URL.applicationSupportDirectory
+        let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
+        return ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
+    }
+}
+
 private struct PlaceholderPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -343,7 +451,7 @@ private struct SettingsGroup<Content: View>: View {
             Text(title)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 0) {
                 content()
             }
             .padding(12)
@@ -366,11 +474,14 @@ private struct SettingsRow<Content: View>: View {
     @ViewBuilder var content: () -> Content
 
     var body: some View {
-        HStack {
-            Text(title).font(.system(size: 12))
-            Spacer(minLength: 12)
-            content()
+        VStack(spacing: 0) {
+            HStack {
+                Text(title).font(.system(size: 12))
+                Spacer(minLength: 12)
+                content()
+            }
+            .frame(minHeight: 30)
+            Divider().opacity(0.5)
         }
-        .frame(minHeight: 22)
     }
 }

@@ -82,6 +82,19 @@ private extension View {
     }
 }
 
+/// 全屏底色 + Airy 顶部冷光，Home / Agents 共用。
+private struct FlowCueScreenBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ZStack {
+            FlowCueTheme.canvas
+            FlowCueTheme.topGlow(colorScheme)
+        }
+        .ignoresSafeArea()
+    }
+}
+
 // MARK: - Subscription
 
 @MainActor
@@ -234,6 +247,9 @@ final class LANRemoteController {
     var statusMessage = ""
     var browserStatus = ""
     var lastError: String?
+    private(set) var lastLatencyMs: Int?
+    private(set) var lastRefreshAt: Date?
+    private(set) var lastAttempted: DiscoveredMac?
 
     private var browser: NWBrowser?
 
@@ -311,11 +327,18 @@ final class LANRemoteController {
 
     func connectManually() async {
         let parts = manualAddress.trimmingCharacters(in: .whitespaces).split(separator: ":")
-        guard parts.count == 2, let port = NWEndpoint.Port(rawValue: UInt16(parts[1])!) else {
+        guard parts.count == 2,
+              let rawPort = UInt16(parts[1]),
+              let port = NWEndpoint.Port(rawValue: rawPort) else {
             lastError = "Enter the Mac address as IP:port, for example 192.168.1.10:8787."
             return
         }
         await connect(endpoint: .hostPort(host: NWEndpoint.Host(String(parts[0])), port: port), displayName: String(parts[0]))
+    }
+
+    func retryLastAttempt() async {
+        guard let lastAttempted else { return }
+        await connect(endpoint: lastAttempted.endpoint, displayName: lastAttempted.name)
     }
 
     private func connect(endpoint: NWEndpoint, displayName: String) async {
@@ -324,16 +347,21 @@ final class LANRemoteController {
             lastError = "Enter the 6-digit pairing code shown on your Mac."
             return
         }
+        lastAttempted = DiscoveredMac(id: displayName, name: displayName, endpoint: endpoint)
         isLoading = true
         defer { isLoading = false }
         do {
+            let started = CFAbsoluteTimeGetCurrent()
             let data = try await LANHTTP.request(endpoint: endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
+            lastLatencyMs = max(1, Int((CFAbsoluteTimeGetCurrent() - started) * 1000))
+            lastRefreshAt = .now
             let snapshots = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data)
             selected = DiscoveredMac(id: displayName, name: displayName, endpoint: endpoint)
             threads = snapshots.sorted { $0.updatedAt > $1.updatedAt }
             await refreshDSHApprovals()
             await refreshDSHSessions()
             statusMessage = threads.isEmpty ? "Connected. No sessions are available yet." : "Connected."
+            lastError = nil
             UINotificationFeedbackGenerator().notificationOccurred(.success)
             stopDiscovery()
         } catch {
@@ -350,6 +378,10 @@ final class LANRemoteController {
         dshSubagents = []
         dshBridgeAvailable = false
         statusMessage = ""
+        lastLatencyMs = nil
+        lastRefreshAt = nil
+        lastAttempted = nil
+        lastError = nil
         startDiscovery()
     }
 
@@ -359,10 +391,14 @@ final class LANRemoteController {
         isLoading = true
         defer { isLoading = false }
         do {
+            let started = CFAbsoluteTimeGetCurrent()
             let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
+            lastLatencyMs = max(1, Int((CFAbsoluteTimeGetCurrent() - started) * 1000))
+            lastRefreshAt = .now
             threads = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data).sorted { $0.updatedAt > $1.updatedAt }
             await refreshDSHApprovals()
             await refreshDSHSessions()
+            lastError = nil
         } catch {
             lastError = "Connection lost. Make sure the Mac app is still running on the same Wi-Fi."
         }
@@ -925,6 +961,37 @@ private enum HomeFormat {
     }
 }
 
+private enum FlowCueLinkFormat {
+    static func latency(_ milliseconds: Int?) -> String? {
+        guard let milliseconds else { return nil }
+        if milliseconds >= 1000 {
+            return String(format: "%.1fs", Double(milliseconds) / 1000)
+        }
+        return "\(milliseconds)ms"
+    }
+
+    static func relative(_ date: Date?) -> String {
+        guard let date else { return "—" }
+        let seconds = max(0, Int(Date.now.timeIntervalSince(date)))
+        if seconds < 5 { return "just now" }
+        if seconds < 60 { return "\(seconds)s ago" }
+        return date.formatted(.relative(presentation: .named))
+    }
+
+    /// 设备指纹：只用哈希显示 8 位，避免把配对码直接留在屏幕上。
+    static func fingerprint(_ seed: String) -> String {
+        var hash: UInt64 = 1_469_598_103_934_665_603
+        for byte in seed.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 1_099_511_628_211
+        }
+        let hex = String(format: "%016llx", hash).uppercased()
+        let start = hex.prefix(4)
+        let end = hex.dropFirst(8).prefix(4)
+        return "\(start) · \(end)"
+    }
+}
+
 private enum HomeStatus {
     static func label(_ status: CaptureStatus) -> String {
         switch status {
@@ -1009,7 +1076,7 @@ private enum HomePreview {
 
 @MainActor
 @Observable
-private final class HomeNetworkMonitor {
+private final class FlowCueNetworkMonitor {
     private(set) var isOnline = true
     @ObservationIgnored private var monitor: NWPathMonitor?
 
@@ -1037,11 +1104,10 @@ private struct InboxView: View {
     @Bindable var syncController: IdeaSyncController
     @Bindable var remoteController: LANRemoteController
     @Binding var tab: FlowCueTab
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var filter: HomeFilter = .all
-    @State private var network = HomeNetworkMonitor()
+    @State private var network = FlowCueNetworkMonitor()
     @State private var searchDictation = VoiceDictation()
     @State private var searchBase = ""
     @State private var chipsCollapsed = false
@@ -1090,13 +1156,7 @@ private struct InboxView: View {
             }
             .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: captureFocused)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: searchFocused)
-            .background {
-                ZStack {
-                    FlowCueTheme.canvas
-                    FlowCueTheme.topGlow(colorScheme)
-                }
-                .ignoresSafeArea()
-            }
+            .background { FlowCueScreenBackground() }
             .toolbar(.hidden, for: .navigationBar)
             .task { network.start() }
             .onChange(of: syncController.isSyncing) { _, isSyncing in
@@ -1225,14 +1285,14 @@ private struct InboxView: View {
     @ViewBuilder
     private var banners: some View {
         if isOffline {
-            HomeStateBanner(
+            FlowCueInlineBanner(
                 kind: .warning,
                 title: "You are offline. Ideas are saved on this iPhone."
             )
             .padding(.horizontal, HomeLayout.margin)
             .padding(.top, 10)
         } else if showsSyncFailure {
-            HomeStateBanner(
+            FlowCueInlineBanner(
                 kind: .failure,
                 title: "Sync failed — changes saved locally",
                 actionTitle: "Retry",
@@ -1367,7 +1427,7 @@ private struct InboxView: View {
                     .fill(FlowCueTheme.mint)
                     .frame(width: 5, height: 5)
                     .accessibilityHidden(true)
-                Text("Codex · online")
+                Text("Codex · \(FlowCueLinkFormat.latency(remoteController.lastLatencyMs) ?? "online")")
             }
             .flowCueFont(10, relativeTo: .caption2)
             .tracking(0.6)
@@ -1531,7 +1591,7 @@ private struct HomeIdeaRow: View {
     }
 }
 
-private struct HomeStateBanner: View {
+private struct FlowCueInlineBanner: View {
     enum Kind { case warning, failure }
 
     let kind: Kind
@@ -1559,7 +1619,7 @@ private struct HomeStateBanner: View {
                     Text(actionTitle)
                         .flowCueFont(11, relativeTo: .caption2, weight: .semibold)
                         .foregroundStyle(tint)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, 4)
                         .padding(.leading, 8)
                         .contentShape(Rectangle())
                 }
@@ -1567,7 +1627,7 @@ private struct HomeStateBanner: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
         .background(
             RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
                 .fill(FlowCueTheme.textPrimary.opacity(0.04))
@@ -1847,140 +1907,1126 @@ private struct IdeaDetailView: View {
 
 // MARK: - Agents
 
+/// 只用于 DEBUG 状态走查；Release 永远返回 nil。
+private enum AgentsPreview {
+    static let requestedState: String? = {
+        #if DEBUG
+        guard let argument = ProcessInfo.processInfo.arguments.first(where: {
+            $0.hasPrefix("--flowcue-agents-state=")
+        }) else { return nil }
+        return String(argument.dropFirst("--flowcue-agents-state=".count))
+        #else
+        return nil
+        #endif
+    }()
+
+    static var forcesDiscovering: Bool { requestedState == "discovering" }
+    static var forcesCannotReach: Bool { requestedState == "cannotReach" }
+    static var forcesOffline: Bool { requestedState == "offline" }
+}
+
+private enum AgentsLayout {
+    static let margin: CGFloat = 18
+    static let deviceIcon: CGFloat = 34
+    static let agentIcon: CGFloat = 26
+}
+
+private struct AgentsSectionHeader: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .flowCueFont(10, relativeTo: .caption2, weight: .regular)
+            .tracking(1.4)
+            .foregroundStyle(FlowCueTheme.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct AgentsFaceBadge: View {
+    let size: CGFloat
+    let faceSize: CGFloat
+    var ink: Color = FlowCueTheme.textPrimary
+    var smile: Color = FlowCueTheme.accent
+    var background: Color = FlowCueTheme.surface
+    var cornerRadius: CGFloat = FlowCueMetrics.radiusInline
+    var bordered: Bool = false
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(background)
+            if bordered {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(FlowCueTheme.hairline)
+            }
+            FlowCueFaceMark(ink: ink, smile: smile)
+                .frame(width: faceSize, height: faceSize)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct AgentsAddBadge: View {
+    let size: CGFloat
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(
+                    FlowCueTheme.hairline,
+                    style: StrokeStyle(lineWidth: 1, dash: [3, 3])
+                )
+            Image(systemName: "plus")
+                .font(.system(size: 14))
+                .foregroundStyle(FlowCueTheme.textSecondary)
+        }
+        .frame(width: size, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
+/// 34pt 设备卡，对应设计稿 DEVICES 区。
+private struct AgentsDeviceCard: View {
+    let title: String
+    let isOnline: Bool
+    let latency: String?
+
+    var body: some View {
+        HStack(spacing: 11) {
+            AgentsFaceBadge(
+                size: AgentsLayout.deviceIcon,
+                faceSize: 22,
+                background: FlowCueTheme.canvas,
+                cornerRadius: FlowCueMetrics.radiusInline,
+                bordered: true
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(isOnline ? FlowCueTheme.mint : FlowCueTheme.failure)
+                        .frame(width: 5, height: 5)
+                        .accessibilityHidden(true)
+                    Text(isOnline ? "online" : "offline")
+                    if isOnline, let latency {
+                        Text(" · \(latency)")
+                    }
+                }
+                .flowCueFont(10, relativeTo: .caption2)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+            Spacer(minLength: 4)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.8))
+                .accessibilityHidden(true)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                .fill(FlowCueTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                .strokeBorder(FlowCueTheme.hairline)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(title), \(isOnline ? "online" : "offline")\(latency.map { ", \($0)" } ?? "")"
+        )
+    }
+}
+
+/// 26pt agent 行，对应设计稿 AGENTS ON THIS MAC 区。
+private struct AgentsAgentRow: View {
+    let title: String
+    let meta: String
+    let isActive: Bool
+
+    var body: some View {
+        HStack(spacing: 10) {
+            AgentsFaceBadge(
+                size: AgentsLayout.agentIcon,
+                faceSize: 18,
+                ink: isActive ? FlowCueTheme.textPrimary : FlowCueTheme.textSecondary,
+                smile: isActive ? FlowCueTheme.accent : FlowCueTheme.textSecondary,
+                background: FlowCueTheme.surface,
+                cornerRadius: 8
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .flowCueFont(13, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                Text(meta)
+                    .flowCueFont(10, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineLimit(2)
+            }
+            Spacer(minLength: 4)
+            if isActive {
+                Circle()
+                    .fill(FlowCueTheme.mint)
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
+            } else {
+                Circle()
+                    .strokeBorder(FlowCueTheme.textSecondary, lineWidth: 1)
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title), \(meta), \(isActive ? "active" : "idle")")
+    }
+}
+
+private struct AgentsAddRow: View {
+    var body: some View {
+        HStack(spacing: 9) {
+            AgentsAddBadge(size: AgentsLayout.agentIcon)
+            Text("Add agent")
+                .flowCueFont(12, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+            Spacer()
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .accessibilityLabel("Add agent")
+    }
+}
+
+private struct AgentsRingSpinner: View {
+    var size: CGFloat = 34
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var spinning = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(FlowCueTheme.hairline, lineWidth: 2)
+            Circle()
+                .trim(from: 0, to: 0.25)
+                .stroke(FlowCueTheme.accent, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+                .rotationEffect(.degrees(spinning ? 360 : 0))
+                .animation(
+                    reduceMotion ? nil : .linear(duration: 0.9).repeatForever(autoreverses: false),
+                    value: spinning
+                )
+        }
+        .frame(width: size, height: size)
+        .onAppear { spinning = true }
+        .accessibilityHidden(true)
+    }
+}
+
 private struct AgentsView: View {
     @Bindable var controller: LANRemoteController
     @Binding var tab: FlowCueTab
     @Environment(SubscriptionManager.self) private var subscription
     @State private var showingPaywall = false
+    @State private var showingPairing = AgentsPreview.requestedState == "pairing"
+    @State private var showingAddAgent = AgentsPreview.requestedState == "addAgent"
+    @State private var showingRemote = AgentsPreview.requestedState == "remote"
+    @State private var network = FlowCueNetworkMonitor()
 
     var body: some View {
         NavigationStack {
-            Group {
-                if !subscription.isPro {
-                    ProLockedView(
-                        title: "Continue sessions from your phone",
-                        message: "FlowCue Pro connects directly to your Mac on the same Wi-Fi. Read the last reply and send the next message without opening your laptop.",
-                        action: { showingPaywall = true }
-                    )
-                } else if controller.isConnected {
-                    AgentHubView(controller: controller)
-                } else {
-                    discoveryList
+            VStack(spacing: 0) {
+                agentsHeader
+
+                Group {
+                    if subscription.isLoading {
+                        ProgressView()
+                            .tint(FlowCueTheme.textSecondary)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if !subscription.isPro {
+                        ProLockedView(
+                            title: "Continue sessions from your phone",
+                            message: "FlowCue Pro connects directly to your Mac on the same Wi-Fi. Read the last reply and send the next message without opening your laptop.",
+                            action: { showingPaywall = true }
+                        )
+                    } else if showsCannotReach {
+                        cannotReachContent
+                    } else if controller.isConnected {
+                        connectedContent
+                    } else if showsDiscovering {
+                        discoveringContent
+                    } else {
+                        emptyContent
+                    }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .navigationTitle("Agents")
+            .background { FlowCueScreenBackground() }
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(isPresented: $showingRemote) {
+                RemoteDeviceView(controller: controller)
+            }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 FlowCueTabBar(selection: $tab)
             }
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    if controller.isConnected {
-                        Button("Disconnect") { controller.disconnect() }
-                    } else {
-                        Button { controller.startDiscovery() } label: { Image(systemName: "arrow.clockwise") }
-                    }
-                }
-            }
-            .onAppear {
-                if subscription.isPro && !controller.isConnected {
-                    #if DEBUG
-                    if !controller.manualAddress.isEmpty && controller.pairingCode.count == 6 {
-                        Task { await controller.connectManually() }
-                        return
-                    }
-                    #endif
-                    controller.startDiscovery()
-                }
-            }
-            .onDisappear { controller.stopDiscovery() }
+            .task { network.start() }
             .task {
                 while !Task.isCancelled {
                     if controller.isConnected {
                         await controller.refresh()
                     }
-                    try? await Task.sleep(for: .seconds(5))
+                    try? await Task.sleep(for: .seconds(10))
                 }
             }
+            .onDisappear {
+                network.stop()
+                controller.stopDiscovery()
+            }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
-            .alert("Connection issue", isPresented: Binding(
-                get: { controller.lastError != nil },
-                set: { if !$0 { controller.lastError = nil } }
-            )) {
-                Button("OK", role: .cancel) { controller.lastError = nil }
-            } message: { Text(controller.lastError ?? "") }
+            .sheet(isPresented: $showingPairing) {
+                PairMacSheet(controller: controller)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showingAddAgent) {
+                AddAgentSheet {
+                    await controller.refresh()
+                }
+                .presentationDetents([.large])
+            }
         }
     }
 
-    private var discoveryList: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Same Wi-Fi").font(.headline)
-                    Text("On your Mac, choose “Allow iPhone on this network” from the FlowCue menu bar. The pairing code appears there.")
-                        .font(.footnote).foregroundStyle(.secondary)
-                    TextField("6-digit pairing code", text: $controller.pairingCode)
-                        .keyboardType(.numberPad)
-                        .textContentType(.oneTimeCode)
-                        .padding(10)
-                        .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 10))
-                }
-                .padding(.vertical, 4)
-            }
-            Section("Macs found") {
-                if controller.discovered.isEmpty {
-                    HStack(alignment: .top) {
-                        ProgressView().padding(.top, 2)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(controller.isScanning ? "Looking for your Mac…" : "No Mac found.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                            if !controller.browserStatus.isEmpty {
-                                Text(controller.browserStatus).font(.caption2).foregroundStyle(.tertiary)
-                            }
-                        }
-                    }
-                }
-                ForEach(controller.discovered) { mac in
+    private var agentsHeader: some View {
+        ZStack {
+            Text("Agents")
+                .flowCueFont(17, relativeTo: .headline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            HStack {
+                Spacer()
+                if subscription.isPro && !subscription.isLoading {
                     Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        Task { await controller.connect(to: mac) }
+                        toolbarAction()
                     } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "macbook")
-                            Text(mac.name)
-                            Spacer()
-                            if controller.isLoading {
-                                ProgressView().controlSize(.small)
-                                Text("Connecting…").font(.caption).foregroundStyle(.secondary)
-                            } else {
-                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                            }
-                        }
+                        Image(systemName: toolbarSymbol)
+                            .font(.system(size: 17, weight: .regular))
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
-                    .disabled(controller.pairingCode.count != 6 || controller.isLoading)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(toolbarSymbol == "plus" ? "Pair a Mac" : "Refresh agents")
                 }
             }
-            Section {
-                TextField("Mac address (IP:port)", text: $controller.manualAddress)
+        }
+        .frame(height: 44)
+        .padding(.top, 10)
+    }
+
+    // MARK: State
+
+    private var isOffline: Bool {
+        AgentsPreview.forcesOffline || !network.isOnline
+    }
+
+    private var showsCannotReach: Bool {
+        if AgentsPreview.forcesCannotReach { return true }
+        return !controller.isConnected && controller.lastError != nil && controller.lastAttempted != nil
+    }
+
+    private var showsDiscovering: Bool {
+        if AgentsPreview.forcesDiscovering { return true }
+        return !controller.isConnected
+            && controller.lastAttempted == nil
+            && controller.isScanning
+            && controller.discovered.isEmpty
+    }
+
+    private var toolbarSymbol: String {
+        if AgentsPreview.requestedState != nil {
+            return "arrow.clockwise"
+        }
+        if controller.isConnected || controller.lastAttempted != nil || controller.isScanning {
+            return "arrow.clockwise"
+        }
+        return "plus"
+    }
+
+    private func toolbarAction() {
+        if controller.isConnected {
+            Task { await controller.refresh() }
+        } else if controller.lastAttempted != nil {
+            Task { await controller.retryLastAttempt() }
+        } else if controller.isScanning {
+            controller.stopDiscovery()
+            controller.startDiscovery()
+        } else {
+            showingPairing = true
+        }
+    }
+
+    private var deviceName: String {
+        let raw = controller.selected?.name ?? controller.lastAttempted?.name
+        return Self.displayName(raw)
+    }
+
+    private static func displayName(_ raw: String?) -> String {
+        guard let raw, !raw.isEmpty else { return "FlowCue Mac" }
+        if raw.contains(".") || raw.contains(":") { return "FlowCue Mac" }
+        if raw == "FlowCue" { return "FlowCue Mac" }
+        return raw
+    }
+
+    // MARK: Connected
+
+    private var connectedContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if isOffline {
+                    FlowCueInlineBanner(
+                        kind: .warning,
+                        title: "No network. Agents need Wi-Fi."
+                    )
+                    .padding(.top, 10)
+                } else if let message = controller.lastError {
+                    FlowCueInlineBanner(
+                        kind: .failure,
+                        title: message,
+                        actionTitle: "Retry",
+                        action: { Task { await controller.refresh() } }
+                    )
+                    .padding(.top, 10)
+                }
+
+                AgentsSectionHeader(title: "DEVICES")
+                    .padding(.top, 14)
+
+                NavigationLink {
+                    RemoteDeviceView(controller: controller)
+                } label: {
+                    AgentsDeviceCard(
+                        title: deviceName,
+                        isOnline: !isOffline,
+                        latency: FlowCueLinkFormat.latency(controller.lastLatencyMs)
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 12)
+
+                AgentsSectionHeader(title: "AGENTS ON THIS MAC")
+                    .padding(.top, 16)
+
+                VStack(spacing: 0) {
+                    NavigationLink {
+                        CodexAgentView(controller: controller)
+                    } label: {
+                        AgentsAgentRow(
+                            title: "Codex",
+                            meta: codexMeta,
+                            isActive: !isOffline && !controller.threads.isEmpty
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    Rectangle()
+                        .fill(FlowCueTheme.hairline)
+                        .frame(height: 1)
+                        .accessibilityHidden(true)
+
+                    NavigationLink {
+                        DSHAgentView(controller: controller)
+                    } label: {
+                        AgentsAgentRow(
+                            title: "DSH",
+                            meta: dshMeta,
+                            isActive: !isOffline && controller.dshBridgeAvailable
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    Rectangle()
+                        .fill(FlowCueTheme.hairline)
+                        .frame(height: 1)
+                        .accessibilityHidden(true)
+
+                    Button {
+                        showingAddAgent = true
+                    } label: {
+                        AgentsAddRow()
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 10)
+            }
+            .padding(.horizontal, AgentsLayout.margin)
+            .padding(.bottom, 28)
+        }
+        .refreshable { await controller.refresh() }
+    }
+
+    private var codexMeta: String {
+        let count = controller.threads.count
+        return count == 0 ? "No sessions yet" : "\(count) session\(count == 1 ? "" : "s")"
+    }
+
+    private var dshMeta: String {
+        let count = controller.dshSessions.count
+        var parts: [String] = [count == 0 ? "No sessions yet" : "\(count) session\(count == 1 ? "" : "s")"]
+        if !controller.dshApprovals.isEmpty {
+            parts.append("\(controller.dshApprovals.count) pending")
+        } else if !controller.dshBridgeAvailable {
+            parts = ["Bridge not installed"]
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    // MARK: Empty / discovery / error
+
+    private var emptyContent: some View {
+        VStack(spacing: 0) {
+            if isOffline {
+                FlowCueInlineBanner(
+                    kind: .warning,
+                    title: "No network. Agents need Wi-Fi."
+                )
+                .padding(.horizontal, AgentsLayout.margin)
+                .padding(.top, 10)
+            }
+            Spacer(minLength: 0)
+            FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                .frame(width: 80, height: 80)
+            Text("No agents yet")
+                .flowCueFont(18, relativeTo: .title3, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.top, 18)
+            Text("Pair a Mac to continue your sessions from your phone.")
+                .flowCueFont(12.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .frame(maxWidth: 260)
+                .padding(.top, 6)
+            Button {
+                showingPairing = true
+            } label: {
+                Text("Pair a Mac")
+                    .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
+                    .foregroundStyle(FlowCueTheme.onAccent)
+                    .padding(.horizontal, 20)
+                    .frame(height: 40)
+                    .background(Capsule().fill(FlowCueTheme.accent))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 16)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var discoveringContent: some View {
+        VStack(spacing: 14) {
+            Spacer(minLength: 0)
+            AgentsRingSpinner(size: 34)
+            Text("Looking for devices")
+                .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.top, 4)
+            Text("Make sure your Mac is on the same Wi-Fi and FlowCue is running.")
+                .flowCueFont(12, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .frame(maxWidth: 280)
+            Button("Cancel") {
+                controller.stopDiscovery()
+            }
+            .flowCueFont(12, relativeTo: .caption)
+            .foregroundStyle(FlowCueTheme.textSecondary)
+            .padding(.top, 4)
+            .accessibilityLabel("Cancel discovery")
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, AgentsLayout.margin)
+    }
+
+    private var cannotReachContent: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if isOffline {
+                    FlowCueInlineBanner(
+                        kind: .warning,
+                        title: "No network. Agents need Wi-Fi."
+                    )
+                    .padding(.top, 10)
+                }
+
+                Button {
+                    showingPairing = true
+                } label: {
+                    AgentsDeviceCard(
+                        title: deviceName,
+                        isOnline: false,
+                        latency: nil
+                    )
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 12)
+
+                FlowCueInlineBanner(
+                    kind: .failure,
+                    title: "Can't reach this Mac",
+                    actionTitle: "Retry",
+                    action: { Task { await controller.retryLastAttempt() } }
+                )
+                .padding(.top, 10)
+
+                Text("Check that FlowCue is running on your Mac, then try again. Ideas stay on this iPhone.")
+                    .flowCueFont(12, relativeTo: .caption)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineSpacing(3)
+                    .padding(.top, 14)
+
+                Button {
+                    showingPairing = true
+                } label: {
+                    Text("Pair a different Mac")
+                        .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.accent)
+                        .padding(.vertical, 10)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 6)
+            }
+            .padding(.horizontal, AgentsLayout.margin)
+            .padding(.bottom, 28)
+        }
+        .refreshable {
+            await controller.retryLastAttempt()
+        }
+    }
+}
+
+// MARK: - Pairing
+
+private struct PairMacSheet: View {
+    @Bindable var controller: LANRemoteController
+    @Environment(\.dismiss) private var dismiss
+    @State private var target: DiscoveredMac?
+    @State private var showingManual = false
+    @FocusState private var codeFocused: Bool
+
+    private var canConnect: Bool {
+        guard controller.pairingCode.count == 6 else { return false }
+        if target != nil { return true }
+        return showingManual && !controller.manualAddress.trimmingCharacters(in: .whitespaces).isEmpty
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    codeSection
+                    nearbySection
+                    manualSection
+                    if let error = controller.lastError {
+                        FlowCueInlineBanner(
+                            kind: .failure,
+                            title: error,
+                            actionTitle: "Retry",
+                            action: { Task { await connect() } }
+                        )
+                        .padding(.top, 12)
+                    }
+                }
+                .padding(.horizontal, AgentsLayout.margin)
+                .padding(.top, 12)
+                .padding(.bottom, 24)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .background { FlowCueScreenBackground() }
+            .navigationTitle("Pair a Mac")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                connectButton
+            }
+            .task {
+                if !controller.isScanning { controller.startDiscovery() }
+            }
+            .onChange(of: controller.pairingCode) { _, value in
+                let digits = String(value.filter { "0123456789".contains($0) }.prefix(6))
+                if digits != value { controller.pairingCode = digits }
+            }
+            .onChange(of: controller.isConnected) { _, connected in
+                if connected { dismiss() }
+            }
+        }
+    }
+
+    private var codeSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("Enter the code")
+                .flowCueFont(22, relativeTo: .title2, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            Text("Shown on your Mac in FlowCue → iPhone.")
+                .flowCueFont(12, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .padding(.top, 4)
+            TextField("000000", text: $controller.pairingCode)
+                .keyboardType(.numberPad)
+                .textContentType(.oneTimeCode)
+                .multilineTextAlignment(.center)
+                .font(.system(size: 26, weight: .semibold, design: .monospaced))
+                .tracking(6)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .focused($codeFocused)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(
+                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                        .fill(FlowCueTheme.surface)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                        .strokeBorder(codeFocused ? FlowCueTheme.accent.opacity(0.6) : FlowCueTheme.hairline)
+                )
+                .padding(.top, 14)
+                .accessibilityLabel("6-digit pairing code")
+        }
+    }
+
+    private var nearbySection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            AgentsSectionHeader(title: "NEARBY · WI-FI")
+                .padding(.top, 22)
+
+            if controller.discovered.isEmpty {
+                HStack(alignment: .top, spacing: 10) {
+                    if controller.isScanning {
+                        AgentsRingSpinner(size: 22)
+                            .padding(.top, 1)
+                    }
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(controller.isScanning ? "Looking for devices…" : "No Mac found")
+                            .flowCueFont(13, relativeTo: .subheadline)
+                            .foregroundStyle(FlowCueTheme.textPrimary)
+                        Text("Make sure your Mac is on the same Wi-Fi and FlowCue is running.")
+                            .flowCueFont(11, relativeTo: .caption2)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if !controller.isScanning {
+                            Button("Search again") {
+                                controller.stopDiscovery()
+                                controller.startDiscovery()
+                            }
+                            .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                            .foregroundStyle(FlowCueTheme.accent)
+                            .padding(.top, 2)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.top, 12)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(controller.discovered) { mac in
+                        Button {
+                            target = mac
+                            codeFocused = true
+                        } label: {
+                            pairDeviceRow(mac)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.top, 10)
+            }
+        }
+    }
+
+    private func pairDeviceRow(_ mac: DiscoveredMac) -> some View {
+        let selected = target?.id == mac.id
+        return HStack(spacing: 11) {
+            AgentsFaceBadge(
+                size: 30,
+                faceSize: 20,
+                background: FlowCueTheme.canvas,
+                cornerRadius: FlowCueMetrics.radiusInline,
+                bordered: true
+            )
+            VStack(alignment: .leading, spacing: 2) {
+                Text(Self.displayName(mac.name))
+                    .flowCueFont(13, relativeTo: .subheadline, weight: .semibold)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                Text("This network")
+                    .flowCueFont(10, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+            Spacer(minLength: 0)
+            if selected {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.accent)
+            }
+        }
+        .padding(11)
+        .background(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                .fill(FlowCueTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                .strokeBorder(selected ? FlowCueTheme.accent.opacity(0.6) : FlowCueTheme.hairline)
+        )
+        .contentShape(Rectangle())
+    }
+
+    private var manualSection: some View {
+        DisclosureGroup(isExpanded: $showingManual) {
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("192.168.1.10:61849", text: $controller.manualAddress)
                     .keyboardType(.URL)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
-                Button("Connect manually") {
-                    Task { await controller.connectManually() }
-                }
-                .disabled(controller.pairingCode.count != 6 || controller.manualAddress.isEmpty)
-            } header: {
-                Text("Advanced")
-            } footer: {
+                    .font(.system(size: 14, design: .monospaced))
+                    .padding(.horizontal, 12)
+                    .frame(height: 44)
+                    .background(
+                        RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                            .fill(FlowCueTheme.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                            .strokeBorder(FlowCueTheme.hairline)
+                    )
                 Text("Use this if the Mac does not appear automatically.")
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
             }
-            if !controller.statusMessage.isEmpty {
-                Text(controller.statusMessage).font(.footnote).foregroundStyle(.secondary)
-            }
+            .padding(.top, 8)
+        } label: {
+            Text("Connect manually")
+                .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textSecondary)
         }
-        .scrollContentBackground(.hidden)
+        .tint(FlowCueTheme.textSecondary)
+        .padding(.top, 18)
+    }
+
+    private var connectButton: some View {
+        VStack(spacing: 0) {
+            Button {
+                Task { await connect() }
+            } label: {
+                HStack(spacing: 8) {
+                    if controller.isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(FlowCueTheme.onAccent)
+                    }
+                    Text(controller.isLoading ? "Connecting…" : "Connect")
+                        .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                }
+                .foregroundStyle(canConnect ? FlowCueTheme.onAccent : FlowCueTheme.textSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(
+                    Capsule()
+                        .fill(canConnect ? FlowCueTheme.accent : FlowCueTheme.surface)
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(canConnect ? Color.clear : FlowCueTheme.hairline)
+                )
+                .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canConnect || controller.isLoading)
+            .accessibilityLabel("Connect to Mac")
+        }
+        .padding(.horizontal, AgentsLayout.margin)
+        .padding(.top, 8)
+        .padding(.bottom, 10)
         .background(FlowCueTheme.canvas)
     }
+
+    private func connect() async {
+        if let target {
+            await controller.connect(to: target)
+        } else if showingManual {
+            await controller.connectManually()
+        }
+        if controller.isConnected { dismiss() }
+    }
+
+    private static func displayName(_ raw: String) -> String {
+        if raw.contains(".") || raw.contains(":") { return "FlowCue Mac" }
+        if raw == "FlowCue" { return "FlowCue Mac" }
+        return raw.isEmpty ? "FlowCue Mac" : raw
+    }
 }
+
+// MARK: - Add agent
+
+private struct AddAgentSheet: View {
+    let refresh: () async -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var refreshing = false
+
+    private let supported = ["Codex", "Claude Code", "DSH"]
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                        .frame(width: 56, height: 56)
+                    Text("Agents live on your Mac")
+                        .flowCueFont(22, relativeTo: .title2, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.textPrimary)
+                        .padding(.top, 16)
+                    Text("FlowCue detects the agents installed on your Mac. Open FlowCue on your Mac, connect an agent there, then refresh this page.")
+                        .flowCueFont(12.5, relativeTo: .caption)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .lineSpacing(3)
+                        .padding(.top, 8)
+
+                    AgentsSectionHeader(title: "DETECTED BY FLOWCUE")
+                        .padding(.top, 22)
+                    VStack(spacing: 0) {
+                        ForEach(supported, id: \.self) { name in
+                            HStack(spacing: 10) {
+                                AgentsFaceBadge(
+                                    size: AgentsLayout.agentIcon,
+                                    faceSize: 18,
+                                    background: FlowCueTheme.surface,
+                                    cornerRadius: 8
+                                )
+                                Text(name)
+                                    .flowCueFont(13, relativeTo: .subheadline)
+                                    .foregroundStyle(FlowCueTheme.textPrimary)
+                                Spacer()
+                            }
+                            .padding(.vertical, 10)
+                            if name != supported.last {
+                                Rectangle()
+                                    .fill(FlowCueTheme.hairline)
+                                    .frame(height: 1)
+                            }
+                        }
+                    }
+                    .padding(.top, 8)
+                }
+                .padding(.horizontal, AgentsLayout.margin)
+                .padding(.top, 20)
+                .padding(.bottom, 24)
+            }
+            .background { FlowCueScreenBackground() }
+            .navigationTitle("Add agent")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(FlowCueTheme.accent)
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Button {
+                    refreshing = true
+                    Task {
+                        await refresh()
+                        refreshing = false
+                        dismiss()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if refreshing {
+                            ProgressView().controlSize(.small).tint(FlowCueTheme.onAccent)
+                        }
+                        Text("Refresh agents")
+                            .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                    }
+                    .foregroundStyle(FlowCueTheme.onAccent)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Capsule().fill(FlowCueTheme.accent))
+                }
+                .buttonStyle(.plain)
+                .disabled(refreshing)
+                .padding(.horizontal, AgentsLayout.margin)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+                .background(FlowCueTheme.canvas)
+            }
+        }
+    }
+}
+
+// MARK: - Device detail (Remote first pass)
+
+private struct RemoteDeviceView: View {
+    @Bindable var controller: LANRemoteController
+    @Environment(\.dismiss) private var dismiss
+
+    private var name: String {
+        let raw = controller.selected?.name
+        guard let raw, !raw.isEmpty else { return "FlowCue Mac" }
+        if raw.contains(".") || raw.contains(":") { return "FlowCue Mac" }
+        if raw == "FlowCue" { return "FlowCue Mac" }
+        return raw
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            remoteHeader
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    AgentsFaceBadge(
+                        size: 56,
+                        faceSize: 40,
+                        background: FlowCueTheme.surface,
+                        cornerRadius: FlowCueMetrics.radiusPanel,
+                        bordered: true
+                    )
+                    Text(name)
+                        .flowCueFont(22, relativeTo: .title2, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.textPrimary)
+                        .padding(.top, 14)
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(controller.isConnected ? FlowCueTheme.mint : FlowCueTheme.failure)
+                            .frame(width: 5, height: 5)
+                            .accessibilityHidden(true)
+                        Text(controller.isConnected ? "Online · Wi-Fi" : "Offline")
+                    }
+                    .flowCueFont(12, relativeTo: .caption)
+                    .foregroundStyle(controller.isConnected ? FlowCueTheme.mint : FlowCueTheme.failure)
+                    .padding(.top, 6)
+
+                    VStack(spacing: 0) {
+                        infoRow("Latency", FlowCueLinkFormat.latency(controller.lastLatencyMs) ?? "—")
+                        infoRow("Last sync", FlowCueLinkFormat.relative(controller.lastRefreshAt))
+                        infoRow(
+                            "Pairing",
+                            FlowCueLinkFormat.fingerprint("\(name)|\(controller.pairingCode)"),
+                            monospaced: true
+                        )
+                    }
+                    .padding(.top, 22)
+                }
+                .padding(.horizontal, AgentsLayout.margin)
+                .padding(.top, 22)
+            }
+        }
+        .background { FlowCueScreenBackground() }
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 10) {
+                NavigationLink {
+                    chatDestination
+                } label: {
+                    Text("Open chat")
+                        .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Capsule().fill(FlowCueTheme.accent))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open chat")
+
+                Button {
+                    controller.disconnect()
+                    dismiss()
+                } label: {
+                    Text("Disconnect")
+                        .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.textPrimary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Capsule().fill(FlowCueTheme.surface))
+                        .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Disconnect from this Mac")
+            }
+            .padding(.horizontal, AgentsLayout.margin)
+            .padding(.top, 8)
+            .padding(.bottom, 10)
+            .background(FlowCueTheme.canvas)
+        }
+    }
+
+    private var remoteHeader: some View {
+        ZStack {
+            Text("Device")
+                .flowCueFont(17, relativeTo: .headline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(FlowCueTheme.textPrimary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back")
+                Spacer()
+            }
+        }
+        .frame(height: 44)
+        .padding(.top, 10)
+    }
+
+    @ViewBuilder
+    private var chatDestination: some View {
+        if let thread = controller.threads.first {
+            AgentDetailView(controller: controller, thread: thread)
+        } else {
+            CodexAgentView(controller: controller)
+        }
+    }
+
+    private func infoRow(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
+        HStack {
+            Text(label)
+                .flowCueFont(12.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+            Spacer()
+            Text(value)
+                .font(.system(size: 12.5, design: monospaced ? .monospaced : .default))
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .lineLimit(1)
+        }
+        .padding(.vertical, 11)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(FlowCueTheme.hairline)
+                .frame(height: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label): \(value)")
+    }
+}
+
 
 private struct DSHApprovalCard: View {
     let approval: DSHRemoteApproval
@@ -2027,128 +3073,6 @@ private struct DSHApprovalCard: View {
         }
         .padding(14)
         .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-}
-
-private struct AgentHubView: View {
-    @Bindable var controller: LANRemoteController
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(spacing: 10) {
-                    Image(systemName: "macbook.and.iphone")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundStyle(FlowCueTheme.mint)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Connected to Mac").font(.subheadline.weight(.medium))
-                        Text(controller.statusMessage.isEmpty ? "Same Wi-Fi" : controller.statusMessage)
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Circle().fill(FlowCueTheme.mint).frame(width: 7, height: 7)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Agents").font(.title3.weight(.semibold))
-                    NavigationLink {
-                        CodexAgentView(controller: controller)
-                    } label: {
-                        AgentProviderCard(
-                            icon: "chevron.left.forwardslash.chevron.right",
-                            iconColor: FlowCueTheme.accent,
-                            title: "Codex",
-                            subtitle: controller.threads.isEmpty ? "No sessions yet" : "\(controller.threads.count) session\(controller.threads.count == 1 ? "" : "s")"
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    NavigationLink {
-                        DSHAgentView(controller: controller)
-                    } label: {
-                        AgentProviderCard(
-                            icon: "checkmark.shield.fill",
-                            iconColor: FlowCueTheme.mint,
-                            title: "DSH",
-                            subtitle: {
-                                var parts: [String] = []
-                                if !controller.dshSessions.isEmpty { parts.append("\(controller.dshSessions.count) session\(controller.dshSessions.count == 1 ? "" : "s")") }
-                                if !controller.dshApprovals.isEmpty { parts.append("\(controller.dshApprovals.count) pending") }
-                                if parts.isEmpty { return controller.dshBridgeAvailable ? "No pending approvals" : "Bridge not installed" }
-                                return parts.joined(separator: " · ")
-                            }()
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                Text("Choose an agent to see its sessions or approvals. Both use the same secure Wi-Fi connection to your Mac.")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .padding(.horizontal, 4)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 10)
-            .padding(.bottom, 28)
-        }
-        .background(FlowCueTheme.canvas)
-        .navigationTitle("Agents")
-        .refreshable { await controller.refresh() }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button { Task { await controller.refresh() } } label: { Image(systemName: "arrow.clockwise") }
-                    .accessibilityLabel("Refresh sessions")
-            }
-        }
-    }
-}
-
-private struct AgentProviderCard: View {
-    let icon: String
-    let iconColor: Color
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(iconColor)
-                .frame(width: 42, height: 42)
-                .background(iconColor.opacity(0.12), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
-            }
-            Spacer()
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(14)
-        .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-}
-
-private struct AgentProviderRow: View {
-    let icon: String
-    let iconColor: Color
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(iconColor)
-                .frame(width: 30)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.headline)
-                Text(subtitle).font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 3)
     }
 }
 
