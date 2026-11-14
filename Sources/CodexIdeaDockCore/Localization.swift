@@ -355,5 +355,7 @@ public enum L10n {
         "重新检查": "Check again",
         "已连接（桥）": "Connected",
         "桥接未连接，iPhone 上的审批暂时收不到。": "Bridge is not connected; iPhone approvals are paused.",
+        "重试": "Retry",
+        "重试投递": "Retry delivery",
     ]
 }
