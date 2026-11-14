@@ -15,6 +15,7 @@ struct AgentBrowserView: View {
     private func adapter(for id: String) -> AgentAdapter? {
         switch id {
         case "claude": ClaudeCodeAdapter()
+        case "codex": CodexAgentAdapter()
         default: nil
         }
     }
