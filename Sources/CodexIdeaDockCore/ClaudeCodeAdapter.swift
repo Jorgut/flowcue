@@ -11,7 +11,7 @@ public struct ClaudeCodeAdapter: AgentAdapter {
             .appendingPathComponent(".claude/projects", isDirectory: true)
     }
 
-    public func listSessions(limit: Int = 50) throws -> [AgentSession] {
+    public func listSessions(limit: Int = 50) async throws -> [AgentSession] {
         let fm = FileManager.default
         guard let projectDirs = try? fm.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) else {
             throw AgentAdapterError.notFound
@@ -38,7 +38,7 @@ public struct ClaudeCodeAdapter: AgentAdapter {
         return Array(sessions.sorted { $0.updatedAt > $1.updatedAt }.prefix(limit))
     }
 
-    public func messages(in session: AgentSession, limit: Int = 60) throws -> [AgentMessage] {
+    public func messages(in session: AgentSession, limit: Int = 60) async throws -> [AgentMessage] {
         let url = URL(fileURLWithPath: session.locator)
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
             throw AgentAdapterError.notFound

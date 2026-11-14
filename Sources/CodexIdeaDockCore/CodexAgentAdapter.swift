@@ -15,7 +15,7 @@ public struct CodexAgentAdapter: AgentAdapter {
 
     // MARK: AgentAdapter
 
-    public func listSessions(limit: Int = 50) throws -> [AgentSession] {
+    public func listSessions(limit: Int = 50) async throws -> [AgentSession] {
         let response = try call(method: "thread/list", id: 2, params: [
             "cursor": NSNull(),
             "limit": limit,
@@ -47,7 +47,7 @@ public struct CodexAgentAdapter: AgentAdapter {
         }
     }
 
-    public func messages(in session: AgentSession, limit: Int = 80) throws -> [AgentMessage] {
+    public func messages(in session: AgentSession, limit: Int = 80) async throws -> [AgentMessage] {
         let response = try call(method: "thread/read", id: 3, params: [
             "threadId": session.locator,
             "includeTurns": true

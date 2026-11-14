@@ -2,11 +2,11 @@ import XCTest
 @testable import CodexIdeaDockCore
 
 final class CodexAgentAdapterTests: XCTestCase {
-    func testListAndReadCodexThreads() throws {
+    func testListAndReadCodexThreads() async throws {
         let adapter = CodexAgentAdapter()
         let sessions: [AgentSession]
         do {
-            sessions = try adapter.listSessions(limit: 3)
+            sessions = try await adapter.listSessions(limit: 3)
         } catch {
             throw XCTSkip("codex app-server 不可用：\(error)")
         }
@@ -16,7 +16,7 @@ final class CodexAgentAdapterTests: XCTestCase {
             print("• \(s.title.prefix(50))  |  \(s.projectPath ?? "-")  |  \(s.updatedAt)")
         }
 
-        let messages = try adapter.messages(in: sessions[0], limit: 10)
+        let messages = try await adapter.messages(in: sessions[0], limit: 10)
         XCTAssertFalse(messages.isEmpty)
         for m in messages.suffix(3) {
             print("  [\(m.role.rawValue)] \(m.text.prefix(60).replacingOccurrences(of: "\n", with: " "))")

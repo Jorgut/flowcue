@@ -12,13 +12,7 @@ struct AgentBrowserView: View {
     @State private var messages: [AgentMessage] = []
     @State private var note: String?
 
-    private func adapter(for id: String) -> AgentAdapter? {
-        switch id {
-        case "claude": ClaudeCodeAdapter()
-        case "codex": CodexAgentAdapter()
-        default: nil
-        }
-    }
+    private let service = AgentService.default
 
     var body: some View {
         GeometryReader { geo in
@@ -79,7 +73,7 @@ struct AgentBrowserView: View {
                 Text(selectedAgent?.displayName ?? L10n.text("会话"))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button { reloadSessions() } label: { Image(systemName: "arrow.clockwise") }
+                Button { Task { await reloadSessions() } } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.plain).font(.caption)
             }
             .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 6)
@@ -163,20 +157,24 @@ struct AgentBrowserView: View {
         selectedAgent = agent
         selectedSession = nil
         messages = []
-        reloadSessions()
+        Task { await reloadSessions() }
     }
 
-    private func reloadSessions() {
+    private func reloadSessions() async {
         guard let agent = selectedAgent else { sessions = []; return }
-        guard let adapter = adapter(for: agent.id) else {
+        guard service.adapter(for: agent.id) != nil else {
             sessions = []
             note = L10n.text("该 agent 暂未接入会话读取")
             return
         }
         do {
-            sessions = try adapter.listSessions(limit: 50)
-            note = sessions.isEmpty ? L10n.text("没有会话") : nil
-            if let first = sessions.first { select(first) }
+            let loaded = try await service.sessions(for: agent.id, limit: 50)
+            sessions = loaded
+            note = loaded.isEmpty ? L10n.text("没有会话") : nil
+            if let first = loaded.first {
+                selectedSession = first
+                messages = (try? await service.messages(first, limit: 80)) ?? []
+            }
         } catch {
             sessions = []
             note = L10n.text("读取失败")
@@ -185,7 +183,6 @@ struct AgentBrowserView: View {
 
     private func select(_ session: AgentSession) {
         selectedSession = session
-        guard let adapter = adapter(for: session.agentID) else { messages = []; return }
-        messages = (try? adapter.messages(in: session, limit: 80)) ?? []
+        Task { messages = (try? await service.messages(session, limit: 80)) ?? [] }
     }
 }

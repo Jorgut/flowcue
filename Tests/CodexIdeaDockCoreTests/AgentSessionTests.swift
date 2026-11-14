@@ -2,9 +2,9 @@ import XCTest
 @testable import CodexIdeaDockCore
 
 final class AgentSessionTests: XCTestCase {
-    func testClaudeAdapterListsAndReads() throws {
+    func testClaudeAdapterListsAndReads() async throws {
         let adapter = ClaudeCodeAdapter()
-        let sessions = try adapter.listSessions(limit: 5)
+        let sessions = try await adapter.listSessions(limit: 5)
         try XCTSkipIf(sessions.isEmpty, "本机没有 Claude Code 会话记录")
 
         for s in sessions {
@@ -12,7 +12,7 @@ final class AgentSessionTests: XCTestCase {
         }
 
         let first = sessions[0]
-        let messages = try adapter.messages(in: first, limit: 6)
+        let messages = try await adapter.messages(in: first, limit: 6)
         XCTAssertFalse(messages.isEmpty, "会话里应能解析出消息")
         for m in messages.suffix(3) {
             print("  [\(m.role.rawValue)] \(m.text.prefix(60).replacingOccurrences(of: "\n", with: " "))")
@@ -21,7 +21,7 @@ final class AgentSessionTests: XCTestCase {
 
     func testSendIsUnsupportedForNow() async throws {
         let adapter = ClaudeCodeAdapter()
-        guard let session = try adapter.listSessions(limit: 1).first else {
+        guard let session = try await adapter.listSessions(limit: 1).first else {
             throw XCTSkip("无会话")
         }
         do {

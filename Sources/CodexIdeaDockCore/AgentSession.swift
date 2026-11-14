@@ -47,9 +47,9 @@ public struct AgentSession: Identifiable, Hashable, Sendable {
 public protocol AgentAdapter: Sendable {
     var agentID: String { get }
     /// 列会话，按最近使用倒序
-    func listSessions(limit: Int) throws -> [AgentSession]
+    func listSessions(limit: Int) async throws -> [AgentSession]
     /// 读一页消息，oldest → newest
-    func messages(in session: AgentSession, limit: Int) throws -> [AgentMessage]
+    func messages(in session: AgentSession, limit: Int) async throws -> [AgentMessage]
     /// 发消息（暂不支持就 throw .unsupported）
     func send(_ text: String, to session: AgentSession) async throws
 }
