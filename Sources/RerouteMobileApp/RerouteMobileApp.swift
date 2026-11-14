@@ -2167,6 +2167,7 @@ private struct AgentsView: View {
     @State private var showingRemote = AgentsPreview.requestedState == "remote"
     @State private var showingCodex = AgentsPreview.requestedState == "codex"
     @State private var showingDSH = AgentsPreview.requestedState == "dsh"
+    @State private var showingChat = ["chat", "chatEmpty", "chatDsh"].contains(AgentsPreview.requestedState ?? "")
     @State private var network = FlowCueNetworkMonitor()
 
     var body: some View {
@@ -2207,6 +2208,9 @@ private struct AgentsView: View {
             }
             .navigationDestination(isPresented: $showingDSH) {
                 DSHAgentView(controller: controller, tab: $tab)
+            }
+            .navigationDestination(isPresented: $showingChat) {
+                ChatPreviewHost(controller: controller, tab: $tab)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 FlowCueTabBar(selection: $tab)
@@ -3022,7 +3026,7 @@ private struct RemoteDeviceView: View {
     @ViewBuilder
     private var chatDestination: some View {
         if let thread = controller.threads.first {
-            AgentDetailView(controller: controller, thread: thread)
+            ChatScreen(controller: controller, tab: $tab, initialTarget: .codex(thread))
         } else {
             CodexAgentView(controller: controller, tab: $tab)
         }
@@ -3057,45 +3061,81 @@ private struct DSHApprovalCard: View {
     @State private var busy = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Image(systemName: "shield.lefthalf.filled")
-                    .foregroundStyle(FlowCueTheme.accent)
-                Text(approval.title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(3)
-                Spacer()
-                if let tool = approval.toolName {
-                    Text(tool)
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 0) {
+            Text("APPROVAL REQUIRED")
+                .flowCueFont(9.5, relativeTo: .caption2)
+                .tracking(1.3)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+            Text(approval.title)
+                .flowCueFont(12.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .lineLimit(4)
+                .padding(.top, 6)
+            if let tool = approval.toolName {
+                Text(tool)
+                    .flowCueFont(9.5, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineLimit(1)
+                    .padding(.top, 4)
             }
             if let reason = approval.reason, reason != approval.title {
                 Text(reason)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
                     .lineLimit(4)
+                    .padding(.top, 6)
             }
-            HStack(spacing: 10) {
-                Button("Reject", role: .destructive) {
-                    busy = true
-                    Task { await decide("rejected"); busy = false }
-                }
-                .buttonStyle(.bordered)
-                .disabled(busy)
-                Button("Approve once") {
+            HStack(spacing: 8) {
+                Button {
                     busy = true
                     Task { await decide("allowed-once"); busy = false }
+                } label: {
+                    Text("Approve")
+                        .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 34)
+                        .background(
+                            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous)
+                                .fill(FlowCueTheme.accent)
+                        )
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(FlowCueTheme.accent)
+                .buttonStyle(.plain)
                 .disabled(busy)
-                if busy { ProgressView().controlSize(.small) }
+
+                Button {
+                    busy = true
+                    Task { await decide("rejected"); busy = false }
+                } label: {
+                    Text("Deny")
+                        .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 34)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous)
+                                .strokeBorder(FlowCueTheme.hairline)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(busy)
+            }
+            .padding(.top, 12)
+            if busy {
+                ProgressView()
+                    .controlSize(.small)
+                    .padding(.top, 8)
             }
         }
-        .padding(14)
-        .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                .fill(FlowCueTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                .strokeBorder(FlowCueTheme.hairline)
+        )
     }
 }
 
@@ -3493,7 +3533,7 @@ private struct CodexAgentView: View {
                     VStack(spacing: 0) {
                         ForEach(sessions) { thread in
                             NavigationLink {
-                                AgentDetailView(controller: controller, thread: thread)
+                                ChatScreen(controller: controller, tab: $tab, initialTarget: .codex(thread))
                             } label: {
                                 AgentSessionRowView(
                                     title: thread.title,
@@ -3643,7 +3683,7 @@ private struct DSHAgentView: View {
                     VStack(spacing: 0) {
                         ForEach(sessions) { session in
                             NavigationLink {
-                                DSHSessionDetailView(controller: controller, session: session)
+                                ChatScreen(controller: controller, tab: $tab, initialTarget: .dsh(session))
                             } label: {
                                 AgentSessionRowView(
                                     title: session.title,
@@ -3701,271 +3741,907 @@ private struct DSHAgentView: View {
 }
 
 
-private struct DSHSessionDetailView: View {
-    @Bindable var controller: LANRemoteController
-    let session: DSHSessionSnapshot
-    @State private var messages: [RemoteConversationMessage] = []
-    @State private var loading = false
-    @State private var subagents: [DSHSessionSnapshot] = []
-    @State private var text = ""
-    @State private var sending = false
+// MARK: - Chat
 
-    private var pendingApprovals: [DSHRemoteApproval] {
-        controller.dshApprovals.filter { $0.sessionId == session.id }
-    }
+private enum ChatKind: String {
+    case codex
+    case dsh
 
-    var body: some View {
-        ScrollViewReader { proxy in
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                if loading {
-                    ProgressView().frame(maxWidth: .infinity)
-                } else if messages.isEmpty {
-                    ContentUnavailableView("No text history", systemImage: "text.bubble", description: Text("This DSH session has no user/assistant text messages yet."))
-                } else {
-                    ForEach(messages) { message in
-                        ConversationBubble(message: message)
-                    }
-                }
-                Text("Messages go to the live DSH session on your Mac. If the session is not running, open it in DSH first.")
-                    .font(.footnote).foregroundStyle(.secondary)
-                    .padding(.top, 8)
-            }
-            .padding()
-        }
-        .safeAreaInset(edge: .top, spacing: 0) { dshPinnedHeader }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 6) {
-                if !pendingApprovals.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "shield.lefthalf.filled")
-                                .foregroundStyle(FlowCueTheme.accent)
-                            Text("DSH needs your confirmation")
-                                .font(.caption.weight(.semibold))
-                            Spacer()
-                            Text("\(pendingApprovals.count) pending")
-                                .font(.caption2.monospaced())
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(pendingApprovals) { approval in
-                            DSHApprovalCard(approval: approval) { decision in
-                                _ = await controller.decideDSH(approval, decision: decision)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 8)
-                }
-                if messages.last?.role == "user" {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("DSH is working…").font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                }
-                AgentComposer(text: $text, placeholder: "Message this DSH session", sending: sending, allowsImages: true) { images in
-                    sending = true
-                    Task {
-                        let sent = await controller.sendDSH(to: session, text: text, images: images)
-                        if sent {
-                            text = ""
-                            messages = await controller.dshMessages(for: session)
-                        }
-                        sending = false
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
-            }
-            .background(FlowCueTheme.canvas)
-            .overlay(alignment: .top) { Divider().opacity(0.45) }
-        }
-        .background(FlowCueTheme.canvas)
-        .navigationTitle("DSH session")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
-        .task {
-            loading = true
-            await controller.refreshApprovals()
-            messages = await controller.dshMessages(for: session)
-            subagents = await controller.dshSubagents(for: session)
-            loading = false
-            await scrollToBottom(proxy)
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
-                guard !Task.isCancelled else { break }
-                await controller.refreshApprovals()
-                let updated = await controller.dshMessages(for: session)
-                if updated != messages {
-                    messages = updated
-                    await scrollToBottom(proxy)
-                }
-            }
-        }
-        .onChange(of: messages.count) { _, _ in
-            Task { await scrollToBottom(proxy) }
-        }
-        }
-    }
-
-    private var dshPinnedHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(session.title).font(.headline).lineLimit(2)
-            Text(session.projectDirectory).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-            if !subagents.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 7) {
-                        Label("\(subagents.count) subagents", systemImage: "person.2.fill")
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(FlowCueTheme.accent)
-                        ForEach(subagents) { subagent in
-                            NavigationLink {
-                                DSHSessionDetailView(controller: controller, session: subagent)
-                            } label: {
-                                Text(subagent.title)
-                                    .font(.caption2)
-                                    .lineLimit(1)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 4)
-                                    .background(FlowCueTheme.accent.opacity(0.12), in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(FlowCueTheme.canvas)
-        .overlay(alignment: .bottom) { Divider().opacity(0.4) }
-    }
-
-    private func scrollToBottom(_ proxy: ScrollViewProxy) async {
-        guard let last = messages.last else { return }
-        try? await Task.sleep(for: .milliseconds(80))
-        withAnimation(.easeOut(duration: 0.2)) {
-            proxy.scrollTo(last.id, anchor: .bottom)
+    var agentName: String {
+        switch self {
+        case .codex: "Codex"
+        case .dsh: "DSH"
         }
     }
 }
 
-private struct AgentDetailView: View {
+private enum ChatTarget: Equatable {
+    case codex(RemoteThreadSnapshot)
+    case dsh(DSHSessionSnapshot)
+
+    var kind: ChatKind {
+        switch self {
+        case .codex: .codex
+        case .dsh: .dsh
+        }
+    }
+
+    var id: String {
+        switch self {
+        case .codex(let thread): "codex-\(thread.id)"
+        case .dsh(let session): "dsh-\(session.id)"
+        }
+    }
+
+    var agentName: String { kind.agentName }
+
+    var codexThread: RemoteThreadSnapshot? {
+        if case .codex(let thread) = self { return thread }
+        return nil
+    }
+
+    var dshSession: DSHSessionSnapshot? {
+        if case .dsh(let session) = self { return session }
+        return nil
+    }
+
+    var projectDirectory: String? {
+        switch self {
+        case .codex(let thread): thread.projectDirectory
+        case .dsh(let session): session.projectDirectory
+        }
+    }
+}
+
+private struct PendingChatMessage: Identifiable {
+    enum State {
+        case sending
+        case failed
+    }
+
+    let id = UUID()
+    let text: String
+    let images: [Data]
+    var state: State
+}
+
+private struct ChatScreen: View {
     @Bindable var controller: LANRemoteController
-    let thread: RemoteThreadSnapshot
-    @State private var text = ""
+    @Binding var tab: FlowCueTab
+    let initialTarget: ChatTarget
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var switchedTarget: ChatTarget?
     @State private var messages: [RemoteConversationMessage] = []
-    @State private var loadingMessages = false
+    @State private var subagents: [DSHSessionSnapshot] = []
+    @State private var text = ""
+    @State private var pending: PendingChatMessage?
     @State private var sending = false
-    @FocusState private var focused: Bool
+    @State private var loading = false
+    @State private var network = FlowCueNetworkMonitor()
+    @State private var showingSwitcher = false
+    @State private var showingDevice = false
+    @State private var showingDisconnect = false
+
+    private var target: ChatTarget { switchedTarget ?? initialTarget }
+
+    private var isOnline: Bool {
+        controller.isConnected && network.isOnline
+    }
+
+    private var displayMessages: [RemoteConversationMessage] {
+        if messages.isEmpty,
+           let thread = target.codexThread,
+           !thread.lastReply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return [
+                RemoteConversationMessage(
+                    id: "fallback-\(thread.id)",
+                    role: "assistant",
+                    text: thread.lastReply,
+                    timestamp: thread.updatedAt
+                )
+            ]
+        }
+        return messages
+    }
+
+    private var approvals: [DSHRemoteApproval] {
+        guard let session = target.dshSession else { return [] }
+        return controller.dshApprovals.filter { $0.sessionId == session.id }
+    }
+
+    private var showsEmptyState: Bool {
+        displayMessages.isEmpty
+            && pending == nil
+            && approvals.isEmpty
+            && !loading
+    }
+
+    private var isWorking: Bool {
+        isOnline && (sending || displayMessages.last?.role == "user")
+    }
 
     var body: some View {
-        ScrollViewReader { proxy in
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 10) {
-                    if loadingMessages { ProgressView().controlSize(.small) }
-                    if messages.isEmpty {
-                        if !thread.lastReply.isEmpty {
-                            Text(thread.lastReply)
-                                .font(.body)
-                                .textSelection(.enabled)
-                                .padding(14)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        } else {
-                            Text("No conversation history is available for this session yet.")
-                                .font(.footnote).foregroundStyle(.secondary)
-                                .padding(14)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                        }
-                    } else {
-                        ForEach(messages) { message in
-                            ConversationBubble(message: message)
-                                .id(message.id)
-                        }
-                    }
-                }
-                if !controller.statusMessage.isEmpty {
-                    Text(controller.statusMessage).font(.caption).foregroundStyle(.secondary)
-                }
+        VStack(spacing: 0) {
+            chatHeader
+            chatStatus
+            if !isOnline {
+                FlowCueInlineBanner(
+                    kind: .warning,
+                    title: "Offline — messages can be retried when reconnected."
+                )
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
             }
-            .padding()
-        }
-        .safeAreaInset(edge: .top, spacing: 0) { codexPinnedHeader }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 6) {
-                if messages.last?.role == "user" {
-                    HStack(spacing: 8) {
-                        ProgressView().controlSize(.small)
-                        Text("Agent is working…").font(.caption).foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
+            content
+            if isWorking {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(FlowCueTheme.textSecondary)
+                    Text("\(target.agentName) is working…")
+                        .flowCueFont(11, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                    Spacer(minLength: 0)
                 }
-                AgentComposer(text: $text, placeholder: "Next message", sending: sending, allowsImages: true) { images in
-                    sending = true
-                    Task {
-                        let sent = await controller.send(to: thread, text: text, images: images)
-                        if sent { text = "" }
-                        sending = false
-                        await controller.refresh()
-                        messages = await controller.messages(for: thread)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 18)
+                .padding(.bottom, 2)
             }
-            .background(FlowCueTheme.canvas)
-            .overlay(alignment: .top) { Divider().opacity(0.45) }
-        }
-        .background(FlowCueTheme.canvas)
-        .navigationTitle("Session")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
-        .task {
-            loadingMessages = true
-            messages = await controller.messages(for: thread)
-            loadingMessages = false
-            await scrollToBottom(proxy)
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(3))
-                guard !Task.isCancelled else { break }
-                let updated = await controller.messages(for: thread)
-                if updated != messages {
-                    messages = updated
-                    await scrollToBottom(proxy)
-                }
+            ChatComposer(text: $text, sending: sending) { images in
+                send(images)
             }
+            .padding(.horizontal, 14)
+            .padding(.top, 4)
+            .padding(.bottom, 8)
         }
-        .onChange(of: messages.count) { _, _ in
-            Task { await scrollToBottom(proxy) }
+        .background { FlowCueScreenBackground() }
+        .toolbar(.hidden, for: .navigationBar)
+        .task { network.start() }
+        .onDisappear { network.stop() }
+        .task(id: target.id) { await runChat() }
+        .sheet(isPresented: $showingSwitcher) {
+            ChatSwitcherSheet(
+                controller: controller,
+                target: target,
+                subagents: subagents,
+                onSelect: { select($0) }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
         }
+        .navigationDestination(isPresented: $showingDevice) {
+            RemoteDeviceView(controller: controller, tab: $tab)
+        }
+        .confirmationDialog(
+            "Disconnect from this Mac?",
+            isPresented: $showingDisconnect,
+            titleVisibility: .visible
+        ) {
+            Button("Disconnect", role: .destructive) {
+                controller.disconnect()
+                dismiss()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Sessions stay on your Mac. You can pair again anytime.")
         }
     }
 
-    private var codexPinnedHeader: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(thread.title).font(.headline).lineLimit(2)
-            Text(thread.updatedAt, format: .relative(presentation: .named))
-                .font(.caption).foregroundStyle(.secondary)
+    // MARK: Header
+
+    private var chatHeader: some View {
+        ZStack {
+            Button {
+                showingSwitcher = true
+            } label: {
+                HStack(spacing: 4) {
+                    Text(target.agentName)
+                        .flowCueFont(16, relativeTo: .headline, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.textPrimary)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 9, weight: .semibold))
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                }
+                .padding(.horizontal, 10)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Switch session")
+
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(FlowCueTheme.textPrimary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back")
+
+                Spacer()
+
+                Menu {
+                    Button("Refresh") {
+                        Task { await reloadOnce() }
+                    }
+                    Button("Device info") {
+                        showingDevice = true
+                    }
+                    Divider()
+                    Button("Disconnect", role: .destructive) {
+                        showingDisconnect = true
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 17))
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel("Session options")
+            }
         }
+        .frame(minHeight: 44)
+        .padding(.top, 10)
+    }
+
+    private var chatStatus: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(isOnline ? FlowCueTheme.mint : FlowCueTheme.failure)
+                .frame(width: 5, height: 5)
+                .accessibilityHidden(true)
+            Text(isOnline ? "online · \(FlowCueLinkFormat.deviceName(controller.selected?.name))" : "offline")
+        }
+        .flowCueFont(11, relativeTo: .caption2)
+        .foregroundStyle(isOnline ? FlowCueTheme.mint : FlowCueTheme.failure)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(FlowCueTheme.canvas)
-        .overlay(alignment: .bottom) { Divider().opacity(0.4) }
+        .padding(.horizontal, 18)
+        .padding(.top, 6)
     }
 
-    private func scrollToBottom(_ proxy: ScrollViewProxy) async {
-        guard let last = messages.last else { return }
-        try? await Task.sleep(for: .milliseconds(80))
-        withAnimation(.easeOut(duration: 0.2)) {
-            proxy.scrollTo(last.id, anchor: .bottom)
+    // MARK: Content
+
+    @ViewBuilder
+    private var content: some View {
+        if loading && displayMessages.isEmpty && pending == nil {
+            ProgressView()
+                .tint(FlowCueTheme.textSecondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if showsEmptyState {
+            ChatEmptyState()
+        } else {
+            messageList
         }
+    }
+
+    private var messageList: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 10) {
+                    ForEach(displayMessages) { message in
+                        ChatMessageBubble(message: message)
+                            .id(message.id)
+                    }
+                    if let pending {
+                        ChatPendingBubble(pending: pending) {
+                            retry()
+                        }
+                        .id(pending.id)
+                    }
+                    ForEach(approvals) { approval in
+                        DSHApprovalCard(approval: approval) { decision in
+                            _ = await controller.decideDSH(approval, decision: decision)
+                        }
+                        .id("approval-\(approval.id)")
+                    }
+                    Color.clear
+                        .frame(height: 1)
+                        .id("chat-bottom")
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 20)
+                .padding(.bottom, 10)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: displayMessages.last?.id) { _, _ in
+                scrollToBottom(proxy)
+            }
+            .onChange(of: pending?.id) { _, _ in
+                scrollToBottom(proxy)
+            }
+            .onChange(of: approvals.count) { _, _ in
+                scrollToBottom(proxy)
+            }
+        }
+    }
+
+    private func scrollToBottom(_ proxy: ScrollViewProxy) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(60))
+            withAnimation(.easeOut(duration: 0.2)) {
+                proxy.scrollTo("chat-bottom", anchor: .bottom)
+            }
+        }
+    }
+
+    // MARK: Data
+
+    private func runChat() async {
+        loading = true
+        await refreshApprovalsIfNeeded()
+        await refreshSubagentsIfNeeded()
+        messages = await fetchMessages(for: target)
+        loading = false
+        while !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(3))
+            guard !Task.isCancelled else { break }
+            await refreshApprovalsIfNeeded()
+            await refreshSubagentsIfNeeded()
+            let updated = await fetchMessages(for: target)
+            if updated != messages { messages = updated }
+        }
+    }
+
+    private func reloadOnce() async {
+        await refreshApprovalsIfNeeded()
+        let updated = await fetchMessages(for: target)
+        messages = updated
+    }
+
+    private func refreshApprovalsIfNeeded() async {
+        if target.kind == .dsh {
+            await controller.refreshApprovals()
+        }
+    }
+
+    private func refreshSubagentsIfNeeded() async {
+        if let session = target.dshSession {
+            subagents = await controller.dshSubagents(for: session)
+        } else {
+            subagents = []
+        }
+    }
+
+    private func fetchMessages(for target: ChatTarget) async -> [RemoteConversationMessage] {
+        switch target {
+        case .codex(let thread):
+            return await controller.messages(for: thread)
+        case .dsh(let session):
+            return await controller.dshMessages(for: session)
+        }
+    }
+
+    private func select(_ newTarget: ChatTarget) {
+        guard newTarget != target else {
+            showingSwitcher = false
+            return
+        }
+        switchedTarget = newTarget
+        messages = []
+        pending = nil
+        subagents = []
+        loading = true
+        showingSwitcher = false
+    }
+
+    // MARK: Sending
+
+    private func send(_ images: [Data]) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard (!trimmed.isEmpty || !images.isEmpty), pending?.state != .sending else { return }
+        let item = PendingChatMessage(text: trimmed, images: images, state: .sending)
+        let sessionTarget = target
+        pending = item
+        text = ""
+        sending = true
+        Task { await deliver(item, to: sessionTarget) }
+    }
+
+    private func retry() {
+        guard var item = pending, item.state == .failed else { return }
+        let sessionTarget = target
+        item.state = .sending
+        pending = item
+        sending = true
+        Task { await deliver(item, to: sessionTarget) }
+    }
+
+    private func deliver(_ item: PendingChatMessage, to sessionTarget: ChatTarget) async {
+        guard isOnline else {
+            if sessionTarget == target { pending?.state = .failed }
+            sending = false
+            return
+        }
+        let ok: Bool
+        switch sessionTarget {
+        case .codex(let thread):
+            ok = await controller.send(to: thread, text: item.text, images: item.images)
+        case .dsh(let session):
+            ok = await controller.sendDSH(to: session, text: item.text, images: item.images)
+        }
+        if ok {
+            if sessionTarget == target {
+                pending = nil
+                messages = await fetchMessages(for: sessionTarget)
+            }
+        } else if sessionTarget == target {
+            pending?.state = .failed
+        }
+        sending = false
+    }
+}
+
+// MARK: Chat components
+
+private struct ChatPreviewHost: View {
+    @Bindable var controller: LANRemoteController
+    @Binding var tab: FlowCueTab
+
+    var body: some View {
+        Group {
+            if AgentsPreview.requestedState == "chatEmpty" {
+                ChatScreen(
+                    controller: controller,
+                    tab: $tab,
+                    initialTarget: .codex(
+                        RemoteThreadSnapshot(
+                            id: "preview-empty",
+                            title: "New session",
+                            projectDirectory: nil,
+                            lastReply: "",
+                            updatedAt: .now,
+                            executorID: UUID()
+                        )
+                    )
+                )
+            } else if AgentsPreview.requestedState == "chatDsh" {
+                if let session = controller.dshSessions.first {
+                    ChatScreen(controller: controller, tab: $tab, initialTarget: .dsh(session))
+                } else {
+                    ProgressView()
+                        .tint(FlowCueTheme.textSecondary)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else if let thread = controller.threads.first {
+                ChatScreen(controller: controller, tab: $tab, initialTarget: .codex(thread))
+            } else {
+                ProgressView()
+                    .tint(FlowCueTheme.textSecondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .background { FlowCueScreenBackground() }
+        .task {
+            if controller.threads.isEmpty {
+                await controller.refresh()
+            }
+        }
+    }
+}
+
+private struct ChatMessageBubble: View {
+    let message: RemoteConversationMessage
+
+    var body: some View {
+        if message.role == "user" {
+            userBubble
+        } else {
+            assistantBubble
+        }
+    }
+
+    private var userBubble: some View {
+        HStack(alignment: .bottom, spacing: 0) {
+            Spacer(minLength: 48)
+            VStack(alignment: .trailing, spacing: 8) {
+                if let images = message.images, !images.isEmpty {
+                    MessageImageGrid(images: images)
+                }
+                if !message.text.isEmpty {
+                    Text(message.text)
+                        .flowCueFont(13, relativeTo: .subheadline)
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .lineSpacing(2)
+                        .textSelection(.enabled)
+                        .multilineTextAlignment(.leading)
+                }
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                    .fill(FlowCueTheme.accent)
+            )
+        }
+    }
+
+    private var assistantBubble: some View {
+        HStack(alignment: .top, spacing: 0) {
+            VStack(alignment: .leading, spacing: 10) {
+                if let images = message.images, !images.isEmpty {
+                    MessageImageGrid(images: images)
+                }
+                if !message.text.isEmpty {
+                    MarkdownMessageView(text: message.text)
+                }
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                    .fill(FlowCueTheme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                    .strokeBorder(FlowCueTheme.hairline.opacity(0.6))
+            )
+            Spacer(minLength: 32)
+        }
+    }
+}
+
+private struct ChatPendingBubble: View {
+    let pending: PendingChatMessage
+    let onRetry: () -> Void
+
+    private var failed: Bool { pending.state == .failed }
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 6) {
+            HStack(alignment: .bottom, spacing: 0) {
+                Spacer(minLength: 48)
+                VStack(alignment: .trailing, spacing: 8) {
+                    if !pending.images.isEmpty {
+                        HStack(spacing: 6) {
+                            ForEach(Array(pending.images.enumerated()), id: \.offset) { _, data in
+                                if let image = UIImage(data: data) {
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .scaledToFill()
+                                        .frame(width: 86, height: 86)
+                                        .clipShape(RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous))
+                                }
+                            }
+                        }
+                    }
+                    if !pending.text.isEmpty {
+                        Text(pending.text)
+                            .flowCueFont(13, relativeTo: .subheadline)
+                            .foregroundStyle(failed ? FlowCueTheme.textPrimary : FlowCueTheme.onAccent)
+                            .lineSpacing(2)
+                            .multilineTextAlignment(.leading)
+                    }
+                }
+                .padding(.horizontal, 13)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                        .fill(failed ? FlowCueTheme.failure.opacity(0.16) : FlowCueTheme.accent)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                        .strokeBorder(failed ? FlowCueTheme.failure.opacity(0.5) : Color.clear)
+                )
+            }
+
+            HStack(spacing: 6) {
+                if failed {
+                    Text("Not delivered")
+                        .foregroundStyle(FlowCueTheme.failure)
+                    Button("Retry", action: onRetry)
+                        .flowCueFont(9.5, relativeTo: .caption2, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.failure)
+                        .buttonStyle(.plain)
+                } else {
+                    Text("SENDING.")
+                }
+            }
+            .flowCueFont(9.5, relativeTo: .caption2)
+            .tracking(1.2)
+            .foregroundStyle(failed ? FlowCueTheme.failure : FlowCueTheme.textSecondary)
+        }
+    }
+}
+
+private struct ChatEmptyState: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                .frame(width: 46, height: 46)
+            Text("Start a conversation")
+                .flowCueFont(18, relativeTo: .title3, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.top, 16)
+            Text("Ask about a session, or send the next idea.")
+                .flowCueFont(12.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .padding(.top, 6)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 18)
+    }
+}
+
+private struct ChatComposer: View {
+    @Binding var text: String
+    let sending: Bool
+    let onSend: ([Data]) -> Void
+
+    @State private var dictation = VoiceDictation()
+    @State private var baseText = ""
+    @State private var pickerItems: [PhotosPickerItem] = []
+    @State private var images: [Data] = []
+
+    private var canSend: Bool {
+        !sending && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.isEmpty)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !images.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(Array(images.enumerated()), id: \.offset) { _, data in
+                            if let image = UIImage(data: data) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .scaledToFill()
+                                    .frame(width: 58, height: 58)
+                                    .clipShape(RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous))
+                            }
+                        }
+                    }
+                }
+            }
+
+            HStack(alignment: .bottom, spacing: 9) {
+                PhotosPicker(selection: $pickerItems, maxSelectionCount: 20, matching: .images) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 17))
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Attach images")
+
+                TextField("Reply...", text: $text, axis: .vertical)
+                    .flowCueFont(13, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                    .lineLimit(1...4)
+                    .padding(.vertical, 8)
+                    .accessibilityLabel("Reply")
+
+                Button {
+                    if dictation.isRecording {
+                        dictation.stop()
+                    } else {
+                        baseText = text
+                        dictation.start { transcript in
+                            text = baseText + (baseText.isEmpty ? "" : " ") + transcript
+                        }
+                    }
+                } label: {
+                    Image(systemName: dictation.isRecording ? "waveform" : "mic")
+                        .font(.system(size: 16))
+                        .foregroundStyle(dictation.isRecording ? FlowCueTheme.accent : FlowCueTheme.textSecondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(dictation.isRecording ? "Stop voice input" : "Start voice input")
+
+                Button {
+                    guard canSend else { return }
+                    dictation.stop()
+                    onSend(images)
+                    images = []
+                    pickerItems = []
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .frame(width: 32, height: 32)
+                        .background(
+                            Circle()
+                                .fill(FlowCueTheme.accent.opacity(canSend ? 1 : 0.35))
+                        )
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSend)
+                .accessibilityLabel("Send message")
+            }
+            .padding(.leading, 12)
+            .padding(.trailing, 6)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(FlowCueTheme.surface)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .strokeBorder(FlowCueTheme.hairline)
+            )
+            .onChange(of: pickerItems) { _, items in
+                Task {
+                    var loaded: [Data] = []
+                    for item in items {
+                        if let data = try? await item.loadTransferable(type: Data.self),
+                           let image = UIImage(data: data),
+                           let jpeg = image.jpegData(compressionQuality: 0.82) {
+                            loaded.append(jpeg)
+                        }
+                    }
+                    images = loaded
+                }
+            }
+
+            if dictation.isRecording {
+                Text("Listening…")
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .padding(.leading, 8)
+            }
+            if let error = dictation.error {
+                Text(error)
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.warning)
+                    .lineLimit(2)
+                    .padding(.leading, 8)
+            }
+        }
+    }
+}
+
+private struct ChatSwitcherSheet: View {
+    @Bindable var controller: LANRemoteController
+    let target: ChatTarget
+    let subagents: [DSHSessionSnapshot]
+    let onSelect: (ChatTarget) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var codexSessions: [RemoteThreadSnapshot] {
+        controller.threads.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private var dshSessions: [DSHSessionSnapshot] {
+        controller.dshSessions
+            .filter { !$0.isSubagent }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    switch target.kind {
+                    case .codex:
+                        AgentsSectionHeader(title: "CODEX SESSIONS")
+                            .padding(.top, 8)
+                        ForEach(codexSessions) { thread in
+                            Button {
+                                onSelect(.codex(thread))
+                                dismiss()
+                            } label: {
+                                ChatSwitcherRow(
+                                    title: thread.title,
+                                    subtitle: subtitle(for: thread),
+                                    selected: target.id == "codex-\(thread.id)"
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            Rectangle()
+                                .fill(FlowCueTheme.hairline)
+                                .frame(height: 1)
+                                .accessibilityHidden(true)
+                        }
+                    case .dsh:
+                        AgentsSectionHeader(title: "DSH SESSIONS")
+                            .padding(.top, 8)
+                        ForEach(dshSessions) { session in
+                            Button {
+                                onSelect(.dsh(session))
+                                dismiss()
+                            } label: {
+                                ChatSwitcherRow(
+                                    title: session.title,
+                                    subtitle: projectName(session.projectDirectory),
+                                    selected: target.id == "dsh-\(session.id)"
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            Rectangle()
+                                .fill(FlowCueTheme.hairline)
+                                .frame(height: 1)
+                                .accessibilityHidden(true)
+                        }
+                        if !subagents.isEmpty {
+                            AgentsSectionHeader(title: "SUBAGENTS")
+                                .padding(.top, 20)
+                            ForEach(subagents) { subagent in
+                                Button {
+                                    onSelect(.dsh(subagent))
+                                    dismiss()
+                                } label: {
+                                    ChatSwitcherRow(
+                                        title: subagent.title,
+                                        subtitle: projectName(subagent.projectDirectory),
+                                        selected: target.id == "dsh-\(subagent.id)"
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                Rectangle()
+                                    .fill(FlowCueTheme.hairline)
+                                    .frame(height: 1)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, 24)
+            }
+            .background { FlowCueScreenBackground() }
+            .navigationTitle("Switch session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                }
+            }
+        }
+    }
+
+    private func subtitle(for thread: RemoteThreadSnapshot) -> String {
+        if let project = thread.projectDirectory, !project.isEmpty {
+            return URL(fileURLWithPath: project).lastPathComponent
+        }
+        return FlowCueLinkFormat.shortRelative(thread.updatedAt)
+    }
+
+    private func projectName(_ path: String) -> String {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "DSH session" : URL(fileURLWithPath: trimmed).lastPathComponent
+    }
+}
+
+private struct ChatSwitcherRow: View {
+    let title: String
+    let subtitle: String
+    let selected: Bool
+
+    var body: some View {
+        HStack(spacing: 11) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title.isEmpty ? "Untitled session" : title)
+                    .flowCueFont(13.5, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .flowCueFont(10.5, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 8)
+            if selected {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.accent)
+            }
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
     }
 }
 
@@ -4068,164 +4744,6 @@ final class VoiceDictation {
         } catch {
             self.error = error.localizedDescription
             stop()
-        }
-    }
-}
-
-private struct AgentComposer: View {
-    @Binding var text: String
-    let placeholder: String
-    let sending: Bool
-    let allowsImages: Bool
-    let onSend: ([Data]) -> Void
-    @State private var dictation = VoiceDictation()
-    @State private var baseText = ""
-    @State private var pickerItems: [PhotosPickerItem] = []
-    @State private var images: [Data] = []
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            if !images.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(Array(images.enumerated()), id: \.offset) { _, data in
-                            if let image = UIImage(data: data) {
-                                Image(uiImage: image)
-                                    .resizable()
-                                    .scaledToFill()
-                                    .frame(width: 58, height: 58)
-                                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            }
-                        }
-                    }
-                }
-            }
-
-            HStack(alignment: .bottom, spacing: 8) {
-                if allowsImages {
-                    PhotosPicker(selection: $pickerItems, maxSelectionCount: 20, matching: .images) {
-                        Image(systemName: "photo")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 34, height: 34)
-                            .background(FlowCueTheme.canvas.opacity(0.8), in: Circle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Attach images")
-                }
-
-                Button {
-                    if dictation.isRecording {
-                        dictation.stop()
-                    } else {
-                        baseText = text
-                        dictation.start { transcript in
-                            text = baseText + (baseText.isEmpty ? "" : " ") + transcript
-                        }
-                    }
-                } label: {
-                    Image(systemName: dictation.isRecording ? "mic.fill" : "mic")
-                        .font(.system(size: 17, weight: .medium))
-                        .foregroundStyle(dictation.isRecording ? .red : .secondary)
-                        .frame(width: 34, height: 34)
-                        .background(FlowCueTheme.canvas.opacity(0.8), in: Circle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(dictation.isRecording ? "Stop voice input" : "Start voice input")
-
-                TextField(placeholder, text: $text, axis: .vertical)
-                    .font(.body)
-                    .lineLimit(1...4)
-                    .padding(.vertical, 8)
-                    .accessibilityLabel(placeholder)
-
-                Button {
-                    dictation.stop()
-                    onSend(images)
-                    images = []
-                    pickerItems = []
-                } label: {
-                    Image(systemName: sending ? "ellipsis" : "arrow.up")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundStyle(.white)
-                        .frame(width: 34, height: 34)
-                        .background(
-                            (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty) || sending
-                                ? Color.secondary.opacity(0.25)
-                                : FlowCueTheme.accent,
-                            in: Circle()
-                        )
-                }
-                .buttonStyle(.plain)
-                .disabled(sending || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && images.isEmpty))
-                .accessibilityLabel("Send message")
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                    .strokeBorder(FlowCueTheme.hairline.opacity(0.45), lineWidth: 1)
-            }
-            .onChange(of: pickerItems) { _, items in
-                Task {
-                    var loaded: [Data] = []
-                    for item in items {
-                        if let data = try? await item.loadTransferable(type: Data.self),
-                           let image = UIImage(data: data),
-                           let jpeg = image.jpegData(compressionQuality: 0.82) {
-                            loaded.append(jpeg)
-                        }
-                    }
-                    images = loaded
-                }
-            }
-
-            if dictation.isRecording {
-                Text("Listening…").font(.caption2).foregroundStyle(.secondary).padding(.leading, 8)
-            }
-            if let error = dictation.error {
-                Text(error).font(.caption2).foregroundStyle(.orange).lineLimit(2).padding(.leading, 8)
-            }
-        }
-    }
-}
-
-private struct ConversationBubble: View {
-    let message: RemoteConversationMessage
-
-    private var isUser: Bool { message.role == "user" }
-
-    var body: some View {
-        if isUser {
-            HStack(alignment: .bottom) {
-                Spacer(minLength: 54)
-                VStack(alignment: .trailing, spacing: 8) {
-                    if let images = message.images, !images.isEmpty {
-                        MessageImageGrid(images: images)
-                    }
-                    if !message.text.isEmpty {
-                        InlineMarkdownText(text: message.text)
-                            .font(.body)
-                            .textSelection(.enabled)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
-                .background(FlowCueTheme.accent.opacity(0.18), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            }
-            .padding(.vertical, 2)
-        } else {
-            VStack(alignment: .leading, spacing: 10) {
-                if let images = message.images, !images.isEmpty {
-                    MessageImageGrid(images: images)
-                }
-                if !message.text.isEmpty {
-                    MarkdownMessageView(text: message.text)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
         }
     }
 }
@@ -4374,10 +4892,15 @@ private enum MarkdownParser {
 private struct MarkdownMessageView: View {
     let text: String
 
-    private var blocks: [MarkdownBlock] { MarkdownParser.parse(text) }
+    private var blocks: [MarkdownBlock] {
+        let plain = text
+            .replacingOccurrences(of: "**", with: "")
+            .replacingOccurrences(of: "__", with: "")
+        return MarkdownParser.parse(plain)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
             ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
                 blockView(block)
             }
@@ -4389,13 +4912,13 @@ private struct MarkdownMessageView: View {
         switch block {
         case .paragraph(let text):
             InlineMarkdownText(text: text)
-                .font(.body)
-                .lineSpacing(4)
+                .flowCueFont(13, relativeTo: .subheadline)
+                .lineSpacing(3)
                 .textSelection(.enabled)
         case .heading(let level, let text):
             InlineMarkdownText(text: text)
-                .font(level <= 2 ? .title3.weight(.semibold) : .headline)
-                .padding(.top, 4)
+                .flowCueFont(level <= 2 ? 15 : 14, relativeTo: .subheadline, weight: .semibold)
+                .padding(.top, 2)
         case .code(let language, let text):
             CodeBlockView(language: language, code: text)
         case .bullet(let items):
@@ -4403,7 +4926,9 @@ private struct MarkdownMessageView: View {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: 9) {
                         Circle().fill(FlowCueTheme.accent).frame(width: 5, height: 5)
-                        InlineMarkdownText(text: item).font(.body).lineSpacing(3)
+                        InlineMarkdownText(text: item)
+                            .flowCueFont(13, relativeTo: .subheadline)
+                            .lineSpacing(2)
                     }
                 }
             }
@@ -4411,15 +4936,19 @@ private struct MarkdownMessageView: View {
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     HStack(alignment: .firstTextBaseline, spacing: 9) {
-                        Text("\(index + 1).").font(.body.monospacedDigit()).foregroundStyle(.secondary)
-                        InlineMarkdownText(text: item).font(.body).lineSpacing(3)
+                        Text("\(index + 1).").flowCueFont(13, relativeTo: .subheadline).monospacedDigit().foregroundStyle(.secondary)
+                        InlineMarkdownText(text: item)
+                            .flowCueFont(13, relativeTo: .subheadline)
+                            .lineSpacing(2)
                     }
                 }
             }
         case .quote(let text):
             HStack(alignment: .top, spacing: 10) {
                 Rectangle().fill(FlowCueTheme.accent.opacity(0.6)).frame(width: 3)
-                InlineMarkdownText(text: text).font(.body).foregroundStyle(.secondary)
+                InlineMarkdownText(text: text)
+                    .flowCueFont(13, relativeTo: .subheadline)
+                    .foregroundStyle(.secondary)
             }
             .padding(.vertical, 2)
         case .rule:
