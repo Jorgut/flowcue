@@ -214,7 +214,7 @@ final class InboxWindowController: NSWindowController, NSWindowDelegate {
 final class AgentWindowController: NSWindowController, NSWindowDelegate {
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 540, height: 620),
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 620),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
@@ -222,12 +222,12 @@ final class AgentWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
         window.title = L10n.text("本机 Agent")
         window.titlebarAppearsTransparent = true
-        window.minSize = NSSize(width: 460, height: 380)
+        window.minSize = NSSize(width: 760, height: 480)
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("FlowCue.Agents")
         window.center()
         window.delegate = self
-        window.contentViewController = NSHostingController(rootView: AgentListView())
+        window.contentViewController = NSHostingController(rootView: AgentBrowserView())
     }
 
     required init?(coder: NSCoder) { nil }
