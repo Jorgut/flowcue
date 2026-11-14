@@ -181,34 +181,34 @@ private func glyphMetrics(for size: Int) -> GlyphMetrics {
     switch size {
     case ...16:
         return GlyphMetrics(
-            bodyWidth: 112,
-            headWidth: 96,
-            cursorWidth: 128,
-            cursorHeight: 192,
+            bodyWidth: 121,
+            headWidth: 104,
+            cursorWidth: 138,
+            cursorHeight: 204,
             arrowColor: color(0x8A90FF)
         )
     case ...32:
         return GlyphMetrics(
-            bodyWidth: 104,
-            headWidth: 80,
-            cursorWidth: 96,
-            cursorHeight: 192,
+            bodyWidth: 112,
+            headWidth: 86,
+            cursorWidth: 104,
+            cursorHeight: 204,
             arrowColor: color(0x8A90FF)
         )
     case ...64:
         return GlyphMetrics(
-            bodyWidth: 100,
-            headWidth: 78,
-            cursorWidth: 100,
-            cursorHeight: 190,
+            bodyWidth: 108,
+            headWidth: 84,
+            cursorWidth: 108,
+            cursorHeight: 202,
             arrowColor: color(0x8A90FF)
         )
     default:
         return GlyphMetrics(
-            bodyWidth: 98,
-            headWidth: 76,
-            cursorWidth: 98,
-            cursorHeight: 190,
+            bodyWidth: 106,
+            headWidth: 82,
+            cursorWidth: 106,
+            cursorHeight: 202,
             arrowColor: color(0x7E84FF)
         )
     }
@@ -220,31 +220,31 @@ private func drawReturnGlyph(in context: CGContext, size: Int) {
     context.setLineJoin(.round)
 
     let body = CGMutablePath()
-    body.move(to: CGPoint(x: 672, y: 462))
-    body.addLine(to: CGPoint(x: 672, y: 430))
+    body.move(to: CGPoint(x: 684.6, y: 474.8))
+    body.addLine(to: CGPoint(x: 684.6, y: 440.6))
     body.addCurve(
-        to: CGPoint(x: 586, y: 344),
-        control1: CGPoint(x: 672, y: 380),
-        control2: CGPoint(x: 636, y: 344)
+        to: CGPoint(x: 592.7, y: 348.7),
+        control1: CGPoint(x: 684.6, y: 387.2),
+        control2: CGPoint(x: 646.2, y: 348.7)
     )
-    body.addLine(to: CGPoint(x: 362, y: 344))
+    body.addLine(to: CGPoint(x: 354.7, y: 348.7))
     context.addPath(body)
     context.setStrokeColor(metrics.arrowColor)
     context.setLineWidth(metrics.bodyWidth)
     context.strokePath()
 
     let arrowHead = CGMutablePath()
-    arrowHead.move(to: CGPoint(x: 418, y: 420))
-    arrowHead.addLine(to: CGPoint(x: 338, y: 344))
-    arrowHead.addLine(to: CGPoint(x: 418, y: 268))
+    arrowHead.move(to: CGPoint(x: 413.3, y: 429.9))
+    arrowHead.addLine(to: CGPoint(x: 327.9, y: 348.7))
+    arrowHead.addLine(to: CGPoint(x: 413.3, y: 267.6))
     context.addPath(arrowHead)
     context.setStrokeColor(metrics.arrowColor)
     context.setLineWidth(metrics.headWidth)
     context.strokePath()
 
     let cursorRect = CGRect(
-        x: 672 - metrics.cursorWidth / 2,
-        y: 588,
+        x: 684.6 - metrics.cursorWidth / 2,
+        y: 594,
         width: metrics.cursorWidth,
         height: metrics.cursorHeight
     )

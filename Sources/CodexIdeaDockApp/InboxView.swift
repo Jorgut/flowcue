@@ -7,7 +7,7 @@ import Observation
 import SwiftUI
 
 private enum FlowCueDesktopTheme {
-    static let accent = Color(red: 0.45, green: 0.40, blue: 1.0)
+    static let accent = Color(red: 0.494, green: 0.518, blue: 1.0)   // #7E84FF，与 iOS / 图标一致
     static let mint = Color(red: 0.36, green: 0.85, blue: 0.72)
     static let ink = Color(red: 0.10, green: 0.09, blue: 0.15)
     static let canvas = Color(nsColor: .windowBackgroundColor)
@@ -66,13 +66,15 @@ struct InboxView: View {
     @State private var selectedCaptureID: UUID?
     @State private var lastArchivedCaptureID: UUID?
     @State private var isMailTriagePresented = false
+    @State private var statusFilter: CaptureStatus?
     @State private var sourceFilter: RouteFilter = .all
     @State private var targetFilter: RouteFilter = .all
     @State private var isRemoteStatusPresented = false
 
     private var visibleCaptures: [CaptureItem] {
         store.filteredCaptures.filter { capture in
-            sourceFilter.matches(id: capture.sourceThreadID, title: capture.sourceTitle)
+            (statusFilter == nil || capture.status == statusFilter!)
+                && sourceFilter.matches(id: capture.sourceThreadID, title: capture.sourceTitle)
                 && targetFilter.matches(id: capture.targetThreadID, title: capture.targetTitle)
         }
     }
@@ -109,6 +111,7 @@ struct InboxView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
 
+            StatusFilterRow(selection: $statusFilter)
             Divider()
 
             HSplitView {
@@ -345,7 +348,7 @@ struct InboxView: View {
             }
         }
         .padding(16)
-        .background(FlowCueDesktopTheme.headerGradient, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .background(FlowCueDesktopTheme.headerGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
         .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 2)
@@ -824,6 +827,50 @@ private struct MailTriageView: View {
         }
         guard store.saveMailTasks(selectedTasks) > 0 else { return }
         dismiss()
+    }
+}
+
+private struct StatusFilterRow: View {
+    @Binding var selection: CaptureStatus?
+
+    private struct Option: Identifiable {
+        let status: CaptureStatus?
+        let title: String
+        var id: String { status?.rawValue ?? "all" }
+    }
+
+    private var options: [Option] {
+        [Option(status: nil, title: L10n.text("全部")),
+         Option(status: .draft, title: L10n.text("草稿")),
+         Option(status: .queued, title: L10n.text("已排队")),
+         Option(status: .saved, title: L10n.text("已保存"))]
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(options) { option in
+                let selected = selection == option.status
+                Button {
+                    selection = option.status
+                } label: {
+                    Text(option.title)
+                        .font(.caption)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 3)
+                        .background(selected ? FlowCueDesktopTheme.accent.opacity(0.18) : Color.clear,
+                                    in: Capsule())
+                        .overlay(Capsule().strokeBorder(selected ? FlowCueDesktopTheme.accent.opacity(0.55)
+                                                                : Color.secondary.opacity(0.25)))
+                        .foregroundStyle(selected ? FlowCueDesktopTheme.accent : Color.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.bottom, 6)
+        .background(FlowCueDesktopTheme.canvas)
     }
 }
 
