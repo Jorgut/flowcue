@@ -30,34 +30,56 @@ private enum FlowCueTheme {
     }
 
     static let accent = token { $0.accent }
+    static let accentSoft = accent.opacity(0.14)
     static let mint = token { $0.success }
     static let surface = token { $0.surface }
     static let canvas = token { $0.canvas }
     static let hairline = token { $0.border }
+    static let textPrimary = token { $0.textPrimary }
+    static let textSecondary = token { $0.textSecondary }
+    static let textTertiary = token { $0.textTertiary }
+    static let warning = token { $0.warning }
+    static let failure = token { $0.failure }
+    static let onAccent = ink
 
-    /// Hero 卡：暗色沿用深紫渐变；浅色改成极浅的紫灰，文字用主色。
-    static var heroGradient: LinearGradient {
-        LinearGradient(
-            colors: [Color(uiColor: UIColor { traits in
-                traits.userInterfaceStyle == .dark
-                    ? UIColor(red: 0.07, green: 0.07, blue: 0.11, alpha: 1)
-                    : UIColor(red: 0.945, green: 0.941, blue: 0.988, alpha: 1)
-            }), Color(uiColor: UIColor { traits in
-                traits.userInterfaceStyle == .dark
-                    ? UIColor(red: 0.15, green: 0.12, blue: 0.25, alpha: 1)
-                    : UIColor(red: 0.898, green: 0.894, blue: 0.973, alpha: 1)
-            })],
-            startPoint: .topLeading, endPoint: .bottomTrailing)
+    /// Airy 的「顶部冷光」；浅色只留很淡的一层，保持表面干净。
+    static func topGlow(_ scheme: ColorScheme) -> RadialGradient {
+        RadialGradient(
+            stops: [
+                .init(color: accent.opacity(scheme == .dark ? 0.18 : 0.10), location: 0),
+                .init(color: accent.opacity(scheme == .dark ? 0.05 : 0.03), location: 0.46),
+                .init(color: .clear, location: 0.78)
+            ],
+            center: .top,
+            startRadius: 0,
+            endRadius: 420
+        )
+    }
+}
+
+/// 按设计稿字号渲染，同时跟随 Dynamic Type 放大。
+private struct FlowCueFontModifier: ViewModifier {
+    @ScaledMetric private var size: CGFloat
+    private let weight: Font.Weight
+
+    init(size: CGFloat, relativeTo style: Font.TextStyle, weight: Font.Weight) {
+        _size = ScaledMetric(wrappedValue: size, relativeTo: style)
+        self.weight = weight
     }
 
-    static let heroTitle = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark ? .white : UIColor(red: 0.09, green: 0.09, blue: 0.12, alpha: 1)
-    })
-    static let heroBody = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
-            ? UIColor.white.withAlphaComponent(0.72)
-            : UIColor(red: 0.33, green: 0.33, blue: 0.40, alpha: 1)
-    })
+    func body(content: Content) -> some View {
+        content.font(.system(size: size, weight: weight))
+    }
+}
+
+private extension View {
+    func flowCueFont(
+        _ size: CGFloat,
+        relativeTo style: Font.TextStyle = .body,
+        weight: Font.Weight = .regular
+    ) -> some View {
+        modifier(FlowCueFontModifier(size: size, relativeTo: style, weight: weight))
+    }
 }
 
 // MARK: - Subscription
@@ -658,22 +680,36 @@ private struct RootTabView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var tab: FlowCueTab = {
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--flowcue-agents") { return .agents }
+        let arguments = ProcessInfo.processInfo.arguments
+        if let value = arguments.first(where: { $0.hasPrefix("--flowcue-tab=") }) {
+            switch String(value.dropFirst("--flowcue-tab=".count)) {
+            case "agents": return .agents
+            case "settings": return .settings
+            default: return .inbox
+            }
+        }
+        if arguments.contains("--flowcue-agents") { return .agents }
         #endif
         return .inbox
     }()
 
     var body: some View {
         TabView(selection: $tab) {
-            InboxView(store: store, syncController: syncController)
+            InboxView(store: store, syncController: syncController, remoteController: remoteController, tab: $tab)
                 .tag(FlowCueTab.inbox)
-                .tabItem { Label("Ideas", systemImage: "sparkles") }
-            AgentsView(controller: remoteController)
+                .toolbar(.hidden, for: .tabBar)
+            AgentsView(controller: remoteController, tab: $tab)
                 .tag(FlowCueTab.agents)
-                .tabItem { Label("Agents", systemImage: "paperplane") }
-            SettingsView(store: store, syncController: syncController, remoteController: remoteController, showOnboarding: { hasSeenOnboarding = false })
-                .tag(FlowCueTab.settings)
-                .tabItem { Label("Settings", systemImage: "gearshape") }
+                .toolbar(.hidden, for: .tabBar)
+            SettingsView(
+                store: store,
+                syncController: syncController,
+                remoteController: remoteController,
+                tab: $tab,
+                showOnboarding: { hasSeenOnboarding = false }
+            )
+            .tag(FlowCueTab.settings)
+            .toolbar(.hidden, for: .tabBar)
         }
         .tint(FlowCueTheme.accent)
         .task(id: scenePhase) {
@@ -683,225 +719,1045 @@ private struct RootTabView: View {
     }
 }
 
+// MARK: - Home chrome
+
+private enum HomeLayout {
+    static let margin: CGFloat = 18
+    static let barMargin: CGFloat = 14
+    static let rowSpacing: CGFloat = 11
+}
+
+/// 角色的 96 网格几何，与 `docs/design/ios/` 里的 SVG 同源。
+private struct FlowCueFaceMark: View {
+    var ink: Color
+    var smile: Color
+
+    var body: some View {
+        Canvas { context, size in
+            let unit = min(size.width, size.height) / 96
+            context.scaleBy(x: unit, y: unit)
+
+            for center in [CGPoint(x: 32, y: 34), CGPoint(x: 64, y: 34)] {
+                context.fill(
+                    Path(ellipseIn: CGRect(x: center.x - 9, y: center.y - 9, width: 18, height: 18)),
+                    with: .color(ink)
+                )
+            }
+            context.fill(
+                Path(roundedRect: CGRect(x: 42, y: 40, width: 12, height: 18), cornerRadius: 6),
+                with: .color(ink)
+            )
+
+            var mouth = Path()
+            mouth.move(to: CGPoint(x: 26, y: 64))
+            mouth.addQuadCurve(to: CGPoint(x: 70, y: 64), control: CGPoint(x: 48, y: 88.3))
+            context.stroke(
+                mouth,
+                with: .color(smile),
+                style: StrokeStyle(lineWidth: 14, lineCap: .round)
+            )
+        }
+        .accessibilityHidden(true)
+    }
+}
+
+private enum FlowCueGlyphKind {
+    case spark, plane, face
+}
+
+/// 底部导航的线性图标，路径取自设计稿（20 网格）。
+private struct FlowCueGlyph: View {
+    let kind: FlowCueGlyphKind
+    var ink: Color
+    var smile: Color?
+
+    var body: some View {
+        switch kind {
+        case .face:
+            FlowCueFaceMark(ink: ink, smile: smile ?? ink)
+        case .spark:
+            Canvas { context, size in
+                let unit = min(size.width, size.height) / 20
+                context.scaleBy(x: unit, y: unit)
+                var path = Path()
+                path.move(to: CGPoint(x: 10, y: 3.2))
+                path.addLine(to: CGPoint(x: 11.7, y: 7.8))
+                path.addLine(to: CGPoint(x: 16.3, y: 9.5))
+                path.addLine(to: CGPoint(x: 11.7, y: 11.2))
+                path.addLine(to: CGPoint(x: 10, y: 15.8))
+                path.addLine(to: CGPoint(x: 8.3, y: 11.2))
+                path.addLine(to: CGPoint(x: 3.7, y: 9.5))
+                path.addLine(to: CGPoint(x: 8.3, y: 7.8))
+                path.closeSubpath()
+                context.stroke(
+                    path,
+                    with: .color(ink),
+                    style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round)
+                )
+            }
+        case .plane:
+            Canvas { context, size in
+                let unit = min(size.width, size.height) / 20
+                context.scaleBy(x: unit, y: unit)
+                var path = Path()
+                path.move(to: CGPoint(x: 3.6, y: 16.4))
+                path.addLine(to: CGPoint(x: 16.4, y: 10))
+                path.addLine(to: CGPoint(x: 3.6, y: 3.6))
+                path.addLine(to: CGPoint(x: 5.8, y: 10))
+                path.closeSubpath()
+                path.move(to: CGPoint(x: 5.8, y: 10))
+                path.addLine(to: CGPoint(x: 16.4, y: 10))
+                context.stroke(
+                    path,
+                    with: .color(ink),
+                    style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round)
+                )
+            }
+        }
+    }
+}
+
+/// 悬浮胶囊导航：三项，44pt 热区，AX 字号下只留图标。
+private struct FlowCueTabBar: View {
+    @Binding var selection: FlowCueTab
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private struct Item {
+        let tab: FlowCueTab
+        let title: String
+        let glyph: FlowCueGlyphKind
+    }
+
+    private let items: [Item] = [
+        Item(tab: .inbox, title: "Ideas", glyph: .spark),
+        Item(tab: .agents, title: "Agents", glyph: .plane),
+        Item(tab: .settings, title: "Me", glyph: .face)
+    ]
+
+    var body: some View {
+        HStack(spacing: 0) {
+            ForEach(items, id: \.tab) { item in
+                itemButton(item)
+            }
+        }
+        .frame(height: 44)
+        .background(
+            Capsule()
+                .fill(FlowCueTheme.surface)
+                .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+        )
+        .padding(.horizontal, HomeLayout.barMargin)
+        .padding(.vertical, 6)
+        .background(FlowCueTheme.canvas)
+    }
+
+    private func itemButton(_ item: Item) -> some View {
+        let isSelected = selection == item.tab
+        let tint = isSelected ? FlowCueTheme.accent : FlowCueTheme.textSecondary
+        return Button {
+            guard selection != item.tab else { return }
+            UISelectionFeedbackGenerator().selectionChanged()
+            selection = item.tab
+        } label: {
+            VStack(spacing: 3) {
+                FlowCueGlyph(kind: item.glyph, ink: tint, smile: tint)
+                    .frame(width: 16, height: 16)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Text(item.title)
+                        .flowCueFont(9, relativeTo: .caption2, weight: .medium)
+                        .tracking(0.54)
+                        .foregroundStyle(tint)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.title)
+        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+    }
+}
+
+// MARK: - Home data and state probes
+
+private enum HomeFilter: String, CaseIterable, Identifiable {
+    case all, drafts, queued, archived
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .all: "All"
+        case .drafts: "Drafts"
+        case .queued: "Queued"
+        case .archived: "Archived"
+        }
+    }
+
+    func matches(_ status: CaptureStatus) -> Bool {
+        switch self {
+        case .all: status != .draft && status != .archived
+        case .drafts: status == .saved
+        case .queued: status == .queueing || status == .queued
+        case .archived: status == .archived
+        }
+    }
+}
+
+private enum HomeFormat {
+    static let time: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    static let day: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d"
+        return formatter
+    }()
+
+    static func meta(for date: Date) -> String {
+        Calendar.current.isDateInToday(date) ? time.string(from: date) : day.string(from: date).uppercased()
+    }
+}
+
+private enum HomeStatus {
+    static func label(_ status: CaptureStatus) -> String {
+        switch status {
+        case .draft, .saved: "DRAFT"
+        case .queueing, .queued: "QUEUED"
+        case .failed: "FAILED"
+        case .unknown: "NEEDS CHECK"
+        case .archived: "ARCHIVED"
+        }
+    }
+
+    static func tint(_ status: CaptureStatus) -> Color {
+        switch status {
+        case .draft, .saved: FlowCueTheme.textSecondary
+        case .queueing: FlowCueTheme.accent
+        case .queued: FlowCueTheme.mint
+        case .failed: FlowCueTheme.failure
+        case .unknown: FlowCueTheme.warning
+        case .archived: FlowCueTheme.textTertiary
+        }
+    }
+}
+
+/// 只用于 DEBUG 截图与状态走查；Release 永远返回空值。
+private enum HomePreview {
+    static let requestedState: String? = {
+        #if DEBUG
+        guard let argument = ProcessInfo.processInfo.arguments.first(where: {
+            $0.hasPrefix("--flowcue-home-state=")
+        }) else { return nil }
+        return String(argument.dropFirst("--flowcue-home-state=".count))
+        #else
+        return nil
+        #endif
+    }()
+
+    static var usesSamples: Bool {
+        requestedState == "demo" || requestedState == "syncFailed" || requestedState == "offline"
+    }
+    static var forcesEmpty: Bool { requestedState == "empty" }
+    static var forcesLoading: Bool { requestedState == "loading" }
+    static var forcesSyncFailure: Bool { requestedState == "syncFailed" }
+    static var forcesOffline: Bool { requestedState == "offline" }
+
+    static let samples: [CaptureItem] = {
+        #if DEBUG
+        [
+            sample("Retry backoff feels too slow", hour: 21, minute: 4, status: .saved),
+            sample("Character should blink once on save", hour: 20, minute: 51, status: .queueing),
+            sample("Share sheet for Safari", hour: 18, minute: 22, status: .queued),
+            sample("Widget for quick capture", hour: 17, minute: 40, status: .saved)
+        ]
+        #else
+        []
+        #endif
+    }()
+
+    #if DEBUG
+    private static func sample(
+        _ text: String,
+        hour: Int,
+        minute: Int,
+        status: CaptureStatus
+    ) -> CaptureItem {
+        let date = Calendar.current.date(bySettingHour: hour, minute: minute, second: 0, of: .now) ?? .now
+        return CaptureItem(
+            id: UUID(),
+            text: text,
+            sourceThreadID: nil,
+            targetThreadID: nil,
+            sourceTitle: nil,
+            targetTitle: nil,
+            createdAt: date,
+            updatedAt: date,
+            status: status,
+            statusBeforeArchive: nil,
+            lastError: nil
+        )
+    }
+    #endif
+}
+
+@MainActor
+@Observable
+private final class HomeNetworkMonitor {
+    private(set) var isOnline = true
+    @ObservationIgnored private var monitor: NWPathMonitor?
+
+    func start() {
+        guard monitor == nil else { return }
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { [weak self] path in
+            let online = path.status == .satisfied
+            Task { @MainActor in self?.isOnline = online }
+        }
+        monitor.start(queue: .main)
+        self.monitor = monitor
+    }
+
+    func stop() {
+        monitor?.cancel()
+        monitor = nil
+    }
+}
+
 // MARK: - Inbox
 
 private struct InboxView: View {
     @Bindable var store: IdeaDockStore
     @Bindable var syncController: IdeaSyncController
-    @Environment(SubscriptionManager.self) private var subscription
-    @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
-    @State private var showingCompose = false
-    @State private var showingPaywall = false
-    @State private var showingArchived = false
+    @Bindable var remoteController: LANRemoteController
+    @Binding var tab: FlowCueTab
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var filter: HomeFilter = .all
+    @State private var network = HomeNetworkMonitor()
+    @State private var searchDictation = VoiceDictation()
+    @State private var searchBase = ""
+    @State private var chipsCollapsed = false
+    @State private var lastScrollOffset: CGFloat = 0
+    @State private var hasCompletedInitialSync = false
+    @FocusState private var captureFocused: Bool
+    @ScaledMetric(relativeTo: .caption) private var searchHeight: CGFloat = 44
+    @ScaledMetric(relativeTo: .caption) private var chipHeight: CGFloat = 26
+    @FocusState private var searchFocused: Bool
 
-    private var ideas: [CaptureItem] { store.filteredCaptures }
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if ideas.isEmpty {
-                    emptyState
-                } else {
-                    List {
-                        Section {
-                            ForEach(ideas) { idea in
-                                NavigationLink {
-                                    IdeaDetailView(store: store, capture: idea)
-                                } label: {
-                                    IdeaRow(capture: idea)
-                                }
-                                .listRowBackground(FlowCueTheme.surface)
-                            }
-                        } header: {
-                            Text(showingArchived ? "Archived ideas" : "Recent ideas")
-                                .textCase(nil)
-                        }
-                    }
-                    .listStyle(.insetGrouped)
-                    .scrollContentBackground(.hidden)
-                    .background(FlowCueTheme.canvas)
-                }
-            }
-            .navigationTitle("FlowCue")
-            .searchable(text: $store.searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search ideas")
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showingArchived.toggle()
-                        store.statusFilter = showingArchived ? .archived : nil
-                    } label: {
-                        Image(systemName: showingArchived ? "tray.full.fill" : "tray")
-                    }
-                    .accessibilityLabel(showingArchived ? "Show active ideas" : "Show archived ideas")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingCompose = true
-                    } label: {
-                        Image(systemName: "square.and.pencil")
-                    }
-                    .accessibilityLabel("Capture an idea")
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                if let message = store.notification?.message {
-                    HStack(spacing: 8) {
-                        Image(systemName: "info.circle")
-                        Text(L10n.text(message)).font(.footnote)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(12)
-                    .background(.thinMaterial, in: Capsule())
-                    .padding(.horizontal)
-                    .padding(.bottom, 4)
-                }
-            }
-            .sheet(isPresented: $showingCompose, onDismiss: { store.flushDraft() }) {
-                ComposeView(store: store)
-                    .presentationDetents([.large])
-            }
-            .sheet(isPresented: $showingPaywall) { PaywallView() }
-        }
-    }
-
-    private var emptyState: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Spacer(minLength: 36)
-            ZStack {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(FlowCueTheme.heroGradient)
-                    .frame(height: 190)
-                VStack(alignment: .leading, spacing: 10) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 30, weight: .semibold))
-                        .foregroundStyle(FlowCueTheme.mint)
-                    Text("A quiet place for ideas\nthat deserve a next step.")
-                        .font(.system(.title2, design: .rounded, weight: .bold))
-                        .foregroundStyle(FlowCueTheme.heroTitle)
-                    Text("Capture now. Continue with your coding agents later.")
-                        .font(.subheadline)
-                        .foregroundStyle(FlowCueTheme.heroBody)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(22)
-            }
-            .padding(.horizontal)
-
-            VStack(spacing: 12) {
-                Button {
-                    showingCompose = true
-                } label: {
-                    Label("Capture your first idea", systemImage: "plus")
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 4)
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(FlowCueTheme.accent)
-                if !subscription.isPro {
-                    Button("See FlowCue Pro") { showingPaywall = true }
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .padding(.horizontal)
-            Spacer()
-        }
-        .background(FlowCueTheme.canvas)
-    }
-}
-
-private struct IdeaRow: View {
-    let capture: CaptureItem
-
-    private var dotColor: Color {
-        switch capture.status {
-        case .failed, .unknown: Color(flowCueHex: FlowCueTokens.airyDark.failure)
-        case .queued, .queueing: FlowCueTheme.accent
-        case .saved: Color(flowCueHex: FlowCueTokens.airyDark.success)
-        case .archived: Color(flowCueHex: FlowCueTokens.airyDark.textTertiary)
-        default: Color(flowCueHex: FlowCueTokens.airyDark.textSecondary)
-        }
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(capture.text)
-                .font(.body)
-                .lineLimit(4)
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(dotColor)
-                    .frame(width: 6, height: 6)
-                    .accessibilityHidden(true)
-                Text(capture.updatedAt, format: .relative(presentation: .named))
-                if capture.status == .archived {
-                    Text("·")
-                    Text("Archived")
-                }
-                if capture.status == .failed || capture.status == .unknown {
-                    Text("·")
-                    Label("Needs attention", systemImage: "exclamationmark.circle")
-                        .foregroundStyle(.orange)
-                }
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 6)
-        .accessibilityElement(children: .combine)
-    }
-}
-
-private struct ComposeView: View {
-    @Bindable var store: IdeaDockStore
-    @Environment(\.dismiss) private var dismiss
-    @FocusState private var focused: Bool
-    @State private var showingPaywall = false
+    private static let syncFailureMessages: Set<String> = [
+        "暂时无法同步，本地想法已保留",
+        "iCloud 账户已更换，同步已暂停",
+        "想法存在编辑冲突，原文已保留"
+    ]
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                TextEditor(text: $store.draftText)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .focused($focused)
-                    .padding(18)
-                    .accessibilityLabel("Idea content")
-                HStack {
-                    Text("\(store.draftText.count) characters")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    if store.draftText.isEmpty {
-                        Text("Start typing or paste a thought.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                header
+                    .padding(.horizontal, HomeLayout.margin)
+                    .padding(.top, 12)
+                searchField
+                    .padding(.horizontal, HomeLayout.margin)
+                    .padding(.top, 12)
+                chips
+                banners
+                content
+                if let note = store.notification, note.kind != .success {
+                    HomeNoticeStrip(kind: note.kind, message: L10n.text(note.message)) {
+                        store.notification = nil
+                    }
+                    .padding(.horizontal, HomeLayout.margin)
+                    .padding(.top, 8)
+                    .transition(.opacity)
+                    .task(id: note.id) {
+                        try? await Task.sleep(for: .seconds(4))
+                        if store.notification?.id == note.id { store.notification = nil }
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 10)
-            }
-            .background(FlowCueTheme.canvas)
-            .navigationTitle("New idea")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { store.flushDraft(); dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        if store.saveCurrent() != nil { dismiss() }
-                    }
-                    .disabled(store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
-                    Button("Done") { focused = false }
+                HomeCaptureBar(store: store, focused: $captureFocused)
+                if !captureFocused && !searchFocused {
+                    FlowCueTabBar(selection: $tab)
+                        .transition(.opacity)
                 }
             }
-            .onAppear { focused = true }
-            .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: captureFocused)
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: searchFocused)
+            .background {
+                ZStack {
+                    FlowCueTheme.canvas
+                    FlowCueTheme.topGlow(colorScheme)
+                }
+                .ignoresSafeArea()
+            }
+            .toolbar(.hidden, for: .navigationBar)
+            .task { network.start() }
+            .onChange(of: syncController.isSyncing) { _, isSyncing in
+                if !isSyncing { hasCompletedInitialSync = true }
+            }
+            .onDisappear {
+                network.stop()
+                searchDictation.stop()
+            }
+            .alert(
+                "Voice input unavailable",
+                isPresented: Binding(
+                    get: { searchDictation.error != nil },
+                    set: { if !$0 { searchDictation.error = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) { searchDictation.error = nil }
+            } message: {
+                Text(searchDictation.error ?? "")
+            }
         }
+    }
+
+    // MARK: Chrome
+
+    private var header: some View {
+        HStack {
+            Text("FlowCue")
+                .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                .tracking(-0.14)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            Spacer()
+            Button {
+                tab = .settings
+            } label: {
+                ZStack {
+                    Circle().fill(FlowCueTheme.surface)
+                    Circle().strokeBorder(FlowCueTheme.hairline)
+                    FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                        .frame(width: 20, height: 20)
+                }
+                .frame(width: 30, height: 30)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open Me")
+        }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 15))
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .accessibilityHidden(true)
+            TextField("Search your ideas", text: $store.searchText)
+                .flowCueFont(12.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .focused($searchFocused)
+                .submitLabel(.search)
+            Button {
+                toggleSearchDictation()
+            } label: {
+                Image(systemName: searchDictation.isRecording ? "waveform" : "mic")
+                    .font(.system(size: 14))
+                    .foregroundStyle(searchDictation.isRecording ? FlowCueTheme.accent : FlowCueTheme.textSecondary.opacity(0.7))
+                    .frame(width: 42, height: searchHeight)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(searchDictation.isRecording ? "Stop voice search" : "Search by voice")
+        }
+        .padding(.leading, 13)
+        .padding(.trailing, 4)
+        .frame(minHeight: searchHeight)
+        .background(
+            Capsule()
+                .fill(FlowCueTheme.surface)
+                .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+        )
+    }
+
+    private var chips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 7) {
+                ForEach(HomeFilter.allCases) { option in
+                    chip(option)
+                }
+            }
+            .padding(.horizontal, HomeLayout.margin)
+        }
+        .frame(height: chipsCollapsed ? 0 : chipHeight)
+        .opacity(chipsCollapsed ? 0 : 1)
+        .clipped()
+        .padding(.top, chipsCollapsed ? 0 : 10)
+        .accessibilityHidden(chipsCollapsed)
+    }
+
+    private func chip(_ option: HomeFilter) -> some View {
+        let isSelected = filter == option
+        return Button {
+            guard filter != option else { return }
+            UISelectionFeedbackGenerator().selectionChanged()
+            filter = option
+        } label: {
+            Text(option.title)
+                .flowCueFont(11.5, relativeTo: .caption, weight: isSelected ? .semibold : .regular)
+                .lineLimit(1)
+                .padding(.horizontal, 12)
+                .frame(minHeight: chipHeight)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? FlowCueTheme.accentSoft : Color.clear)
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(isSelected ? Color.clear : FlowCueTheme.hairline)
+                )
+                .foregroundStyle(isSelected ? FlowCueTheme.accent : FlowCueTheme.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    @ViewBuilder
+    private var banners: some View {
+        if isOffline {
+            HomeStateBanner(
+                kind: .warning,
+                title: "You are offline. Ideas are saved on this iPhone."
+            )
+            .padding(.horizontal, HomeLayout.margin)
+            .padding(.top, 10)
+        } else if showsSyncFailure {
+            HomeStateBanner(
+                kind: .failure,
+                title: "Sync failed — changes saved locally",
+                actionTitle: "Retry",
+                action: { Task { await syncController.synchronizeNow() } }
+            )
+            .padding(.horizontal, HomeLayout.margin)
+            .padding(.top, 10)
+        }
+    }
+
+    // MARK: Content
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading {
+            VStack(spacing: 0) {
+                sectionHeader
+                    .padding(.horizontal, HomeLayout.margin)
+                    .padding(.top, 16)
+                HomeSkeletonList()
+                    .padding(.horizontal, HomeLayout.margin)
+                    .padding(.top, 4)
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+        } else if showsEmptyState {
+            emptyState
+        } else {
+            sectionHeader
+                .padding(.horizontal, HomeLayout.margin)
+                .padding(.top, 16)
+            if visibleIdeas.isEmpty {
+                filteredEmptyState
+            } else {
+                ideaList
+            }
+        }
+    }
+
+    private var filteredEmptyState: some View {
+        VStack(spacing: 10) {
+            Text(
+                store.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? "No \(filter.title.lowercased()) ideas"
+                    : "No ideas match your search"
+            )
+            .flowCueFont(14, relativeTo: .subheadline)
+            .foregroundStyle(FlowCueTheme.textSecondary)
+            Button("Show all ideas") {
+                store.searchText = ""
+                filter = .all
+            }
+            .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
+            .foregroundStyle(FlowCueTheme.accent)
+            .padding(.vertical, 8)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var isOffline: Bool {
+        HomePreview.forcesOffline || !network.isOnline
+    }
+
+    private var showsSyncFailure: Bool {
+        if HomePreview.forcesSyncFailure { return true }
+        guard HomePreview.requestedState == nil else { return false }
+        return syncController.isEnabled && Self.syncFailureMessages.contains(syncController.statusMessage)
+    }
+
+    private var isLoading: Bool {
+        if HomePreview.forcesLoading { return true }
+        guard HomePreview.requestedState == nil else { return false }
+        return !hasCompletedInitialSync
+            && syncController.isEnabled
+            && syncController.isSyncing
+            && store.captures.isEmpty
+    }
+
+    private var baseCaptures: [CaptureItem] {
+        HomePreview.usesSamples ? HomePreview.samples : store.captures
+    }
+
+    private var activeIdeas: [CaptureItem] {
+        baseCaptures.filter { $0.status != .draft && $0.status != .archived }
+    }
+
+    private var visibleIdeas: [CaptureItem] {
+        let normalizedSearch = store.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return baseCaptures.filter { capture in
+            guard capture.status != .draft, filter.matches(capture.status) else { return false }
+            guard !normalizedSearch.isEmpty else { return true }
+            return capture.text.localizedCaseInsensitiveContains(normalizedSearch)
+                || capture.sourceTitle?.localizedCaseInsensitiveContains(normalizedSearch) == true
+                || capture.targetTitle?.localizedCaseInsensitiveContains(normalizedSearch) == true
+        }
+    }
+
+    private var showsEmptyState: Bool {
+        guard visibleIdeas.isEmpty else { return false }
+        if HomePreview.forcesEmpty { return true }
+        let normalizedSearch = store.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return activeIdeas.isEmpty && normalizedSearch.isEmpty && filter == .all
+    }
+
+    private var sectionHeader: some View {
+        HStack(alignment: .firstTextBaseline) {
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text("Ideas")
+                    .flowCueFont(26, relativeTo: .title2, weight: .semibold)
+                    .tracking(-0.52)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                Text(isLoading ? " · —" : " · \(visibleIdeas.count)")
+                    .flowCueFont(16, relativeTo: .callout, weight: .medium)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+            Spacer()
+            if !dynamicTypeSize.isAccessibilitySize {
+                statusLine
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var statusLine: some View {
+        if isLoading {
+            Text("—")
+                .flowCueFont(10, relativeTo: .caption2)
+                .tracking(0.6)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+        } else if remoteController.isConnected && !isOffline {
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(FlowCueTheme.mint)
+                    .frame(width: 5, height: 5)
+                    .accessibilityHidden(true)
+                Text("Codex · online")
+            }
+            .flowCueFont(10, relativeTo: .caption2)
+            .tracking(0.6)
+            .foregroundStyle(FlowCueTheme.textSecondary)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Codex online")
+        } else {
+            Text("\(activeIdeas.count) LOCAL")
+                .flowCueFont(10, relativeTo: .caption2)
+                .tracking(0.6)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+        }
+    }
+
+    private var ideaList: some View {
+        ScrollView {
+            ScrollViewOffsetReader()
+            LazyVStack(spacing: 0) {
+                ForEach(visibleIdeas) { idea in
+                    NavigationLink {
+                        IdeaDetailView(store: store, capture: idea)
+                    } label: {
+                        HomeIdeaRow(capture: idea)
+                    }
+                    .buttonStyle(.plain)
+                    Rectangle()
+                        .fill(FlowCueTheme.hairline)
+                        .frame(height: 1)
+                        .accessibilityHidden(true)
+                }
+            }
+            .padding(.horizontal, HomeLayout.margin)
+            .padding(.top, 4)
+        }
+        .coordinateSpace(name: HomeScrollSpace.name)
+        .scrollDismissesKeyboard(.interactively)
+        .onPreferenceChange(HomeScrollOffsetKey.self) { offset in
+            updateChipVisibility(offset)
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                .frame(width: 92, height: 92)
+            Text("No ideas yet")
+                .flowCueFont(19, relativeTo: .title3, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.top, 22)
+            Text("Capture the first thought. You can send it to your agents later.")
+                .flowCueFont(12.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .frame(maxWidth: 260)
+                .padding(.top, 10)
+            Button {
+                captureFocused = true
+            } label: {
+                Text("Capture the first idea →")
+                    .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
+                    .foregroundStyle(FlowCueTheme.accent)
+                    .padding(.vertical, 12)
+                    .padding(.horizontal, 12)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Capture the first idea")
+            .padding(.top, 10)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, HomeLayout.margin)
+    }
+
+    // MARK: Behaviour
+
+    private func updateChipVisibility(_ offset: CGFloat) {
+        let delta = offset - lastScrollOffset
+        lastScrollOffset = offset
+        guard !captureFocused else { return }
+        if delta < -2 && offset < -12 && !chipsCollapsed {
+            // 下滚 > 12pt：200ms 收起。
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { chipsCollapsed = true }
+        } else if delta > 2 && chipsCollapsed {
+            // 上滚：240ms 滑回。
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.24)) { chipsCollapsed = false }
+        }
+    }
+
+    private func toggleSearchDictation() {
+        if searchDictation.isRecording {
+            searchDictation.stop()
+            return
+        }
+        searchBase = store.searchText
+        searchDictation.start { transcript in
+            store.searchText = searchBase.isEmpty ? transcript : searchBase + " " + transcript
+        }
+    }
+}
+
+private enum HomeScrollSpace {
+    static let name = "home-scroll"
+}
+
+private struct HomeScrollOffsetKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct ScrollViewOffsetReader: View {
+    var body: some View {
+        GeometryReader { proxy in
+            Color.clear.preference(
+                key: HomeScrollOffsetKey.self,
+                value: proxy.frame(in: .named(HomeScrollSpace.name)).minY
+            )
+        }
+        .frame(height: 0)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct HomeIdeaRow: View {
+    let capture: CaptureItem
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        HStack(spacing: HomeLayout.rowSpacing) {
+            Circle()
+                .fill(HomeStatus.tint(capture.status))
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(capture.text)
+                    .flowCueFont(14, relativeTo: .subheadline)
+                    .lineSpacing(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                Text("\(HomeStatus.label(capture.status)) · \(HomeFormat.meta(for: capture.updatedAt))")
+                    .flowCueFont(10.5, relativeTo: .caption2)
+                    .tracking(0.2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.5))
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(capture.text), \(HomeStatus.label(capture.status)), \(HomeFormat.meta(for: capture.updatedAt))"
+        )
+    }
+}
+
+private struct HomeStateBanner: View {
+    enum Kind { case warning, failure }
+
+    let kind: Kind
+    let title: String
+    var actionTitle: String?
+    var action: (() -> Void)?
+
+    private var tint: Color {
+        kind == .warning ? FlowCueTheme.warning : FlowCueTheme.failure
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(tint)
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+            Text(title)
+                .flowCueFont(11, relativeTo: .caption2)
+                .foregroundStyle(tint)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 4)
+            if let actionTitle, let action {
+                Button(action: action) {
+                    Text(actionTitle)
+                        .flowCueFont(11, relativeTo: .caption2, weight: .semibold)
+                        .foregroundStyle(tint)
+                        .padding(.vertical, 8)
+                        .padding(.leading, 8)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                .fill(FlowCueTheme.textPrimary.opacity(0.04))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                .strokeBorder(tint.opacity(0.33))
+        )
+        .accessibilityElement(children: .contain)
+    }
+}
+
+private struct HomeNoticeStrip: View {
+    let kind: DockNotificationKind
+    let message: String
+    let onDismiss: () -> Void
+
+    private var tint: Color {
+        kind == .warning ? FlowCueTheme.warning : FlowCueTheme.failure
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(tint)
+                .frame(width: 6, height: 6)
+                .accessibilityHidden(true)
+            Text(message)
+                .flowCueFont(11, relativeTo: .caption2)
+                .foregroundStyle(tint)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(tint.opacity(0.8))
+                    .frame(width: 28, height: 28)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Dismiss")
+        }
+        .padding(.leading, 12)
+        .padding(.trailing, 4)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous)
+                .fill(FlowCueTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous)
+                .strokeBorder(tint.opacity(0.33))
+        )
+    }
+}
+
+private struct HomeSkeletonList: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<4, id: \.self) { _ in
+                HStack(alignment: .top, spacing: HomeLayout.rowSpacing) {
+                    Circle()
+                        .fill(FlowCueTheme.hairline)
+                        .frame(width: 6, height: 6)
+                        .padding(.top, 5)
+                    VStack(alignment: .leading, spacing: 7) {
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(FlowCueTheme.hairline)
+                            .frame(height: 11)
+                            .frame(maxWidth: 230, alignment: .leading)
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(FlowCueTheme.hairline)
+                            .frame(width: 90, height: 8)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 13)
+                Rectangle()
+                    .fill(FlowCueTheme.hairline)
+                    .frame(height: 1)
+            }
+        }
+        .accessibilityLabel("Loading ideas")
+    }
+}
+
+private struct HomeCaptureBar: View {
+    @Bindable var store: IdeaDockStore
+    @FocusState.Binding var focused: Bool
+    @State private var dictation = VoiceDictation()
+    @State private var baseText = ""
+
+    private var canSubmit: Bool {
+        !store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Button {
+                focused = true
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 17))
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .frame(width: 28, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Capture an idea")
+
+            TextField("Capture an idea", text: $store.draftText, axis: .vertical)
+                .lineLimit(1...4)
+                .flowCueFont(13.5, relativeTo: .footnote)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .focused($focused)
+                .submitLabel(.done)
+                .onSubmit { submit() }
+
+            Button {
+                toggleDictation()
+            } label: {
+                Image(systemName: dictation.isRecording ? "waveform" : "mic")
+                    .font(.system(size: 16))
+                    .foregroundStyle(dictation.isRecording ? FlowCueTheme.accent : FlowCueTheme.textSecondary.opacity(0.6))
+                    .frame(width: 40, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(dictation.isRecording ? "Stop dictation" : "Dictate an idea")
+
+            ZStack {
+                Circle()
+                    .fill(FlowCueTheme.accent)
+                    .frame(width: 32, height: 32)
+                Button {
+                    submit()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .disabled(!canSubmit)
+                .accessibilityLabel("Save idea")
+            }
+            .frame(width: 44, height: 44)
+        }
+        .padding(.leading, 13)
+        .padding(.trailing, 4)
+        .padding(.vertical, 2)
+        .background(
+            Capsule()
+                .fill(FlowCueTheme.surface)
+                .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+        )
+        .padding(.horizontal, HomeLayout.barMargin)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+        .alert(
+            "Voice input unavailable",
+            isPresented: Binding(
+                get: { dictation.error != nil },
+                set: { if !$0 { dictation.error = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { dictation.error = nil }
+        } message: {
+            Text(dictation.error ?? "")
+        }
+    }
+
+    private func toggleDictation() {
+        if dictation.isRecording {
+            dictation.stop()
+            return
+        }
+        baseText = store.draftText
+        dictation.start { transcript in
+            store.draftText = baseText.isEmpty ? transcript : baseText + " " + transcript
+        }
+    }
+
+    private func submit() {
+        dictation.stop()
+        guard canSubmit, store.saveCurrent() != nil else { return }
+        store.notification = nil
+        focused = false
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
     }
 }
 
@@ -993,6 +1849,7 @@ private struct IdeaDetailView: View {
 
 private struct AgentsView: View {
     @Bindable var controller: LANRemoteController
+    @Binding var tab: FlowCueTab
     @Environment(SubscriptionManager.self) private var subscription
     @State private var showingPaywall = false
 
@@ -1012,6 +1869,9 @@ private struct AgentsView: View {
                 }
             }
             .navigationTitle("Agents")
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                FlowCueTabBar(selection: $tab)
+            }
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     if controller.isConnected {
@@ -2284,6 +3144,7 @@ private struct SettingsView: View {
     @Bindable var store: IdeaDockStore
     @Bindable var syncController: IdeaSyncController
     @Bindable var remoteController: LANRemoteController
+    @Binding var tab: FlowCueTab
     let showOnboarding: () -> Void
     @Environment(SubscriptionManager.self) private var subscription
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
@@ -2363,6 +3224,9 @@ private struct SettingsView: View {
             .navigationTitle("Settings")
             .scrollContentBackground(.hidden)
             .background(FlowCueTheme.canvas)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                FlowCueTabBar(selection: $tab)
+            }
             .sheet(isPresented: $showingPaywall) { PaywallView() }
         }
     }
