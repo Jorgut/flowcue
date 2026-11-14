@@ -206,7 +206,7 @@ private struct GeneralSettingsPage: View {
                     .labelsHidden()
                     .pickerStyle(.segmented)
                     .tint(Color(hex: FlowCueTokens.airyDark.accent))
-                    .frame(width: 240)
+                    .frame(width: 300)
                 }
                 Text(L10n.text("切换后立即生效，收件箱右上角的图标也会同步。"))
                     .font(.system(size: 10))

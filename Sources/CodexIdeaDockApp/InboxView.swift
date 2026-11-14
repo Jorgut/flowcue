@@ -767,7 +767,7 @@ struct InboxView: View {
     private var agentStatusText: String {
         if store.isQueueing { return L10n.text("投递中") }
         if store.isLoadingContexts { return L10n.text("读取 Codex 任务…") }
-        return L10n.text("本机 · \(visibleCaptures.count) 条想法")
+        return L10n.text("本机") + " · \(visibleCaptures.count) " + L10n.text("条想法")
     }
 
     private var remotePairingEnabled: Bool {
