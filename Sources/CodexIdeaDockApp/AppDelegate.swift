@@ -94,14 +94,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         if ProcessInfo.processInfo.arguments.contains("-panel") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
-                guard let self else { return }
-                self.showCapturePanel()
-                // 截图用：只留面板
-                let panelWindow = self.capturePanelController?.window
-                for window in NSApp.windows where window !== panelWindow {
-                    window.orderOut(nil)
+                self?.showCapturePanel()
+                // 截图用：等面板创建完成，再关掉其他窗口
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+                    guard let self else { return }
+                    let panelWindow = self.capturePanelController?.window
+                    for window in NSApp.windows where window !== panelWindow {
+                        window.orderOut(nil)
+                    }
+                    panelWindow?.level = .floating
+                    panelWindow?.makeKeyAndOrderFront(nil)
                 }
-                panelWindow?.makeKeyAndOrderFront(nil)
             }
         }
         if ProcessInfo.processInfo.arguments.contains("-inbox") {
@@ -145,6 +148,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func configureWindows() {
         guard let store else { return }
         inboxWindowController = InboxWindowController(store: store)
+        capturePanelController = CapturePanelController(store: store) { [weak self] in
+            self?.showInbox()
+        }
     }
 
     private func configureFrontmostApplicationObservation() {
@@ -398,7 +404,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc
     private func showCapturePanel() {
-        inboxWindowController?.showComposer()
+        if let panel = capturePanelController {
+            panel.show()
+        } else {
+            inboxWindowController?.showComposer()
+        }
     }
 
     @objc
