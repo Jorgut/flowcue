@@ -281,7 +281,7 @@ final class FirstRunWindowController: NSWindowController, NSWindowDelegate {
     init(onFinish: @escaping () -> Void) {
         self.onFinish = onFinish
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 880, height: 430),
+            contentRect: NSRect(x: 0, y: 0, width: 680, height: 400),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
@@ -299,7 +299,7 @@ final class FirstRunWindowController: NSWindowController, NSWindowDelegate {
                 self?.onFinish()
             }
         )
-        window.setContentSize(NSSize(width: 880, height: 430))
+        window.setContentSize(NSSize(width: 680, height: 400))
     }
 
     required init?(coder: NSCoder) { nil }
