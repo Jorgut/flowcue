@@ -79,8 +79,15 @@ struct AgentBrowserView: View {
             .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 6)
 
             if let note {
-                Text(note).font(.caption2).foregroundStyle(.secondary)
-                    .padding(.horizontal, 12).padding(.bottom, 8)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(note).font(.caption2).foregroundStyle(.secondary)
+                    if selectedAgent?.id == "dsh" {
+                        Button(L10n.text("重新检查")) { Task { await reloadSessions() } }
+                            .controlSize(.mini)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
             }
 
             ScrollView(.vertical) {
@@ -177,7 +184,11 @@ struct AgentBrowserView: View {
             }
         } catch {
             sessions = []
-            note = L10n.text("读取失败")
+            if agent.id == "dsh" {
+                note = L10n.text("桥接未连接，iPhone 上的审批暂时收不到。")
+            } else {
+                note = L10n.text("读取失败")
+            }
         }
     }
 
