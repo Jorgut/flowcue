@@ -41,7 +41,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var isReady: Bool {
         switch self {
-        case .general, .panel, .agents, .integrations, .remote, .sync, .lab, .feedback: true
+        case .general, .panel, .agents, .integrations, .remote, .sync, .usage, .pro, .updates, .lab, .feedback: true
         default: false
         }
     }
@@ -149,6 +149,9 @@ struct SettingsView: View {
         case .panel: L10n.text("快捷键、尺寸与关闭行为")
         case .remote: L10n.text("这台 Mac 的配对与远程会话")
         case .sync: L10n.text("iCloud 同步与本地存储")
+        case .usage: L10n.text("Codex 额度与重置时间")
+        case .pro: L10n.text("解锁全部主题、同步与远程续写")
+        case .updates: L10n.text("版本与更新检查")
         case .lab: L10n.text("实验特性，默认关闭，可能随时改动或消失。")
         case .feedback: L10n.text("一般反馈 + 最近 20 行日志，从不包含想法内容。")
         case .agents: L10n.text("这台机器上能用的 coding agent")
@@ -166,6 +169,9 @@ struct SettingsView: View {
         case .integrations: IntegrationsSettingsPage()
         case .remote: RemoteSettingsPage()
         case .sync: SyncSettingsPage()
+        case .usage: UsageSettingsPage()
+        case .pro: ProSettingsPage()
+        case .updates: UpdatesSettingsPage()
         case .lab: LabSettingsPage()
         case .feedback: FeedbackSettingsPage()
         default: PlaceholderPage()
@@ -427,6 +433,159 @@ private struct SyncSettingsPage: View {
         let url = URL.applicationSupportDirectory
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         return ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
+    }
+}
+
+private struct UsageSettingsPage: View {
+    @State private var usage: CodexUsageSnapshot?
+    @State private var loading = false
+    @State private var failed = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsGroup(title: L10n.text("额度")) {
+                if let usage {
+                    HStack(spacing: 28) {
+                        ForEach(Array([usage.primary, usage.secondary].compactMap { $0 }.enumerated()), id: \.offset) { _, window in
+                            FlowCueUsageRing(
+                                progress: window.usedPercent / 100,
+                                caption: title(for: window),
+                                valueText: "\(Int(window.usedPercent))% " + L10n.text("已用")
+                            )
+                        }
+                        Spacer()
+                        Button(L10n.text("打开 Codex")) {
+                            if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
+                                NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+                            }
+                        }
+                        .controlSize(.small)
+                    }
+                    .frame(minHeight: 40)
+
+                    if let resets = usage.primary?.resetsAt {
+                        SettingsRow(title: L10n.text("下次重置")) {
+                            Text(Date(timeIntervalSince1970: resets), format: .dateTime.month().day().hour().minute())
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                } else {
+                    Text(loading ? L10n.text("正在读取用量…")
+                                 : (failed ? L10n.text("用量暂不可用") : L10n.text("正在读取用量…")))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .frame(minHeight: 40)
+                }
+            }
+
+            Button(L10n.text("刷新")) { Task { await load() } }
+                .controlSize(.small)
+        }
+        .task { await load() }
+    }
+
+    private func title(for window: CodexUsageWindow) -> String {
+        let minutes = window.windowDurationMins ?? 0
+        if minutes >= 10000 { return L10n.text("每周") }
+        if minutes >= 60 { return "\(minutes / 60)h" }
+        return "\(minutes)m"
+    }
+
+    private func load() async {
+        loading = true; failed = false
+        do {
+            usage = try await CodexBridge().readUsage()
+        } catch {
+            failed = true
+        }
+        loading = false
+    }
+}
+
+private struct ProSettingsPage: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsGroup(title: L10n.text("Pro")) {
+                ForEach(Array([
+                    L10n.text("全部 13 套主题"),
+                    L10n.text("iCloud 同步"),
+                    L10n.text("iPhone 远程续写"),
+                    L10n.text("优先支持")
+                ].enumerated()), id: \.offset) { _, line in
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(Color(hex: FlowCueTokens.airyDark.accent))
+                        Text(line).font(.system(size: 12))
+                        Spacer()
+                    }
+                    .frame(minHeight: 26)
+                }
+            }
+            HStack(spacing: 10) {
+                Button(L10n.text("了解更多")) {
+                    if let url = URL(string: "https://flowcue.app/pro") { NSWorkspace.shared.open(url) }
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(Color(hex: FlowCueTokens.airyDark.accent))
+                Text(L10n.text("订阅在 App Store 完成，桌面端不使用独立付费。"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct UpdatesSettingsPage: View {
+    @State private var checking = false
+    @State private var latest: String?
+    @State private var failed = false
+
+    private var current: String {
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1"
+        let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return "\(v) (\(b))"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsGroup(title: L10n.text("版本")) {
+                SettingsRow(title: L10n.text("当前版本")) {
+                    Text(current).font(.system(size: 11).monospaced()).foregroundStyle(.secondary)
+                }
+                SettingsRow(title: L10n.text("最新版本")) {
+                    Text(latest ?? (checking ? L10n.text("检查中…") : (failed ? L10n.text("检查失败") : L10n.text("未检查"))))
+                        .font(.system(size: 11).monospaced())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            HStack(spacing: 10) {
+                Button(L10n.text("检查更新")) { Task { await check() } }
+                    .controlSize(.small)
+                    .disabled(checking)
+                Text(L10n.text("更新通过 App Store 或 TestFlight 分发。"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func check() async {
+        checking = true; failed = false
+        defer { checking = false }
+        guard let url = URL(string: "https://api.github.com/repos/Jorgut/flowcue/releases/latest") else { return }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 8
+        request.setValue("FlowCue", forHTTPHeaderField: "User-Agent")
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            struct Release: Decodable { let tag_name: String }
+            latest = try JSONDecoder().decode(Release.self, from: data).tag_name
+        } catch {
+            failed = true
+        }
     }
 }
 

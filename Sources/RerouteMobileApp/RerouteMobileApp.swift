@@ -3178,6 +3178,7 @@ private struct AgentSessionRowView: View {
     let subtitle: String
     let updatedAt: Date
     let isOnline: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var tint: Color {
         guard isOnline else { return FlowCueTheme.textSecondary }
@@ -3198,11 +3199,11 @@ private struct AgentSessionRowView: View {
                 Text(title.isEmpty ? "Untitled session" : title)
                     .flowCueFont(13.5, relativeTo: .subheadline)
                     .foregroundStyle(FlowCueTheme.textPrimary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                 Text(subtitle)
                     .flowCueFont(11, relativeTo: .caption2)
                     .foregroundStyle(FlowCueTheme.textSecondary)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
             }
             Spacer(minLength: 8)
             Text(FlowCueLinkFormat.shortRelative(updatedAt))
@@ -3535,7 +3536,8 @@ private struct CodexAgentView: View {
                 .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
                 .foregroundStyle(FlowCueTheme.textSecondary)
                 .frame(maxWidth: .infinity)
-                .frame(height: 40)
+                .padding(.vertical, 6)
+                .frame(minHeight: 40)
                 .overlay(
                     Capsule()
                         .strokeBorder(
@@ -3679,7 +3681,8 @@ private struct DSHAgentView: View {
                 .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
                 .foregroundStyle(FlowCueTheme.textSecondary)
                 .frame(maxWidth: .infinity)
-                .frame(height: 40)
+                .padding(.vertical, 6)
+                .frame(minHeight: 40)
                 .overlay(
                     Capsule()
                         .strokeBorder(
