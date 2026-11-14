@@ -13,6 +13,14 @@ guard args.count >= 2 else {
 }
 let owner = args[1]
 let output = args.count >= 3 ? args[2] : nil
+// 可选：--size 520x280 精确挑窗口（面板等无标题窗口）
+var sizeFilter: (CGFloat, CGFloat)? = nil
+if let index = args.firstIndex(of: "--size"), index + 1 < args.count {
+    let parts = args[index + 1].lowercased().split(separator: "x")
+    if parts.count == 2, let w = Double(parts[0]), let h = Double(parts[1]) {
+        sizeFilter = (CGFloat(w), CGFloat(h))
+    }
+}
 
 let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
 guard let raw = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
@@ -33,6 +41,9 @@ for info in raw {
           width > 200, height > 200,
           let number = info[kCGWindowNumber as String] as? Int
     else { continue }
+    if let filter = sizeFilter {
+        guard abs(width - filter.0) <= 24, abs(height - filter.1) <= 24 else { continue }
+    }
     candidates.append(Candidate(id: number, area: width * height))
 }
 
