@@ -13,15 +13,15 @@ enum CodexFallbackResult {
     var notification: DockNotification {
         switch self {
         case .copiedAndActivated:
-            DockNotification(kind: .success, message: "已复制并打开 Codex。")
+            DockNotification(kind: .success, message: L10n.text("已复制并打开 Codex。"))
         case .empty:
-            DockNotification(kind: .warning, message: "没有可复制的内容。")
+            DockNotification(kind: .warning, message: L10n.text("没有可复制的内容。"))
         case .copyFailed:
-            DockNotification(kind: .error, message: "复制失败，未打开 Codex。")
+            DockNotification(kind: .error, message: L10n.text("复制失败，未打开 Codex。"))
         case .copyFailedAndClipboardCouldNotBeRestored:
-            DockNotification(kind: .error, message: "复制失败，原剪贴板也未能恢复。")
+            DockNotification(kind: .error, message: L10n.text("复制失败，原剪贴板也未能恢复。"))
         case .copiedButCouldNotOpen:
-            DockNotification(kind: .warning, message: "内容已复制，但无法打开 Codex。")
+            DockNotification(kind: .warning, message: L10n.text("内容已复制，但无法打开 Codex。"))
         }
     }
 }

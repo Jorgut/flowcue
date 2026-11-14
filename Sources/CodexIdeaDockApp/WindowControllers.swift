@@ -63,7 +63,7 @@ final class CapturePanelController: NSWindowController {
                 onClose: { [weak self] in
                     self?.hide()
                 }
-            )
+            ).environment(\.locale, Locale(identifier: L10n.language.rawValue))
         )
     }
 
@@ -166,6 +166,7 @@ private final class CapturePanel: NSPanel {
 
 @MainActor
 final class InboxWindowController: NSWindowController, NSWindowDelegate {
+    private let presentation = InboxPresentation()
     init(store: IdeaDockStore) {
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 580),
@@ -175,7 +176,7 @@ final class InboxWindowController: NSWindowController, NSWindowDelegate {
         )
         super.init(window: window)
 
-        window.title = "FlowCue 收件箱"
+        window.title = "FlowCue"
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
         window.minSize = NSSize(width: 720, height: 460)
@@ -184,11 +185,16 @@ final class InboxWindowController: NSWindowController, NSWindowDelegate {
         window.setFrameAutosaveName("CodexIdeaDock.Inbox")
         window.center()
         window.delegate = self
-        window.contentViewController = NSHostingController(rootView: InboxView(store: store))
+        window.contentViewController = NSHostingController(rootView: InboxView(store: store, presentation: presentation).environment(\.locale, Locale(identifier: L10n.language.rawValue)))
     }
 
     required init?(coder: NSCoder) {
         nil
+    }
+
+    func showComposer() {
+        presentation.compose()
+        show()
     }
 
     func show() {

@@ -117,6 +117,57 @@ public final class IdeaDockStore {
         }
     }
 
+    /// Draft recovery, task routing and delivery diagnostics remain device-local.
+    public var sharedIdeas: [SharedIdea] {
+        captures.filter { $0.status != .draft }.map {
+            SharedIdea(id: $0.id, text: $0.text, createdAt: $0.createdAt,
+                       updatedAt: $0.updatedAt, archived: $0.status == .archived)
+        }
+    }
+
+    /// Apply an already reconciled sync projection atomically. Never executes an agent.
+    public func applySharedIdeas(_ ideas: [SharedIdea]) throws {
+        guard !isQueueing else { throw IdeaSyncError.synchronizationInProgress }
+        do {
+            for idea in ideas {
+                guard !idea.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    throw IdeaSyncError.invalidRevision
+                }
+                if let capture = fetchCapture(id: idea.id) {
+                    guard capture.status != .draft else { throw IdeaSyncError.protectedLocalNote }
+                    let effectiveStatus = capture.status == .archived
+                        ? capture.statusBeforeArchive ?? .unknown : capture.status
+                    if capture.text != idea.text,
+                       [.queued, .queueing, .unknown].contains(effectiveStatus) {
+                        // Keep the incoming revision in the journal for manual resolution.
+                        throw IdeaSyncError.protectedLocalNote
+                    }
+                    capture.text = idea.text
+                    capture.updatedAt = idea.updatedAt
+                    if idea.archived, capture.status != .archived {
+                        capture.statusBeforeArchive = capture.status
+                        capture.status = .archived
+                    } else if !idea.archived, capture.status == .archived {
+                        capture.status = capture.statusBeforeArchive ?? .saved
+                        capture.statusBeforeArchive = nil
+                    }
+                } else {
+                    modelContext.insert(Capture(
+                        id: idea.id, text: idea.text, createdAt: idea.createdAt,
+                        updatedAt: idea.updatedAt, status: idea.archived ? .archived : .saved,
+                        statusBeforeArchive: idea.archived ? .saved : nil
+                    ))
+                }
+            }
+            try modelContext.save()
+            try reloadCaptures()
+        } catch {
+            modelContext.rollback()
+            try? reloadCaptures()
+            throw error
+        }
+    }
+
     public func bootstrap() async {
         do {
             try loadLocalState()
@@ -235,6 +286,44 @@ public final class IdeaDockStore {
         try? reloadCaptures()
         notification = DockNotification(kind: .success, message: "想法已保存到本地。")
         return savedID
+    }
+
+    @discardableResult
+    public func saveMailTasks(_ tasks: [MailTriageTask]) -> Int {
+        guard !isQueueing else { return 0 }
+        let validTasks = tasks.filter { !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !validTasks.isEmpty else { return 0 }
+
+        let now = Date.now
+        for task in validTasks {
+            let dueDate = task.dueDate?.trimmingCharacters(in: .whitespacesAndNewlines)
+            var lines = [
+                "[邮件待办 · \(task.priority.displayName)] \(task.title)",
+                "来源：\(task.source)",
+                "判断理由：\(task.reason)"
+            ]
+            if let dueDate, !dueDate.isEmpty {
+                lines.append("截止日期：\(dueDate)")
+            }
+            modelContext.insert(Capture(
+                text: lines.joined(separator: "\n"),
+                createdAt: now,
+                updatedAt: now,
+                status: .saved
+            ))
+        }
+
+        do {
+            try modelContext.save()
+            try reloadCaptures()
+            notification = DockNotification(kind: .success, message: "邮件待办已保存到本机收件箱。")
+            return validTasks.count
+        } catch {
+            modelContext.rollback()
+            try? reloadCaptures()
+            notification = DockNotification(kind: .error, message: "修改未能保存。")
+            return 0
+        }
     }
 
     public func newCapture() {
