@@ -978,6 +978,34 @@ private enum FlowCueLinkFormat {
         return date.formatted(.relative(presentation: .named))
     }
 
+    /// 列表右侧的短时间：2m / 1h / 3d。
+    static func shortRelative(_ date: Date) -> String {
+        let seconds = max(0, Int(Date.now.timeIntervalSince(date)))
+        if seconds < 60 { return "\(seconds)s" }
+        if seconds < 3600 { return "\(seconds / 60)m" }
+        if seconds < 86_400 { return "\(seconds / 3600)h" }
+        return "\(seconds / 86_400)d"
+    }
+
+    /// 列表摘要只保留纯文本，去掉常见 Markdown 记号。
+    static func plainSnippet(_ text: String) -> String {
+        text
+            .replacingOccurrences(of: "**", with: "")
+            .replacingOccurrences(of: "__", with: "")
+            .replacingOccurrences(of: "`", with: "")
+            .replacingOccurrences(of: "#", with: "")
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+    }
+
+    /// Bonjour 服务名固定为 FlowCue，手动连接只有 IP；统一映射成可读设备名。
+    static func deviceName(_ raw: String?) -> String {
+        guard let raw, !raw.isEmpty else { return "FlowCue Mac" }
+        if raw.contains(".") || raw.contains(":") { return "FlowCue Mac" }
+        if raw == "FlowCue" { return "FlowCue Mac" }
+        return raw
+    }
+
     /// 设备指纹：只用哈希显示 8 位，避免把配对码直接留在屏幕上。
     static func fingerprint(_ seed: String) -> String {
         var hash: UInt64 = 1_469_598_103_934_665_603
@@ -2138,6 +2166,7 @@ private struct AgentsView: View {
     @State private var showingAddAgent = AgentsPreview.requestedState == "addAgent"
     @State private var showingRemote = AgentsPreview.requestedState == "remote"
     @State private var showingCodex = AgentsPreview.requestedState == "codex"
+    @State private var showingDSH = AgentsPreview.requestedState == "dsh"
     @State private var network = FlowCueNetworkMonitor()
 
     var body: some View {
@@ -2171,10 +2200,13 @@ private struct AgentsView: View {
             .background { FlowCueScreenBackground() }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showingRemote) {
-                RemoteDeviceView(controller: controller)
+                RemoteDeviceView(controller: controller, tab: $tab)
             }
             .navigationDestination(isPresented: $showingCodex) {
-                CodexAgentView(controller: controller)
+                CodexAgentView(controller: controller, tab: $tab)
+            }
+            .navigationDestination(isPresented: $showingDSH) {
+                DSHAgentView(controller: controller, tab: $tab)
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 FlowCueTabBar(selection: $tab)
@@ -2276,15 +2308,7 @@ private struct AgentsView: View {
     }
 
     private var deviceName: String {
-        let raw = controller.selected?.name ?? controller.lastAttempted?.name
-        return Self.displayName(raw)
-    }
-
-    private static func displayName(_ raw: String?) -> String {
-        guard let raw, !raw.isEmpty else { return "FlowCue Mac" }
-        if raw.contains(".") || raw.contains(":") { return "FlowCue Mac" }
-        if raw == "FlowCue" { return "FlowCue Mac" }
-        return raw
+        FlowCueLinkFormat.deviceName(controller.selected?.name ?? controller.lastAttempted?.name)
     }
 
     // MARK: Connected
@@ -2312,7 +2336,7 @@ private struct AgentsView: View {
                     .padding(.top, 14)
 
                 NavigationLink {
-                    RemoteDeviceView(controller: controller)
+                    RemoteDeviceView(controller: controller, tab: $tab)
                 } label: {
                     AgentsDeviceCard(
                         title: deviceName,
@@ -2328,7 +2352,7 @@ private struct AgentsView: View {
 
                 VStack(spacing: 0) {
                     NavigationLink {
-                        CodexAgentView(controller: controller)
+                        CodexAgentView(controller: controller, tab: $tab)
                     } label: {
                         AgentsAgentRow(
                             title: "Codex",
@@ -2343,7 +2367,7 @@ private struct AgentsView: View {
                         .accessibilityHidden(true)
 
                     NavigationLink {
-                        DSHAgentView(controller: controller)
+                        DSHAgentView(controller: controller, tab: $tab)
                     } label: {
                         AgentsAgentRow(
                             title: "DSH",
@@ -2674,7 +2698,7 @@ private struct PairMacSheet: View {
                 bordered: true
             )
             VStack(alignment: .leading, spacing: 2) {
-                Text(Self.displayName(mac.name))
+                Text(FlowCueLinkFormat.deviceName(mac.name))
                     .flowCueFont(13, relativeTo: .subheadline, weight: .semibold)
                     .foregroundStyle(FlowCueTheme.textPrimary)
                 Text("This network")
@@ -2778,11 +2802,6 @@ private struct PairMacSheet: View {
         if controller.isConnected { dismiss() }
     }
 
-    private static func displayName(_ raw: String) -> String {
-        if raw.contains(".") || raw.contains(":") { return "FlowCue Mac" }
-        if raw == "FlowCue" { return "FlowCue Mac" }
-        return raw.isEmpty ? "FlowCue Mac" : raw
-    }
 }
 
 // MARK: - Add agent
@@ -2887,14 +2906,11 @@ private struct AddAgentSheet: View {
 
 private struct RemoteDeviceView: View {
     @Bindable var controller: LANRemoteController
+    @Binding var tab: FlowCueTab
     @Environment(\.dismiss) private var dismiss
 
     private var name: String {
-        let raw = controller.selected?.name
-        guard let raw, !raw.isEmpty else { return "FlowCue Mac" }
-        if raw.contains(".") || raw.contains(":") { return "FlowCue Mac" }
-        if raw == "FlowCue" { return "FlowCue Mac" }
-        return raw
+        FlowCueLinkFormat.deviceName(controller.selected?.name)
     }
 
     var body: some View {
@@ -3008,7 +3024,7 @@ private struct RemoteDeviceView: View {
         if let thread = controller.threads.first {
             AgentDetailView(controller: controller, thread: thread)
         } else {
-            CodexAgentView(controller: controller)
+            CodexAgentView(controller: controller, tab: $tab)
         }
     }
 
@@ -3083,222 +3099,604 @@ private struct DSHApprovalCard: View {
     }
 }
 
-private struct CodexAgentView: View {
-    @Bindable var controller: LANRemoteController
-    @State private var expandedProjects: Set<String> = []
+// MARK: - Sessions
 
-    private var projectGroups: [CodexProjectGroup] {
-        let groups = Dictionary(grouping: controller.threads) { thread in
-            let path = thread.projectDirectory?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            return path.isEmpty ? "Unfiled" : path
+private struct SessionsScreenHeader: View {
+    let title: String
+    let onBack: () -> Void
+    let onNewSession: () -> Void
+
+    var body: some View {
+        ZStack {
+            Text(title)
+                .flowCueFont(17, relativeTo: .headline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            HStack {
+                Button(action: onBack) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(FlowCueTheme.textPrimary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Back")
+                Spacer()
+                Button(action: onNewSession) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 17))
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("New session")
+            }
         }
-        return groups.map { path, threads in
-            CodexProjectGroup(
-                id: path,
-                name: path == "Unfiled" ? "Unfiled" : URL(fileURLWithPath: path).lastPathComponent,
-                path: path,
-                threads: threads.sorted { $0.updatedAt > $1.updatedAt },
-                updatedAt: threads.map(\.updatedAt).max() ?? .distantPast
-            )
-        }.sorted { $0.updatedAt > $1.updatedAt }
+        .frame(minHeight: 44)
+        .padding(.top, 10)
+    }
+}
+
+private struct SessionsStatusLine: View {
+    let isOnline: Bool
+    let deviceName: String
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(isOnline ? FlowCueTheme.mint : FlowCueTheme.failure)
+                .frame(width: 5, height: 5)
+                .accessibilityHidden(true)
+            Text(isOnline ? "online · \(deviceName)" : "offline")
+        }
+        .flowCueFont(11, relativeTo: .caption2)
+        .foregroundStyle(isOnline ? FlowCueTheme.mint : FlowCueTheme.failure)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, AgentsLayout.margin)
+        .padding(.top, 8)
+    }
+}
+
+private struct SessionsCountLabel: View {
+    let count: Int
+
+    var body: some View {
+        Text("\(count) SESSION\(count == 1 ? "" : "S")")
+            .flowCueFont(10, relativeTo: .caption2)
+            .tracking(1.4)
+            .foregroundStyle(FlowCueTheme.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, AgentsLayout.margin)
+            .padding(.top, 14)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
+private struct AgentSessionRowView: View {
+    let title: String
+    let subtitle: String
+    let updatedAt: Date
+    let isOnline: Bool
+
+    private var tint: Color {
+        guard isOnline else { return FlowCueTheme.textSecondary }
+        let age = Date.now.timeIntervalSince(updatedAt)
+        if age < 3600 { return FlowCueTheme.mint }
+        if age < 21_600 { return FlowCueTheme.accent }
+        return FlowCueTheme.textSecondary
     }
 
     var body: some View {
-        List {
-            ForEach(projectGroups) { group in
-                DisclosureGroup(isExpanded: expansionBinding(group.id)) {
-                    ForEach(group.threads) { thread in
-                        NavigationLink {
-                            AgentDetailView(controller: controller, thread: thread)
-                        } label: {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(thread.title).font(.body.weight(.medium)).lineLimit(2)
-                                Text(thread.updatedAt, format: .relative(presentation: .named))
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 3)
-                        }
-                        .listRowSeparator(.hidden)
-                    }
-                } label: {
-                    projectLabel(name: group.name, path: group.path, count: group.threads.count)
-                }
+        HStack(alignment: .top, spacing: 11) {
+            Circle()
+                .fill(tint)
+                .frame(width: 6, height: 6)
+                .padding(.top, 5)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title.isEmpty ? "Untitled session" : title)
+                    .flowCueFont(13.5, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                    .lineLimit(1)
+                Text(subtitle)
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineLimit(1)
             }
+            Spacer(minLength: 8)
+            Text(FlowCueLinkFormat.shortRelative(updatedAt))
+                .flowCueFont(10, relativeTo: .caption2)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .padding(.top, 2)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(FlowCueTheme.canvas)
-        .refreshable { await controller.refresh() }
-        .overlay {
-            if controller.threads.isEmpty && !controller.isLoading {
-                ContentUnavailableView("No sessions yet", systemImage: "moon.zzz", description: Text("Open a Codex session on your Mac, then pull to refresh."))
-            }
-        }
-        .onAppear {
-            if expandedProjects.isEmpty { expandedProjects = Set(projectGroups.map(\.id)) }
-        }
-        .navigationTitle("Codex")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
-        .task {
-            while !Task.isCancelled {
-                await controller.refresh()
-                try? await Task.sleep(for: .seconds(5))
-            }
-        }
-    }
-
-    private func projectLabel(name: String, path: String, count: Int) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "folder.fill")
-                .foregroundStyle(FlowCueTheme.accent)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.body.weight(.semibold)).lineLimit(1)
-                if path != "Unfiled" {
-                    Text(path).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
-                }
-            }
-            Spacer()
-            Text("\(count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 4)
-    }
-
-    private func expansionBinding(_ id: String) -> Binding<Bool> {
-        Binding(
-            get: { expandedProjects.contains(id) },
-            set: { expandedProjects = $0 ? expandedProjects.union([id]) : expandedProjects.subtracting([id]) }
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(title), \(subtitle), \(FlowCueLinkFormat.shortRelative(updatedAt))"
         )
     }
 }
 
-private struct CodexProjectGroup: Identifiable {
-    let id: String
-    let name: String
-    let path: String
-    let threads: [RemoteThreadSnapshot]
-    let updatedAt: Date
+private struct SessionsEmptyState: View {
+    let agent: String
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                .frame(width: 60, height: 60)
+            Text("No sessions yet")
+                .flowCueFont(18, relativeTo: .title3, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.top, 18)
+            Text("Start one from an idea, or ask \(agent) something.")
+                .flowCueFont(12.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(2)
+                .frame(maxWidth: 280)
+                .padding(.top, 6)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, AgentsLayout.margin)
+    }
+}
+
+private struct SessionsSkeleton: View {
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(0..<3, id: \.self) { _ in
+                HStack(alignment: .top, spacing: 11) {
+                    Circle()
+                        .fill(FlowCueTheme.hairline)
+                        .frame(width: 6, height: 6)
+                        .padding(.top, 5)
+                    VStack(alignment: .leading, spacing: 7) {
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(FlowCueTheme.hairline)
+                            .frame(height: 11)
+                            .frame(maxWidth: 240, alignment: .leading)
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(FlowCueTheme.hairline)
+                            .frame(height: 8)
+                            .frame(maxWidth: 160, alignment: .leading)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.vertical, 14)
+                Rectangle()
+                    .fill(FlowCueTheme.hairline)
+                    .frame(height: 1)
+            }
+        }
+        .padding(.horizontal, AgentsLayout.margin)
+        .padding(.top, 10)
+        .accessibilityLabel("Loading sessions")
+    }
+}
+
+private struct SessionsLoadError: View {
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            FlowCueInlineBanner(
+                kind: .failure,
+                title: "Couldn't load sessions",
+                actionTitle: "Retry",
+                action: retry
+            )
+            Text("The Mac may have gone to sleep. Your ideas are safe on this iPhone.")
+                .flowCueFont(12, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .lineSpacing(3)
+                .padding(.top, 14)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, AgentsLayout.margin)
+        .padding(.top, 10)
+    }
+}
+
+private struct NewSessionSheet: View {
+    let agent: String
+    let refresh: () async -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var refreshing = false
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                        .frame(width: 56, height: 56)
+                    Text("New sessions start on your Mac")
+                        .flowCueFont(22, relativeTo: .title2, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.textPrimary)
+                        .padding(.top, 16)
+                    Text("The phone bridge can continue existing \(agent) sessions, but it can't create a new one yet. Open \(agent) in FlowCue on your Mac, start a session there, then refresh this list.")
+                        .flowCueFont(12.5, relativeTo: .caption)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .lineSpacing(3)
+                        .padding(.top, 8)
+                    AgentsSectionHeader(title: "WHY")
+                        .padding(.top, 22)
+                    Text("Creating a session needs a Mac-side endpoint. Until then, this list stays read/continue-only on iPhone.")
+                        .flowCueFont(12, relativeTo: .caption)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .lineSpacing(3)
+                        .padding(.top, 8)
+                }
+                .padding(.horizontal, AgentsLayout.margin)
+                .padding(.top, 20)
+                .padding(.bottom, 24)
+            }
+            .background { FlowCueScreenBackground() }
+            .navigationTitle("New session")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(FlowCueTheme.accent)
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                Button {
+                    refreshing = true
+                    Task {
+                        await refresh()
+                        refreshing = false
+                        dismiss()
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        if refreshing {
+                            ProgressView().controlSize(.small).tint(FlowCueTheme.onAccent)
+                        }
+                        Text("Refresh sessions")
+                            .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                    }
+                    .foregroundStyle(FlowCueTheme.onAccent)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Capsule().fill(FlowCueTheme.accent))
+                }
+                .buttonStyle(.plain)
+                .disabled(refreshing)
+                .padding(.horizontal, AgentsLayout.margin)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
+                .background(FlowCueTheme.canvas)
+            }
+        }
+    }
+}
+
+private struct DSHApprovalsSheet: View {
+    @Bindable var controller: LANRemoteController
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 10) {
+                    if controller.dshApprovals.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "checkmark.shield.fill")
+                                .font(.system(size: 28))
+                                .foregroundStyle(FlowCueTheme.mint)
+                            Text("No pending approvals")
+                                .flowCueFont(14, relativeTo: .subheadline)
+                                .foregroundStyle(FlowCueTheme.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
+                    } else {
+                        ForEach(controller.dshApprovals) { approval in
+                            DSHApprovalCard(approval: approval) { decision in
+                                _ = await controller.decideDSH(approval, decision: decision)
+                            }
+                        }
+                    }
+                }
+                .padding(AgentsLayout.margin)
+            }
+            .background { FlowCueScreenBackground() }
+            .navigationTitle("Approvals")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(FlowCueTheme.accent)
+                }
+            }
+        }
+    }
+}
+
+private struct CodexAgentView: View {
+    @Bindable var controller: LANRemoteController
+    @Binding var tab: FlowCueTab
+    @Environment(\.dismiss) private var dismiss
+    @State private var network = FlowCueNetworkMonitor()
+    @State private var showingNewSession = false
+
+    private var sessions: [RemoteThreadSnapshot] {
+        controller.threads.sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private var isOnline: Bool {
+        controller.isConnected && network.isOnline
+    }
+
+    private var isLoading: Bool {
+        controller.isLoading && sessions.isEmpty
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            SessionsScreenHeader(
+                title: "Codex",
+                onBack: { dismiss() },
+                onNewSession: { showingNewSession = true }
+            )
+            SessionsStatusLine(
+                isOnline: isOnline,
+                deviceName: FlowCueLinkFormat.deviceName(controller.selected?.name)
+            )
+            content
+            newSessionButton
+            FlowCueTabBar(selection: $tab)
+        }
+        .background { FlowCueScreenBackground() }
+        .toolbar(.hidden, for: .navigationBar)
+        .task { network.start() }
+        .onDisappear { network.stop() }
+        .sheet(isPresented: $showingNewSession) {
+            NewSessionSheet(agent: "Codex") { await controller.refresh() }
+                .presentationDetents([.large])
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading {
+            SessionsSkeleton()
+            Spacer(minLength: 0)
+        } else if sessions.isEmpty && controller.lastError != nil {
+            SessionsLoadError { Task { await controller.refresh() } }
+            Spacer(minLength: 0)
+        } else if sessions.isEmpty {
+            SessionsEmptyState(agent: "Codex")
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if controller.lastError != nil {
+                        FlowCueInlineBanner(
+                            kind: .failure,
+                            title: "Connection lost — showing saved sessions",
+                            actionTitle: "Retry",
+                            action: { Task { await controller.refresh() } }
+                        )
+                        .padding(.horizontal, AgentsLayout.margin)
+                        .padding(.top, 10)
+                    }
+                    SessionsCountLabel(count: sessions.count)
+                    VStack(spacing: 0) {
+                        ForEach(sessions) { thread in
+                            NavigationLink {
+                                AgentDetailView(controller: controller, thread: thread)
+                            } label: {
+                                AgentSessionRowView(
+                                    title: thread.title,
+                                    subtitle: subtitle(for: thread),
+                                    updatedAt: thread.updatedAt,
+                                    isOnline: isOnline
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            Rectangle()
+                                .fill(FlowCueTheme.hairline)
+                                .frame(height: 1)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .padding(.horizontal, AgentsLayout.margin)
+                }
+                .padding(.bottom, 16)
+            }
+            .refreshable { await controller.refresh() }
+        }
+    }
+
+    private func subtitle(for thread: RemoteThreadSnapshot) -> String {
+        let reply = FlowCueLinkFormat.plainSnippet(
+            thread.lastReply.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
+        if !reply.isEmpty { return reply }
+        if let project = thread.projectDirectory, !project.isEmpty {
+            return URL(fileURLWithPath: project).lastPathComponent
+        }
+        return "No reply yet"
+    }
+
+    private var newSessionButton: some View {
+        Button {
+            showingNewSession = true
+        } label: {
+            Text("New session")
+                .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .overlay(
+                    Capsule()
+                        .strokeBorder(
+                            FlowCueTheme.hairline,
+                            style: StrokeStyle(lineWidth: 1, dash: [4, 4])
+                        )
+                )
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 14)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+        .accessibilityLabel("New session")
+    }
 }
 
 private struct DSHAgentView: View {
     @Bindable var controller: LANRemoteController
-    @State private var expandedProjects: Set<String> = []
+    @Binding var tab: FlowCueTab
+    @Environment(\.dismiss) private var dismiss
+    @State private var network = FlowCueNetworkMonitor()
+    @State private var showingNewSession = false
+    @State private var showingApprovals = false
 
-    private var projectGroups: [DSHProjectGroup] {
-        let groups = Dictionary(grouping: controller.dshSessions) { session in
-            let path = session.projectDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
-            return path.isEmpty ? "Unfiled" : path
-        }
-        return groups.map { path, sessions in
-            DSHProjectGroup(
-                id: path,
-                name: path == "Unfiled" ? "Unfiled" : URL(fileURLWithPath: path).lastPathComponent,
-                path: path,
-                sessions: sessions.sorted { $0.updatedAt > $1.updatedAt },
-                updatedAt: sessions.map(\.updatedAt).max() ?? .distantPast
-            )
-        }.sorted { $0.updatedAt > $1.updatedAt }
+    private var sessions: [DSHSessionSnapshot] {
+        controller.dshSessions
+            .filter { !$0.isSubagent }
+            .sorted { $0.updatedAt > $1.updatedAt }
+    }
+
+    private var isOnline: Bool {
+        controller.isConnected && network.isOnline
+    }
+
+    private var isLoading: Bool {
+        controller.isLoading && sessions.isEmpty
     }
 
     var body: some View {
-        List {
-            if !projectGroups.isEmpty {
-                Section("Projects") {
-                    ForEach(projectGroups) { group in
-                        DisclosureGroup(isExpanded: expansionBinding(group.id)) {
-                            ForEach(group.sessions) { session in
-                                NavigationLink {
-                                    DSHSessionDetailView(controller: controller, session: session)
-                                } label: {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(session.title).font(.body.weight(.medium)).lineLimit(2)
-                                        Text(session.updatedAt, format: .relative(presentation: .named))
-                                            .font(.caption).foregroundStyle(.secondary)
-                                    }
-                                    .padding(.vertical, 3)
-                                }
-                                .listRowSeparator(.hidden)
+        VStack(spacing: 0) {
+            SessionsScreenHeader(
+                title: "DSH",
+                onBack: { dismiss() },
+                onNewSession: { showingNewSession = true }
+            )
+            SessionsStatusLine(
+                isOnline: isOnline,
+                deviceName: FlowCueLinkFormat.deviceName(controller.selected?.name)
+            )
+            if !controller.dshApprovals.isEmpty {
+                FlowCueInlineBanner(
+                    kind: .warning,
+                    title: "\(controller.dshApprovals.count) pending approval\(controller.dshApprovals.count == 1 ? "" : "s")",
+                    actionTitle: "Review",
+                    action: { showingApprovals = true }
+                )
+                .padding(.horizontal, AgentsLayout.margin)
+                .padding(.top, 8)
+            }
+            content
+            newSessionButton
+            FlowCueTabBar(selection: $tab)
+        }
+        .background { FlowCueScreenBackground() }
+        .toolbar(.hidden, for: .navigationBar)
+        .task { network.start() }
+        .onDisappear { network.stop() }
+        .sheet(isPresented: $showingNewSession) {
+            NewSessionSheet(agent: "DSH") { await controller.refresh() }
+                .presentationDetents([.large])
+        }
+        .sheet(isPresented: $showingApprovals) {
+            DSHApprovalsSheet(controller: controller)
+                .presentationDetents([.large])
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        if isLoading {
+            SessionsSkeleton()
+            Spacer(minLength: 0)
+        } else if sessions.isEmpty && controller.lastError != nil {
+            SessionsLoadError { Task { await controller.refresh() } }
+            Spacer(minLength: 0)
+        } else if sessions.isEmpty {
+            SessionsEmptyState(agent: "DSH")
+        } else {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if controller.lastError != nil {
+                        FlowCueInlineBanner(
+                            kind: .failure,
+                            title: "Connection lost — showing saved sessions",
+                            actionTitle: "Retry",
+                            action: { Task { await controller.refresh() } }
+                        )
+                        .padding(.horizontal, AgentsLayout.margin)
+                        .padding(.top, 10)
+                    }
+                    SessionsCountLabel(count: sessions.count)
+                    VStack(spacing: 0) {
+                        ForEach(sessions) { session in
+                            NavigationLink {
+                                DSHSessionDetailView(controller: controller, session: session)
+                            } label: {
+                                AgentSessionRowView(
+                                    title: session.title,
+                                    subtitle: subtitle(for: session),
+                                    updatedAt: session.updatedAt,
+                                    isOnline: isOnline
+                                )
                             }
-                        } label: {
-                            projectLabel(name: group.name, path: group.path, count: group.sessions.count)
+                            .buttonStyle(.plain)
+                            Rectangle()
+                                .fill(FlowCueTheme.hairline)
+                                .frame(height: 1)
+                                .accessibilityHidden(true)
                         }
                     }
+                    .padding(.horizontal, AgentsLayout.margin)
                 }
+                .padding(.bottom, 16)
             }
-            Section {
-                if controller.dshApprovals.isEmpty {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Label("No pending approvals", systemImage: "checkmark.shield.fill")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(FlowCueTheme.mint)
-                        Text("Switch DSH to Ask and run a command that needs confirmation. The request will appear here for one-tap approval.")
-                            .font(.footnote).foregroundStyle(.secondary)
-                    }
-                    .padding(.vertical, 6)
-                } else {
-                    ForEach(controller.dshApprovals) { approval in
-                        DSHApprovalCard(approval: approval) { decision in
-                            _ = await controller.decideDSH(approval, decision: decision)
-                        }
-                        .listRowInsets(EdgeInsets(top: 8, leading: 12, bottom: 8, trailing: 12))
-                        .listRowBackground(FlowCueTheme.canvas)
-                    }
-                }
-            } header: {
-                Label("Approvals", systemImage: "checkmark.shield")
-            } footer: {
-                Text("DSH is the DeepSeek Harness agent on your Mac. Approvals stay pending until you answer here or on the desktop.")
-            }
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(FlowCueTheme.canvas)
-        .refreshable { await controller.refresh() }
-        .navigationTitle("DSH")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .tabBar)
-        .task {
-            while !Task.isCancelled {
-                await controller.refresh()
-                try? await Task.sleep(for: .seconds(5))
-            }
-        }
-        .onAppear {
-            if expandedProjects.isEmpty { expandedProjects = Set(projectGroups.map(\.id)) }
+            .refreshable { await controller.refresh() }
         }
     }
 
-    private func projectLabel(name: String, path: String, count: Int) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "folder.fill")
-                .foregroundStyle(FlowCueTheme.mint)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.body.weight(.semibold)).lineLimit(1)
-                if path != "Unfiled" {
-                    Text(path).font(.caption2).foregroundStyle(.tertiary).lineLimit(1)
-                }
-            }
-            Spacer()
-            Text("\(count)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-        }
-        .padding(.vertical, 4)
+    private func subtitle(for session: DSHSessionSnapshot) -> String {
+        let project = session.projectDirectory.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !project.isEmpty else { return "DSH session" }
+        return URL(fileURLWithPath: project).lastPathComponent
     }
 
-    private func expansionBinding(_ id: String) -> Binding<Bool> {
-        Binding(
-            get: { expandedProjects.contains(id) },
-            set: { expandedProjects = $0 ? expandedProjects.union([id]) : expandedProjects.subtracting([id]) }
-        )
+    private var newSessionButton: some View {
+        Button {
+            showingNewSession = true
+        } label: {
+            Text("New session")
+                .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .overlay(
+                    Capsule()
+                        .strokeBorder(
+                            FlowCueTheme.hairline,
+                            style: StrokeStyle(lineWidth: 1, dash: [4, 4])
+                        )
+                )
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 14)
+        .padding(.top, 6)
+        .padding(.bottom, 4)
+        .accessibilityLabel("New session")
     }
 }
 
-private struct DSHProjectGroup: Identifiable {
-    let id: String
-    let name: String
-    let path: String
-    let sessions: [DSHSessionSnapshot]
-    let updatedAt: Date
-}
 
 private struct DSHSessionDetailView: View {
     @Bindable var controller: LANRemoteController
