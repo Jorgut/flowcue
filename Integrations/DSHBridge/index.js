@@ -69,6 +69,7 @@ export function apply(ctx) {
         return json(res, 200, {
           pending: [...pending.entries()].map(([id, item]) => ({
             id,
+            sessionId: item.sessionId ?? null,
             toolName: item.request.toolName ?? null,
             callId: item.request.callId ?? null,
             reason: item.request.reason ?? null,
@@ -129,8 +130,9 @@ export function apply(ctx) {
     yield ctx.on("approval/request", async (request, next) => {
       if (closed) return next();
       const id = randomBytes(12).toString("hex");
+      const sessionId = request.agent?.session?.id ?? null;
       const bridged = new Promise((resolve) => {
-        pending.set(id, { request, resolve, createdAt: Date.now() });
+        pending.set(id, { request, resolve, sessionId, createdAt: Date.now() });
         request.signal?.addEventListener?.("abort", () => {
           if (!pending.has(id)) return;
           pending.delete(id);

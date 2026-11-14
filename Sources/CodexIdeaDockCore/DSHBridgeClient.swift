@@ -3,6 +3,7 @@ import Foundation
 /// One pending DSH approval as exposed by the FlowCue DSH host plugin.
 public struct DSHRemoteApproval: Codable, Identifiable, Hashable, Sendable {
     public let id: String
+    public let sessionId: String?
     public let toolName: String?
     public let callId: String?
     public let reason: String?
@@ -11,6 +12,7 @@ public struct DSHRemoteApproval: Codable, Identifiable, Hashable, Sendable {
 
     public init(
         id: String,
+        sessionId: String? = nil,
         toolName: String? = nil,
         callId: String? = nil,
         reason: String? = nil,
@@ -18,6 +20,7 @@ public struct DSHRemoteApproval: Codable, Identifiable, Hashable, Sendable {
         createdAt: String? = nil
     ) {
         self.id = id
+        self.sessionId = sessionId
         self.toolName = toolName
         self.callId = callId
         self.reason = reason

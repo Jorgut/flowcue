@@ -150,6 +150,7 @@ final class SubscriptionManager {
 
 struct DSHRemoteApproval: Codable, Identifiable, Hashable {
     let id: String
+    let sessionId: String?
     let toolName: String?
     let callId: String?
     let reason: String?
@@ -393,6 +394,10 @@ final class LANRemoteController {
             dshBridgeAvailable = false
             dshApprovals = []
         }
+    }
+
+    func refreshApprovals() async {
+        await refreshDSHApprovals()
     }
 
     @discardableResult
@@ -1480,6 +1485,10 @@ private struct DSHSessionDetailView: View {
     @State private var text = ""
     @State private var sending = false
 
+    private var pendingApprovals: [DSHRemoteApproval] {
+        controller.dshApprovals.filter { $0.sessionId == session.id }
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
         ScrollView {
@@ -1502,6 +1511,27 @@ private struct DSHSessionDetailView: View {
         .safeAreaInset(edge: .top, spacing: 0) { dshPinnedHeader }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 6) {
+                if !pendingApprovals.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack(spacing: 8) {
+                            Image(systemName: "shield.lefthalf.filled")
+                                .foregroundStyle(FlowCueTheme.accent)
+                            Text("DSH needs your confirmation")
+                                .font(.caption.weight(.semibold))
+                            Spacer()
+                            Text("\(pendingApprovals.count) pending")
+                                .font(.caption2.monospaced())
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(pendingApprovals) { approval in
+                            DSHApprovalCard(approval: approval) { decision in
+                                _ = await controller.decideDSH(approval, decision: decision)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 8)
+                }
                 if messages.last?.role == "user" {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
@@ -1533,6 +1563,7 @@ private struct DSHSessionDetailView: View {
         .toolbar(.hidden, for: .tabBar)
         .task {
             loading = true
+            await controller.refreshApprovals()
             messages = await controller.dshMessages(for: session)
             subagents = await controller.dshSubagents(for: session)
             loading = false
@@ -1540,6 +1571,7 @@ private struct DSHSessionDetailView: View {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(3))
                 guard !Task.isCancelled else { break }
+                await controller.refreshApprovals()
                 let updated = await controller.dshMessages(for: session)
                 if updated != messages {
                     messages = updated
