@@ -296,6 +296,7 @@ private struct AgentRow: View {
 private struct IntegrationsSettingsPage: View {
     @State private var records: [AgentRecord] = []
     @State private var dshConfigured = false
+    @State private var bridgeReachable = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -304,13 +305,29 @@ private struct IntegrationsSettingsPage: View {
             }
             SettingsGroup(title: "DSH") {
                 SettingsRow(title: L10n.text("本机桥")) {
-                    Text(dshConfigured ? L10n.text("已配置") : L10n.text("未安装"))
-                        .font(.system(size: 11))
-                        .foregroundStyle(dshConfigured ? Color(hex: FlowCueTokens.airyDark.success) : .secondary)
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(bridgeReachable ? Color(hex: FlowCueTokens.airyDark.success)
+                                                  : Color(hex: FlowCueTokens.airyDark.warning))
+                            .frame(width: 6, height: 6)
+                        Text(bridgeReachable ? L10n.text("已连接")
+                                             : (dshConfigured ? L10n.text("未连接") : L10n.text("未安装")))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
                 }
-                Text("~/.flowcue/dsh-bridge.json")
-                    .font(.system(size: 10).monospaced())
-                    .foregroundStyle(.secondary)
+                SettingsRow(title: L10n.text("端口")) {
+                    Text("127.0.0.1:47823").font(.system(size: 11).monospaced()).foregroundStyle(.secondary)
+                }
+                if !bridgeReachable {
+                    Text(dshConfigured
+                         ? L10n.text("桥已配置但没有响应，重启 DSH 后再试。")
+                         : L10n.text("安装 DSH 桥后，iPhone 上的审批才能回到这里。"))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+                Button(L10n.text("重新检查")) { checkBridge() }
+                    .controlSize(.small)
             }
             SettingsGroup(title: "Claude Code") {
                 status(records.first { $0.id == "claude" }, ping: L10n.text("读取 ~/.claude/projects"))
@@ -318,8 +335,13 @@ private struct IntegrationsSettingsPage: View {
         }
         .onAppear {
             if records.isEmpty { records = AgentDiscovery.scan() }
-            dshConfigured = DSHBridgeClient().isConfigured
+            checkBridge()
         }
+    }
+
+    private func checkBridge() {
+        dshConfigured = DSHBridgeClient().isConfigured
+        bridgeReachable = PortProbe.isOpen(port: 47823)
     }
 
     @ViewBuilder

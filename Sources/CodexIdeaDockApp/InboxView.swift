@@ -210,7 +210,7 @@ struct InboxView: View {
             VStack(spacing: 6) {
                 Text(L10n.text("还没有想法"))
                     .font(.system(size: 20, weight: .semibold))
-                Text(L10n.text("先记下来，之后再决定交给谁。"))
+                Text(L10n.text("按 ⌃⌥Space 随手写一句，它会出现在这里。"))
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
             }

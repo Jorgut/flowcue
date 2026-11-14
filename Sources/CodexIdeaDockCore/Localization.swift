@@ -347,5 +347,13 @@ public enum L10n {
         "之后每条想法排队时，默认送到这里。": "Every queued idea goes here unless you change it.",
         "没有检测到可用的 agent。安装 Codex CLI 或 Claude Code 后再回来。": "No usable agent found. Install Codex CLI or Claude Code and come back.",
         "欢迎使用 FlowCue": "Welcome to FlowCue",
+        "按 ⌃⌥Space 随手写一句，它会出现在这里。": "Press ⌃⌥Space, write a line, and it shows up here.",
+        "重启 DSH 后再试。": "Restart DSH and try again.",
+        "端口": "Port",
+        "桥已配置但没有响应，重启 DSH 后再试。": "The bridge is configured but silent. Restart DSH and try again.",
+        "安装 DSH 桥后，iPhone 上的审批才能回到这里。": "Install the DSH bridge so iPhone approvals reach this Mac.",
+        "重新检查": "Check again",
+        "已连接（桥）": "Connected",
+        "桥接未连接，iPhone 上的审批暂时收不到。": "Bridge is not connected; iPhone approvals are paused.",
     ]
 }
