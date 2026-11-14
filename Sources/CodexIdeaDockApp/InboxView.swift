@@ -71,6 +71,8 @@ struct InboxView: View {
     @State private var lastArchivedCaptureID: UUID?
     @State private var isMailTriagePresented = false
     @State private var statusFilter: CaptureStatus?
+    @AppStorage("FlowCue.inboxLayout") private var layoutRaw = InboxLayout.three.rawValue
+    private var layout: InboxLayout { InboxLayout(rawValue: layoutRaw) ?? .three }
     @State private var sourceFilter: RouteFilter = .all
     @State private var targetFilter: RouteFilter = .all
     @State private var isRemoteStatusPresented = false
@@ -118,90 +120,8 @@ struct InboxView: View {
             StatusFilterRow(selection: $statusFilter)
             Divider()
 
-            HSplitView {
-                InboxCaptureList(
-                    captures: visibleCaptures,
-                    selection: $selectedCaptureID,
-                    onQueue: queueCapture,
-                    onArchive: archiveCapture,
-                    onRestore: restoreCapture,
-                    onCopyAndOpenCodex: copyAndOpenCodex
-                )
-                .frame(minWidth: 250, idealWidth: 300, maxWidth: 380)
-                Group {
-                if presentation.isComposing {
-                    VStack(alignment: .leading, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(L10n.language == .mandarin ? "新想法" : "New idea")
-                                .font(.system(size: 28, weight: .bold, design: .rounded))
-                            Text(L10n.language == .mandarin ? "先记下来，之后再决定交给谁。" : "Capture it first. Route it when you're ready.")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        TextEditor(text: $store.draftText)
-                            .font(.body)
-                            .scrollContentBackground(.hidden)
-                            .padding(14)
-                            .frame(minHeight: 220)
-                            .background(FlowCueDesktopTheme.card.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                            .overlay {
-                                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                    .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
-                            }
-                            .focused($composerFocused)
-                            .accessibilityLabel(L10n.language == .mandarin ? "想法内容" : "Idea content")
-                        HStack(spacing: 12) {
-                            Label(L10n.language == .mandarin ? "草稿已在本机保留" : "Draft kept on this Mac", systemImage: "lock")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            Button(L10n.language == .mandarin ? "保存" : "Save") {
-                                if let id = store.saveCurrent() {
-                                    selectedCaptureID = id
-                                    presentation.isComposing = false
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(FlowCueDesktopTheme.accent)
-                            .keyboardShortcut(.return, modifiers: .command)
-                            .disabled(store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isQueueing)
-                        }
-                    }
-                    .padding(28)
-                } else if let selectedCapture {
-                    CaptureDetailView(
-                        capture: selectedCapture,
-                        contexts: store.contexts,
-                        isBusy: store.isQueueing,
-                        onTextChange: { updatedText in
-                            store.updateText(captureID: selectedCapture.id, text: updatedText)
-                        },
-                        onRouteChange: { sourceThreadID, targetThreadID in
-                            store.updateRoute(
-                                captureID: selectedCapture.id,
-                                sourceThreadID: sourceThreadID,
-                                targetThreadID: targetThreadID
-                            )
-                        },
-                        onQueue: { queueCapture(selectedCapture.id) },
-                        onArchive: { archiveCapture(selectedCapture.id) },
-                        onRestore: { restoreCapture(selectedCapture.id) },
-                        onCopyAndOpenCodex: copyAndOpenCodex
-                    )
-                    .id(selectedCapture.id)
-                } else {
-                    ContentUnavailableView(
-                        L10n.text("选择一条想法"),
-                        systemImage: "lightbulb",
-                        description: Text(
-                            AppDistribution.supportsDirectQueue
-                                ? L10n.text("可以编辑、排队到 Codex，或归档已处理内容。")
-                                : L10n.text("可以编辑、复制到 Codex，或归档已处理内容。")
-                        )
-                    )
-                }
-                }
-            }
+            layoutBody
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             if let message = store.notification?.message {
                 Divider()
@@ -253,6 +173,242 @@ struct InboxView: View {
         }
     }
 
+    // MARK: - 布局
+
+    private enum InboxLayout: String, CaseIterable {
+        case three      // 三栏：捕获条 + 列表 + 详情
+        case bottom     // 底部输入
+        case sidebar    // 侧栏分类 + 列表 + 详情
+
+        var symbol: String {
+            switch self {
+            case .three: "rectangle.split.3x1"
+            case .bottom: "rectangle.bottomthird.inset.filled"
+            case .sidebar: "sidebar.left"
+            }
+        }
+
+        var title: String {
+            switch self {
+            case .three: L10n.text("三栏")
+            case .bottom: L10n.text("底部输入")
+            case .sidebar: L10n.text("侧栏")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var layoutBody: some View {
+        switch layout {
+        case .three:
+            HSplitView {
+                listPane.frame(minWidth: 250, idealWidth: 300, maxWidth: 380)
+                detailPane.frame(minWidth: 420, maxWidth: .infinity)
+            }
+        case .bottom:
+            VStack(spacing: 0) {
+                HSplitView {
+                    listPane.frame(minWidth: 250, idealWidth: 300, maxWidth: 380)
+                    detailPane.frame(minWidth: 420, maxWidth: .infinity)
+                }
+                Divider()
+                quickComposer
+            }
+        case .sidebar:
+            HSplitView {
+                sidebarPane.frame(minWidth: 160, idealWidth: 180, maxWidth: 220)
+                listPane.frame(minWidth: 240, idealWidth: 280, maxWidth: 340)
+                detailPane.frame(minWidth: 420, maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var listPane: some View {
+        InboxCaptureList(
+            captures: visibleCaptures,
+            selection: $selectedCaptureID,
+            onQueue: queueCapture,
+            onArchive: archiveCapture,
+            onRestore: restoreCapture,
+            onCopyAndOpenCodex: copyAndOpenCodex
+        )
+    }
+
+    @ViewBuilder
+    private var detailPane: some View {
+        if presentation.isComposing {
+            composerPane
+        } else if let selectedCapture {
+            CaptureDetailView(
+                capture: selectedCapture,
+                contexts: store.contexts,
+                isBusy: store.isQueueing,
+                onTextChange: { updatedText in
+                    store.updateText(captureID: selectedCapture.id, text: updatedText)
+                },
+                onRouteChange: { sourceThreadID, targetThreadID in
+                    store.updateRoute(
+                        captureID: selectedCapture.id,
+                        sourceThreadID: sourceThreadID,
+                        targetThreadID: targetThreadID
+                    )
+                },
+                onQueue: { queueCapture(selectedCapture.id) },
+                onArchive: { archiveCapture(selectedCapture.id) },
+                onRestore: { restoreCapture(selectedCapture.id) },
+                onCopyAndOpenCodex: copyAndOpenCodex
+            )
+            .id(selectedCapture.id)
+        } else {
+            ContentUnavailableView(
+                L10n.text("选择一条想法"),
+                systemImage: "lightbulb",
+                description: Text(
+                    AppDistribution.supportsDirectQueue
+                        ? L10n.text("可以编辑、排队到 Codex，或归档已处理内容。")
+                        : L10n.text("可以编辑、复制到 Codex，或归档已处理内容。")
+                )
+            )
+        }
+    }
+
+    private var layoutPicker: some View {
+        HStack(spacing: 4) {
+            ForEach(InboxLayout.allCases, id: \.rawValue) { mode in
+                Button {
+                    layoutRaw = mode.rawValue
+                } label: {
+                    Image(systemName: mode.symbol)
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 26, height: 22)
+                        .background(layout == mode ? .white.opacity(0.22) : .clear,
+                                    in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .foregroundStyle(.white.opacity(layout == mode ? 0.95 : 0.55))
+                }
+                .buttonStyle(.plain)
+                .help(mode.title)
+                .accessibilityLabel(mode.title)
+                .accessibilityAddTraits(layout == mode ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var composerPane: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L10n.language == .mandarin ? "新想法" : "New idea")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                Text(L10n.language == .mandarin ? "先记下来，之后再决定交给谁。" : "Capture it first. Route it when you're ready.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            TextEditor(text: $store.draftText)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .padding(14)
+                .frame(minHeight: 220)
+                .background(FlowCueDesktopTheme.card.opacity(0.7), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.5), lineWidth: 1)
+                }
+                .focused($composerFocused)
+                .accessibilityLabel(L10n.language == .mandarin ? "想法内容" : "Idea content")
+            HStack(spacing: 12) {
+                Label(L10n.language == .mandarin ? "草稿已在本机保留" : "Draft kept on this Mac", systemImage: "lock")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(L10n.language == .mandarin ? "保存" : "Save") {
+                    saveDraft()
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(FlowCueDesktopTheme.accent)
+                .keyboardShortcut(.return, modifiers: .command)
+                .disabled(store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isQueueing)
+            }
+        }
+        .padding(28)
+    }
+
+    /// 底部输入条（B 布局）
+    private var quickComposer: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "square.and.pencil")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+            TextField(L10n.text("写下一个想法…"), text: $store.draftText, axis: .vertical)
+                .textFieldStyle(.plain)
+                .lineLimit(1...4)
+            Button {
+                saveDraft()
+            } label: {
+                Image(systemName: "arrow.up")
+                    .font(.caption.weight(.semibold))
+                    .frame(width: 26, height: 26)
+                    .background(Circle().fill(FlowCueDesktopTheme.accent))
+                    .foregroundStyle(Color(hex: "#0A0A12"))
+            }
+            .buttonStyle(.plain)
+            .disabled(store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isQueueing)
+            .accessibilityLabel(L10n.text("保存想法"))
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(FlowCueDesktopTheme.canvas)
+    }
+
+    /// 侧栏分类（D 布局）
+    private var sidebarPane: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(L10n.text("收件箱"))
+                .font(.caption).foregroundStyle(.secondary)
+                .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 6)
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    sidebarRow(title: L10n.text("全部想法"), count: visibleCaptures.count, filter: .all)
+                    Divider().padding(.vertical, 6).padding(.horizontal, 10)
+                    ForEach(store.contexts) { context in
+                        sidebarRow(title: context.title,
+                                   count: nil,
+                                   filter: .title(context.title))
+                    }
+                }
+                .padding(.bottom, 8)
+            }
+        }
+        .background(FlowCueDesktopTheme.canvas)
+    }
+
+    private func sidebarRow(title: String, count: Int?, filter: RouteFilter) -> some View {
+        Button {
+            sourceFilter = filter
+        } label: {
+            HStack(spacing: 6) {
+                Text(title).font(.callout).lineLimit(1)
+                Spacer(minLength: 0)
+                if let count {
+                    Text("\(count)").font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(sourceFilter == filter ? FlowCueDesktopTheme.accent.opacity(0.16) : .clear,
+                        in: RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+    }
+
+    private func saveDraft() {
+        if let id = store.saveCurrent() {
+            selectedCaptureID = id
+            presentation.isComposing = false
+        }
+    }
+
     private var brandHeader: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(alignment: .center, spacing: 16) {
@@ -270,6 +426,7 @@ struct InboxView: View {
                         .foregroundStyle(.white.opacity(0.68))
                 }
                 Spacer()
+                layoutPicker
                 if remotePairingEnabled, let code = remotePairingCode {
                     Button {
                         isRemoteStatusPresented = true
@@ -883,6 +1040,7 @@ private struct InboxToolbar: View {
     }
 
     var body: some View {
+        VStack(spacing: 6) {
         HStack(spacing: 10) {
             Image(systemName: "tray.full")
                 .font(.title3)
@@ -937,7 +1095,9 @@ private struct InboxToolbar: View {
             }
         }
         .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 2)
+        }
         .background(FlowCueDesktopTheme.canvas)
         .overlay(alignment: .bottom) { Divider() }
     }
@@ -1055,9 +1215,24 @@ private struct InboxCaptureList: View {
 private struct CaptureRow: View {
     let capture: CaptureItem
 
+    private var dotColor: Color {
+        switch capture.status {
+        case .failed, .unknown: FlowCueDesktopTheme.failure
+        case .queued, .queueing: FlowCueDesktopTheme.accent
+        case .saved: FlowCueDesktopTheme.mint
+        case .archived: Color(hex: FlowCueTokens.airyDark.textTertiary)
+        default: Color(hex: FlowCueTokens.airyDark.textSecondary)
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 6) {
+            HStack(alignment: .top, spacing: 6) {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: FlowCueMetrics.statusDot, height: FlowCueMetrics.statusDot)
+                    .padding(.top, 5)
+                    .accessibilityHidden(true)
                 Text(capture.text.isEmpty ? L10n.text("空想法") : capture.text)
                     .font(.body.weight(.medium))
                     .lineLimit(2)
@@ -1068,6 +1243,7 @@ private struct CaptureRow: View {
             }
 
             HStack(spacing: 4) {
+                Spacer().frame(width: 12)
                 if AppDistribution.supportsDirectQueue {
                     Image(systemName: "arrow.triangle.branch")
                         .accessibilityHidden(true)
