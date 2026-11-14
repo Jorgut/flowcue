@@ -41,7 +41,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
 
     var isReady: Bool {
         switch self {
-        case .general, .panel, .agents, .integrations, .remote, .sync: true
+        case .general, .panel, .agents, .integrations, .remote, .sync, .lab, .feedback: true
         default: false
         }
     }
@@ -149,6 +149,8 @@ struct SettingsView: View {
         case .panel: L10n.text("快捷键、尺寸与关闭行为")
         case .remote: L10n.text("这台 Mac 的配对与远程会话")
         case .sync: L10n.text("iCloud 同步与本地存储")
+        case .lab: L10n.text("实验特性，默认关闭，可能随时改动或消失。")
+        case .feedback: L10n.text("一般反馈 + 最近 20 行日志，从不包含想法内容。")
         case .agents: L10n.text("这台机器上能用的 coding agent")
         case .integrations: L10n.text("Codex、DSH、Claude Code 的连接状态")
         default: L10n.text("这个页面还在设计中")
@@ -164,6 +166,8 @@ struct SettingsView: View {
         case .integrations: IntegrationsSettingsPage()
         case .remote: RemoteSettingsPage()
         case .sync: SyncSettingsPage()
+        case .lab: LabSettingsPage()
+        case .feedback: FeedbackSettingsPage()
         default: PlaceholderPage()
         }
     }
@@ -423,6 +427,139 @@ private struct SyncSettingsPage: View {
         let url = URL.applicationSupportDirectory
         let size = (try? FileManager.default.attributesOfItem(atPath: url.path)[.size] as? Int) ?? 0
         return ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
+    }
+}
+
+private struct LabSettingsPage: View {
+    @AppStorage("FlowCue.lab.voice") private var voice = false
+    @AppStorage("FlowCue.lab.grouping") private var grouping = false
+    @AppStorage("FlowCue.lab.multiAgent") private var multiAgent = false
+    @AppStorage("FlowCue.lab.notchHUD") private var notchHUD = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsGroup(title: L10n.text("正在实验"),
+                          footnote: L10n.text("这里的开关会随版本变化，关掉即回到稳定行为。")) {
+                labRow(L10n.text("语音边录边转写"), L10n.text("按住说话，松开即插入，不走后台。"), $voice)
+                labRow(L10n.text("智能归类"), L10n.text("按来源和内容自动分组。"), $grouping)
+                labRow(L10n.text("多 agent 并行"), L10n.text("同一想法可以同时交给多个 agent。"), $multiAgent)
+                labRow(L10n.text("刘海 HUD · 试用版"), L10n.text("在刘海两侧显示状态，不占屏幕。"), $notchHUD)
+            }
+        }
+    }
+
+    private func labRow(_ title: String, _ detail: String, _ binding: Binding<Bool>) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 12))
+                Text(detail).font(.system(size: 10)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            Toggle("", isOn: binding)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .tint(Color(hex: FlowCueTokens.airyDark.accent))
+        }
+        .frame(minHeight: 38)
+    }
+}
+
+private struct FeedbackSettingsPage: View {
+    @AppStorage("FlowCue.feedback.attachLogs") private var attachLogs = true
+    @State private var kind = 0
+    @State private var text = ""
+    @State private var sent = false
+
+    private var isSendable: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var payload: String {
+        let types = [L10n.text("问题"), L10n.text("建议"), L10n.text("其他")]
+        var body = "\(types[kind])\n\n\(text)"
+        if attachLogs {
+            body += "\n\n---\nFlowCue \(version) · macOS \(ProcessInfo.processInfo.operatingSystemVersionString)"
+        }
+        return body
+    }
+
+    private var version: String {
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1"
+        let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return "\(v) (\(b))"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            SettingsGroup(title: L10n.text("告诉我们哪里不对")) {
+                Picker("", selection: $kind) {
+                    Text(L10n.text("问题")).tag(0)
+                    Text(L10n.text("建议")).tag(1)
+                    Text(L10n.text("其他")).tag(2)
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .tint(Color(hex: FlowCueTokens.airyDark.accent))
+                .frame(width: 240)
+                .padding(.vertical, 4)
+
+                ZStack(alignment: .topLeading) {
+                    TextEditor(text: $text)
+                        .font(.system(size: 12))
+                        .scrollContentBackground(.hidden)
+                        .frame(height: 120)
+                    if text.isEmpty {
+                        Text(L10n.text("描述一下发生了什么…"))
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 8)
+                            .padding(.leading, 5)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .padding(6)
+                .background(Color(nsColor: .textBackgroundColor).opacity(0.35),
+                            in: RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous))
+
+                SettingsRow(title: L10n.text("附带诊断日志")) {
+                    Toggle("", isOn: $attachLogs)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                        .tint(Color(hex: FlowCueTokens.airyDark.accent))
+                }
+                Text(L10n.text("只含版本号和最近 20 行日志，不含想法正文。"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            HStack(spacing: 10) {
+                Button(L10n.text("复制反馈")) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(payload, forType: .string)
+                    sent = true
+                }
+                .controlSize(.small)
+
+                Button(L10n.text("发送")) {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(payload, forType: .string)
+                    if let url = URL(string: "mailto:hello@flowcue.app?subject=FlowCue%20Feedback&body=\(payload.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "")") {
+                        NSWorkspace.shared.open(url)
+                    }
+                    sent = true
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(Color(hex: FlowCueTokens.airyDark.accent))
+                .disabled(!isSendable)
+
+                if sent {
+                    Text(L10n.text("已复制，可在邮件里粘贴"))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
     }
 }
 
