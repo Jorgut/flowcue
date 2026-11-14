@@ -125,6 +125,21 @@ Mono 与 Terminal 不提供明亮版（它们的气质依赖纯黑）。
 - 圆角只用 `radiusPanel 16 / radiusCard 14 / radiusInline 10` 三档
 
 
+### 2.6 组件层（代码）
+
+`Sources/CodexIdeaDockCore/FlowCueComponents.swift`，双端共用，只吃 token：
+
+| 组件 | 用法 |
+|---|---|
+| `FlowCueStatus` | `.ok / .waiting / .failed` 三态语义 |
+| `FlowCueStatusDot` | 状态点 + 可选文字；**永远不单靠颜色** |
+| `FlowCueChip` | 胶囊筛选/标签，选中态走 accent |
+| `FlowCueListRow` | 标题 + 元信息 + 状态点 + 尾部 |
+| `FlowCueComposer` | 输入条：前导图标 + 文本 + 主操作 |
+
+规则：新页面先用组件拼，拼不出来再加组件，不在视图里临时写圆角和间距。
+
+
 ## 3. 图标系统
 
 ### 3.1 应用图标（B1-L，1024）

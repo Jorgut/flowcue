@@ -851,28 +851,15 @@ private struct StatusFilterRow: View {
     }
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: FlowCueMetrics.space8) {
             ForEach(options) { option in
-                let selected = selection == option.status
-                Button {
+                FlowCueChip(option.title, isSelected: selection == option.status) {
                     selection = option.status
-                } label: {
-                    Text(option.title)
-                        .font(.caption)
-                        .padding(.horizontal, 9)
-                        .padding(.vertical, 3)
-                        .background(selected ? FlowCueDesktopTheme.accent.opacity(0.18) : Color.clear,
-                                    in: Capsule())
-                        .overlay(Capsule().strokeBorder(selected ? FlowCueDesktopTheme.accent.opacity(0.55)
-                                                                : Color.secondary.opacity(0.25)))
-                        .foregroundStyle(selected ? FlowCueDesktopTheme.accent : Color.secondary)
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(selected ? .isSelected : [])
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 14)
+        .padding(.horizontal, FlowCueMetrics.space16)
         .padding(.bottom, 6)
         .background(FlowCueDesktopTheme.canvas)
     }
