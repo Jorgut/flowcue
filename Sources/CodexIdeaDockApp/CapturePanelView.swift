@@ -369,6 +369,8 @@ private struct CaptureEditor: View {
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
+            .help(L10n.text("插入模板：今日待办 / 会议纪要 / 工作小结"))
+            .accessibilityLabel(L10n.text("插入模板"))
     }
 
     private func insertTemplate(mandarin: String, english: String) {
