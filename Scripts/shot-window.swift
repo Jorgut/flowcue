@@ -34,7 +34,8 @@ var candidates: [Candidate] = []
 for info in raw {
     guard let name = info[kCGWindowOwnerName as String] as? String,
           name.localizedCaseInsensitiveContains(owner),
-          let layer = info[kCGWindowLayer as String] as? Int, layer == 0,
+          let layer = info[kCGWindowLayer as String] as? Int,
+          sizeFilter != nil ? layer >= 0 : layer == 0,
           let bounds = info[kCGWindowBounds as String] as? [String: Any],
           let width = bounds["Width"] as? CGFloat,
           let height = bounds["Height"] as? CGFloat,

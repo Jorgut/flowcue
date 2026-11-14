@@ -307,35 +307,7 @@ private struct CaptureEditor: View {
     let onCancel: () -> Void
 
     var body: some View {
-        VStack(spacing: 6) {
-            HStack {
-                Spacer()
-                Menu {
-                    Button(L10n.text("今日待办 / 日程")) {
-                        insertTemplate(
-                            mandarin: "【今日计划】\n今日最重要的三件事：\n1. \n2. \n3. \n时间安排：\n需要跟进 / 等待：",
-                            english: "[Today's plan]\nTop three priorities:\n1. \n2. \n3. \nSchedule:\nFollow-ups / waiting on:"
-                        )
-                    }
-                    Button(L10n.text("会议纪要 → 待办")) {
-                        insertTemplate(
-                            mandarin: "【会议跟进】\n会议 / 主题：\n关键结论：\n待办事项：\n- [ ] 事项｜负责人｜截止时间\n需要同步给：",
-                            english: "[Meeting follow-up]\nMeeting / topic:\nKey decisions:\nAction items:\n- [ ] Item | Owner | Due date\nShare with:"
-                        )
-                    }
-                    Button(L10n.text("日报 / 周报")) {
-                        insertTemplate(
-                            mandarin: "【工作小结】\n已完成：\n结果 / 交付：\n遇到的问题：\n需要协助：\n下一步计划：",
-                            english: "[Work summary]\nCompleted:\nResults / deliverables:\nBlockers:\nHelp needed:\nNext steps:"
-                        )
-                    }
-                } label: {
-                    Label(L10n.text("日常工作"), systemImage: "rectangle.3.group")
-                        .font(.caption)
-                }
-                .menuStyle(.borderlessButton)
-                .help(L10n.text("选择一种日常工作并填入结构"))
-            }
+        ZStack(alignment: .topTrailing) {
             NativeTextEditor(
                 text: $text,
                 isEnabled: isEnabled,
@@ -363,7 +335,40 @@ private struct CaptureEditor: View {
             }
             .compositingGroup()
             .clipShape(.rect(cornerRadius: 10))
+
+            templateMenu
+                .padding(6)
         }
+    }
+
+    private var templateMenu: some View {
+        Menu {
+                Button(L10n.text("今日待办 / 日程")) {
+                    insertTemplate(
+                        mandarin: "【今日计划】\n今日最重要的三件事：\n1. \n2. \n3. \n时间安排：\n需要跟进 / 等待：",
+                        english: "[Today's plan]\nTop three priorities:\n1. \n2. \n3. \nSchedule:\nFollow-ups / waiting on:"
+                    )
+                }
+                Button(L10n.text("会议纪要 → 待办")) {
+                    insertTemplate(
+                        mandarin: "【会议跟进】\n会议 / 主题：\n关键结论：\n待办事项：\n- [ ] 事项｜负责人｜截止时间\n需要同步给：",
+                        english: "[Meeting follow-up]\nMeeting / topic:\nKey decisions:\nAction items:\n- [ ] Item | Owner | Due date\nShare with:"
+                    )
+                }
+                Button(L10n.text("日报 / 周报")) {
+                    insertTemplate(
+                        mandarin: "【工作小结】\n已完成：\n结果 / 交付：\n遇到的问题：\n需要协助：\n下一步计划：",
+                        english: "[Work summary]\nCompleted:\nResults / deliverables:\nBlockers:\nHelp needed:\nNext steps:"
+                    )
+                }
+            } label: {
+                Label(L10n.text("模板"), systemImage: "rectangle.3.group")
+                    .font(.caption)
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(.secondary)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
     }
 
     private func insertTemplate(mandarin: String, english: String) {
