@@ -357,5 +357,11 @@ public enum L10n {
         "桥接未连接，iPhone 上的审批暂时收不到。": "Bridge is not connected; iPhone approvals are paused.",
         "重试": "Retry",
         "重试投递": "Retry delivery",
+        "被占用": "In use",
+        "端口被别的进程占用；关掉它或到 DSH 里改用其他端口。": "Another process holds this port. Quit it, or change the port in DSH.",
+        "hooks": "Hooks",
+        "已安装": "Installed",
+        "装好 hooks 后，Codex 跑完才会回来通知这条想法。": "With hooks installed, Codex reports back when it finishes.",
+        "查看安装指引": "Install guide",
     ]
 }

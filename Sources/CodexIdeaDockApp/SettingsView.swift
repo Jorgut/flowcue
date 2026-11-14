@@ -297,6 +297,8 @@ private struct IntegrationsSettingsPage: View {
     @State private var records: [AgentRecord] = []
     @State private var dshConfigured = false
     @State private var bridgeReachable = false
+    @State private var portOccupied = false
+    @State private var hooksInstalled = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -317,7 +319,17 @@ private struct IntegrationsSettingsPage: View {
                     }
                 }
                 SettingsRow(title: L10n.text("端口")) {
-                    Text("127.0.0.1:47823").font(.system(size: 11).monospaced()).foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Text("127.0.0.1:47823").font(.system(size: 11).monospaced())
+                        if portOccupied && !bridgeReachable {
+                            Text(L10n.text("被占用"))
+                                .font(.system(size: 9))
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(Capsule().fill(Color(hex: FlowCueTokens.airyDark.warning).opacity(0.2)))
+                                .foregroundStyle(Color(hex: FlowCueTokens.airyDark.warning))
+                        }
+                    }
+                    .foregroundStyle(.secondary)
                 }
                 if !bridgeReachable {
                     Text(dshConfigured
@@ -326,9 +338,39 @@ private struct IntegrationsSettingsPage: View {
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
+                if portOccupied && !bridgeReachable {
+                    Text(L10n.text("端口被别的进程占用；关掉它或到 DSH 里改用其他端口。"))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
                 Button(L10n.text("重新检查")) { checkBridge() }
                     .controlSize(.small)
             }
+            SettingsGroup(title: "Codex hooks") {
+                SettingsRow(title: L10n.text("hooks")) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(hooksInstalled ? Color(hex: FlowCueTokens.airyDark.success)
+                                                 : Color(hex: FlowCueTokens.airyDark.textTertiary))
+                            .frame(width: 6, height: 6)
+                        Text(hooksInstalled ? L10n.text("已安装") : L10n.text("未安装"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if !hooksInstalled {
+                    Text(L10n.text("装好 hooks 后，Codex 跑完才会回来通知这条想法。"))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                    Button(L10n.text("查看安装指引")) {
+                        if let url = URL(string: "https://github.com/Jorgut/flowcue#hooks") {
+                            NSWorkspace.shared.open(url)
+                        }
+                    }
+                    .controlSize(.small)
+                }
+            }
+
             SettingsGroup(title: "Claude Code") {
                 status(records.first { $0.id == "claude" }, ping: L10n.text("读取 ~/.claude/projects"))
             }
@@ -342,6 +384,8 @@ private struct IntegrationsSettingsPage: View {
     private func checkBridge() {
         dshConfigured = DSHBridgeClient().isConfigured
         bridgeReachable = PortProbe.isOpen(port: 47823)
+        portOccupied = PortProbe.isOccupied(port: 47823)
+        hooksInstalled = CodexHooks.isInstalled
     }
 
     @ViewBuilder
