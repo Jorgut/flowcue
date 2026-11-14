@@ -221,6 +221,8 @@ final class AgentWindowController: NSWindowController, NSWindowDelegate {
         )
         super.init(window: window)
         window.title = L10n.text("本机 Agent")
+        window.isOpaque = true
+        window.backgroundColor = .windowBackgroundColor
         window.titlebarAppearsTransparent = true
         window.minSize = NSSize(width: 760, height: 480)
         window.isReleasedWhenClosed = false

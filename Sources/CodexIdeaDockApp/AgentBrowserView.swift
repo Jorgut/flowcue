@@ -32,7 +32,7 @@ struct AgentBrowserView: View {
                     .clipped()
             }
         }
-        .frame(minWidth: 760, minHeight: 480)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
         .onAppear {
             if agents.isEmpty { agents = AgentDiscovery.scan() }
