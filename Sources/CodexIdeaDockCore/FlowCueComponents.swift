@@ -192,3 +192,42 @@ public struct FlowCueComposer<Leading: View>: View {
     }
 }
 #endif
+
+#if canImport(SwiftUI)
+/// 用量圆环：用于展示 Codex 的 5h / 每周额度。
+public struct FlowCueUsageRing: View {
+    let progress: Double      // 0...1
+    let caption: String
+    let valueText: String
+
+    public init(progress: Double, caption: String, valueText: String) {
+        self.progress = max(0, min(1, progress))
+        self.caption = caption
+        self.valueText = valueText
+    }
+
+    public var body: some View {
+        HStack(spacing: 6) {
+            ZStack {
+                Circle()
+                    .stroke(Color(flowCueHex: FlowCueTokens.airyDark.border), lineWidth: 3)
+                Circle()
+                    .trim(from: 0, to: progress)
+                    .stroke(Color(flowCueHex: FlowCueTokens.airyDark.accent),
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: 22, height: 22)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(caption)
+                    .font(.system(size: 9))
+                    .foregroundStyle(.secondary)
+                Text(valueText)
+                    .font(.system(size: 11, weight: .medium).monospacedDigit())
+            }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(caption) \(valueText)")
+    }
+}
+#endif

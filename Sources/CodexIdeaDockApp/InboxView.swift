@@ -73,6 +73,7 @@ struct InboxView: View {
     @State private var statusFilter: CaptureStatus?
     @AppStorage("FlowCue.inboxLayout") private var layoutRaw = InboxLayout.three.rawValue
     @State private var windowWidth: CGFloat = 1000
+    @State private var isUsagePopoverPresented = false
     private var layout: InboxLayout { InboxLayout(rawValue: layoutRaw) ?? .three }
     @State private var sourceFilter: RouteFilter = .all
     @State private var targetFilter: RouteFilter = .all
@@ -187,6 +188,9 @@ struct InboxView: View {
 
     @ViewBuilder
     private var layoutBody: some View {
+        if visibleCaptures.isEmpty, !presentation.isComposing, store.searchText.isEmpty, statusFilter == nil {
+            emptyState
+        } else {
         GeometryReader { geo in
             if geo.size.width < 780 {
                 compactBody
@@ -194,6 +198,65 @@ struct InboxView: View {
                 regularBody
             }
         }
+        }
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 40)
+            Image(systemName: "sparkles")
+                .font(.system(size: 34, weight: .semibold))
+                .foregroundStyle(FlowCueDesktopTheme.mint)
+            VStack(spacing: 6) {
+                Text(L10n.text("还没有想法"))
+                    .font(.system(size: 20, weight: .semibold))
+                Text(L10n.text("先记下来，之后再决定交给谁。"))
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+            }
+            HStack(spacing: 8) {
+                Image(systemName: "square.and.pencil")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                ZStack(alignment: .leading) {
+                    TextField("", text: $store.draftText, axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .lineLimit(1...5)
+                        .font(.system(size: 13))
+                    if store.draftText.isEmpty {
+                        Text(L10n.text("写下一个想法…"))
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .allowsHitTesting(false)
+                    }
+                }
+                Button {
+                    saveDraft()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 24, height: 24)
+                        .background(Circle().fill(FlowCueDesktopTheme.accent))
+                        .foregroundStyle(Color(hex: "#0A0A12"))
+                }
+                .buttonStyle(.plain)
+                .disabled(store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || store.isQueueing)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: 460)
+            .background(FlowCueDesktopTheme.card.opacity(0.7),
+                        in: RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                    .strokeBorder(Color(hex: FlowCueTokens.airyDark.border))
+            }
+            Text(L10n.text("⌘ ↩ 保存　·　⌃⌥Space 随时唤起面板"))
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            Spacer(minLength: 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     /// 分屏/半屏：只留一栏，详情用返回切换
@@ -596,16 +659,26 @@ struct InboxView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text("FlowCue")
                     .font(.system(size: 17, weight: .semibold, design: .rounded))
-                HStack(spacing: 6) {
-                    Circle()
-                        .fill(agentStatusColor)
-                        .frame(width: 5, height: 5)
-                    Text(agentStatusText)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .fixedSize()
+                Button {
+                    isUsagePopoverPresented = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(agentStatusColor)
+                            .frame(width: 5, height: 5)
+                        Text(agentStatusText)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .fixedSize()
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .popover(isPresented: $isUsagePopoverPresented, arrowEdge: .bottom) {
+                    usagePopover
+                }
+                .accessibilityLabel(agentStatusText)
             }
 
             Spacer(minLength: 8)
@@ -655,6 +728,34 @@ struct InboxView: View {
         .padding(.vertical, 10)
         .background(Color(nsColor: .windowBackgroundColor))
         .overlay(alignment: .bottom) { Divider() }
+    }
+
+    @ViewBuilder
+    private var usagePopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            if let usage {
+                ForEach(Array([usage.primary, usage.secondary].compactMap { $0 }.enumerated()), id: \.offset) { _, window in
+                    FlowCueUsageRing(
+                        progress: Double(window.usedPercent) / 100.0,
+                        caption: usageWindowTitle(window),
+                        valueText: "\(window.usedPercent)% 已用"
+                    )
+                }
+                Button(L10n.text("打开 Codex")) {
+                    if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.openai.codex") {
+                        NSWorkspace.shared.openApplication(at: url, configuration: NSWorkspace.OpenConfiguration())
+                    }
+                }
+                .buttonStyle(.link)
+                .font(.system(size: 11))
+            } else {
+                Text(usageLoading ? L10n.text("正在读取用量…") : L10n.text("用量暂不可用"))
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(14)
+        .frame(width: 200, alignment: .leading)
     }
 
     private var agentStatusColor: Color {
@@ -1390,8 +1491,8 @@ private struct CaptureRow: View {
                     .padding(.top, 5)
                     .accessibilityHidden(true)
                 Text(capture.text.isEmpty ? L10n.text("空想法") : capture.text)
-                    .font(.body.weight(.medium))
-                    .lineLimit(2)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
 
                 Spacer(minLength: 4)
 
@@ -1469,6 +1570,7 @@ private struct CaptureDetailView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             CaptureDetailHeader(capture: capture)
+            Divider()
 
             if AppDistribution.supportsDirectQueue {
                 CaptureRouteEditor(
@@ -1487,14 +1589,10 @@ private struct CaptureDetailView: View {
             }
 
             TextEditor(text: $editedText)
-                .font(.body)
+                .font(.system(size: 13))
                 .scrollContentBackground(.hidden)
-                .padding(8)
-                .background(Color(nsColor: .controlBackgroundColor).opacity(0.75), in: .rect(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(Color(nsColor: .separatorColor).opacity(0.6), lineWidth: 1)
-                }
+                .padding(0)
+                .frame(maxHeight: .infinity)
                 .disabled(!canEdit)
                 .accessibilityLabel(L10n.text("编辑想法内容"))
                 .accessibilityHint(canEdit ? L10n.text("修改会自动保存") : L10n.text("当前状态下原文为只读"))
@@ -1575,16 +1673,27 @@ private struct CaptureDetailView: View {
 private struct CaptureDetailHeader: View {
     let capture: CaptureItem
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack {
-                CaptureStatusBadge(status: capture.status)
-                Spacer()
-                Text(L10n.text("更新于 ")) + Text(capture.updatedAt, format: .dateTime.year().month().day().hour().minute())
-            }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+    private var title: String {
+        let firstLine = capture.text.split(separator: "\n").first.map(String.init) ?? ""
+        let trimmed = firstLine.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? L10n.text("空想法") : String(trimmed.prefix(80))
+    }
 
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 20, weight: .semibold))
+                .lineLimit(2)
+                .textSelection(.enabled)
+            HStack(spacing: 8) {
+                CaptureStatusBadge(status: capture.status)
+                Text(capture.updatedAt, format: .dateTime.month().day().hour().minute())
+                Text("·")
+                Text(L10n.text("本地"))
+                Spacer()
+            }
+            .font(.system(size: 11))
+            .foregroundStyle(.secondary)
         }
     }
 }
