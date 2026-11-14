@@ -67,6 +67,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if ProcessInfo.processInfo.arguments.contains("-agents") {
             DispatchQueue.main.async { [weak self] in self?.showAgents() }
         }
+        if ProcessInfo.processInfo.arguments.contains("-panel") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+                guard let self else { return }
+                self.showCapturePanel()
+                // 截图用：只留面板
+                let panelWindow = self.capturePanelController?.window
+                for window in NSApp.windows where window !== panelWindow {
+                    window.orderOut(nil)
+                }
+                panelWindow?.makeKeyAndOrderFront(nil)
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("-inbox") {
             DispatchQueue.main.async { [weak self] in self?.showInbox() }
         }

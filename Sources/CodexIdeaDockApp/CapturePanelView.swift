@@ -72,7 +72,7 @@ struct CapturePanelView: View {
             )
         }
         .padding(12)
-        .frame(width: 520, height: 260)
+        .frame(width: 520, height: 280)
         .background(.ultraThinMaterial, in: .rect(cornerRadius: 16))
         .overlay {
             RoundedRectangle(cornerRadius: 16)
