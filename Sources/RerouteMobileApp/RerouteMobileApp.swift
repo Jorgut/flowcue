@@ -95,6 +95,45 @@ private struct FlowCueScreenBackground: View {
     }
 }
 
+/// 当前只有 Airy 一套 token；先提供 System / Airy Light / Airy Dark 三档。
+private enum FlowCueThemePreference: String, CaseIterable, Identifiable {
+    case system
+    case light
+    case dark
+
+    static let key = "FlowCue.appearance"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Airy Light"
+        case .dark: "Airy Dark"
+        }
+    }
+
+    var subtitle: String? {
+        self == .system ? "Follows the system appearance" : nil
+    }
+
+    var colorScheme: ColorScheme? {
+        switch self {
+        case .system: nil
+        case .light: .light
+        case .dark: .dark
+        }
+    }
+
+    static func effectiveName(raw: String, scheme: ColorScheme) -> String {
+        switch FlowCueThemePreference(rawValue: raw) ?? .system {
+        case .light: "Airy Light"
+        case .dark: "Airy Dark"
+        case .system: scheme == .dark ? "Airy Dark" : "Airy Light"
+        }
+    }
+}
+
 // MARK: - Subscription
 
 @MainActor
@@ -654,6 +693,7 @@ struct RerouteMobileApp: App {
     @State private var subscription = SubscriptionManager()
     @State private var remoteController = LANRemoteController()
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
+    @AppStorage(FlowCueThemePreference.key) private var appearance = FlowCueThemePreference.system.rawValue
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
 
     init() {
@@ -691,6 +731,7 @@ struct RerouteMobileApp: App {
             .id(language)
             .environment(subscription)
             .environment(\.locale, Locale(identifier: language))
+            .preferredColorScheme((FlowCueThemePreference(rawValue: appearance) ?? .system).colorScheme)
         }
     }
 }
@@ -704,7 +745,7 @@ private struct MobileLocalBridge: CodexBridging {
 
 // MARK: - Root
 
-private enum FlowCueTab: Hashable { case inbox, agents, settings }
+private enum FlowCueTab: Hashable { case inbox, agents, me }
 
 private struct RootTabView: View {
     @Bindable var store: IdeaDockStore
@@ -720,7 +761,7 @@ private struct RootTabView: View {
         if let value = arguments.first(where: { $0.hasPrefix("--flowcue-tab=") }) {
             switch String(value.dropFirst("--flowcue-tab=".count)) {
             case "agents": return .agents
-            case "settings": return .settings
+            case "settings", "me": return .me
             default: return .inbox
             }
         }
@@ -737,14 +778,14 @@ private struct RootTabView: View {
             AgentsView(controller: remoteController, tab: $tab)
                 .tag(FlowCueTab.agents)
                 .toolbar(.hidden, for: .tabBar)
-            SettingsView(
+            MeView(
                 store: store,
                 syncController: syncController,
                 remoteController: remoteController,
                 tab: $tab,
                 showOnboarding: { hasSeenOnboarding = false }
             )
-            .tag(FlowCueTab.settings)
+            .tag(FlowCueTab.me)
             .toolbar(.hidden, for: .tabBar)
         }
         .tint(FlowCueTheme.accent)
@@ -867,7 +908,7 @@ private struct FlowCueTabBar: View {
     private let items: [Item] = [
         Item(tab: .inbox, title: "Ideas", glyph: .spark),
         Item(tab: .agents, title: "Agents", glyph: .plane),
-        Item(tab: .settings, title: "Me", glyph: .face)
+        Item(tab: .me, title: "Me", glyph: .face)
     ]
 
     var body: some View {
@@ -1020,6 +1061,19 @@ private enum FlowCueLinkFormat {
     }
 }
 
+private enum FlowCueSyncState {
+    static let failureMessages: Set<String> = [
+        "暂时无法同步，本地想法已保留",
+        "iCloud 账户已更换，同步已暂停",
+        "想法存在编辑冲突，原文已保留"
+    ]
+
+    @MainActor
+    static func hasFailure(_ sync: IdeaSyncController) -> Bool {
+        sync.isEnabled && failureMessages.contains(sync.statusMessage)
+    }
+}
+
 private enum HomeStatus {
     static func label(_ status: CaptureStatus) -> String {
         switch status {
@@ -1146,12 +1200,6 @@ private struct InboxView: View {
     @ScaledMetric(relativeTo: .caption) private var chipHeight: CGFloat = 26
     @FocusState private var searchFocused: Bool
 
-    private static let syncFailureMessages: Set<String> = [
-        "暂时无法同步，本地想法已保留",
-        "iCloud 账户已更换，同步已暂停",
-        "想法存在编辑冲突，原文已保留"
-    ]
-
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -1218,7 +1266,7 @@ private struct InboxView: View {
                 .foregroundStyle(FlowCueTheme.textPrimary)
             Spacer()
             Button {
-                tab = .settings
+                tab = .me
             } label: {
                 ZStack {
                     Circle().fill(FlowCueTheme.surface)
@@ -1386,7 +1434,7 @@ private struct InboxView: View {
     private var showsSyncFailure: Bool {
         if HomePreview.forcesSyncFailure { return true }
         guard HomePreview.requestedState == nil else { return false }
-        return syncController.isEnabled && Self.syncFailureMessages.contains(syncController.statusMessage)
+        return FlowCueSyncState.hasFailure(syncController)
     }
 
     private var isLoading: Bool {
@@ -5001,95 +5049,789 @@ private struct CodeBlockView: View {
 
 // MARK: - Settings
 
-private struct SettingsView: View {
+private enum FlowCueProfile {
+    static let name = "Jorgut"
+    static let handle = "altn.vision"
+}
+
+private enum MePreview {
+    static let state: String? = {
+        #if DEBUG
+        guard let argument = ProcessInfo.processInfo.arguments.first(where: {
+            $0.hasPrefix("--flowcue-me=")
+        }) else { return nil }
+        return String(argument.dropFirst("--flowcue-me=".count))
+        #else
+        return nil
+        #endif
+    }()
+}
+
+// MARK: - Me
+
+private struct MeView: View {
     @Bindable var store: IdeaDockStore
     @Bindable var syncController: IdeaSyncController
     @Bindable var remoteController: LANRemoteController
     @Binding var tab: FlowCueTab
     let showOnboarding: () -> Void
+
     @Environment(SubscriptionManager.self) private var subscription
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
+    @AppStorage(FlowCueThemePreference.key) private var appearance = FlowCueThemePreference.system.rawValue
+
+    @State private var network = FlowCueNetworkMonitor()
     @State private var showingPaywall = false
+    @State private var showingPairing = false
+    @State private var showingDevice = false
+    @State private var showingAppearance = MePreview.state == "appearance"
+    @State private var showingLanguage = MePreview.state == "language"
+    @State private var showingPro = MePreview.state == "pro"
+    @State private var showingArchive = MePreview.state == "archive"
+    @State private var showingAbout = MePreview.state == "about"
 
     var body: some View {
         NavigationStack {
-            Form {
-                Section {
-                    if subscription.isPro {
-                        HStack {
-                            Image(systemName: "checkmark.seal.fill").foregroundStyle(FlowCueTheme.mint)
-                            VStack(alignment: .leading) {
-                                Text("FlowCue Pro").font(.headline)
-                                Text("iCloud sync and remote continuation are active.")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
+            VStack(spacing: 0) {
+                meHeader
+
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if !network.isOnline {
+                            FlowCueInlineBanner(
+                                kind: .warning,
+                                title: "Offline — changes stay on this iPhone."
+                            )
+                            .padding(.top, 10)
+                        } else if FlowCueSyncState.hasFailure(syncController) {
+                            FlowCueInlineBanner(
+                                kind: .failure,
+                                title: "Last sync failed",
+                                actionTitle: "Retry",
+                                action: { Task { await syncController.synchronizeNow() } }
+                            )
+                            .padding(.top, 10)
                         }
-                        Button("Manage subscription") {
-                            UIApplication.shared.open(FlowCueProduct.manageSubscriptionsURL)
-                        }
-                    } else {
-                        Button {
-                            showingPaywall = true
-                        } label: {
-                            HStack {
-                                Image(systemName: "sparkles").foregroundStyle(FlowCueTheme.accent)
-                                VStack(alignment: .leading) {
-                                    Text("Upgrade to FlowCue Pro").font(.headline)
-                                    Text("Sync ideas and continue sessions from your phone.")
-                                        .font(.caption).foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary)
-                            }
+
+                        profile
+                            .padding(.top, 12)
+                        stats
+                            .padding(.top, 16)
+                        settingsRows
+                            .padding(.top, 18)
+                        if !subscription.isPro {
+                            proButton
+                                .padding(.top, 18)
                         }
                     }
-                    Button("Restore purchases") { Task { await subscription.restore() } }
-                } header: { Text("Subscription") }
-
-                Section {
-                    Toggle("iCloud sync", isOn: Binding(
-                        get: { syncController.isEnabled },
-                        set: { enabled in
-                            if enabled && !subscription.isPro {
-                                showingPaywall = true
-                            } else {
-                                syncController.setEnabled(enabled)
-                            }
-                        }
-                    ))
-                    .disabled(!syncController.isAvailable)
-                    Text(L10n.text(syncController.statusMessage))
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("Sync now") { Task { await syncController.synchronizeNow() } }
-                        .disabled(!subscription.isPro || !syncController.isEnabled || syncController.isSyncing)
-                } header: { Text("iCloud") } footer: {
-                    Text("Ideas sync through your private iCloud account. FlowCue never reads your coding-agent conversations for sync.")
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 28)
                 }
+                .scrollDismissesKeyboard(.interactively)
 
-                Section {
-                    Picker("Language", selection: $language) {
-                        ForEach(AppLanguage.allCases, id: \.rawValue) { language in
-                            Text(language.displayName).tag(language.rawValue)
-                        }
-                    }
-                } header: { Text("Appearance") }
-
-                Section {
-                    Button("Replay welcome") { showOnboarding() }
-                    Link("Privacy Policy", destination: FlowCueProduct.privacyURL)
-                    Link("Terms of Use", destination: FlowCueProduct.termsURL)
-                } header: { Text("About") } footer: {
-                    Text("FlowCue \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0") (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?")) · Independent app, not affiliated with any agent provider.")
-                }
-            }
-            .navigationTitle("Settings")
-            .scrollContentBackground(.hidden)
-            .background(FlowCueTheme.canvas)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
                 FlowCueTabBar(selection: $tab)
             }
-            .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .background { FlowCueScreenBackground() }
+            .toolbar(.hidden, for: .navigationBar)
+            .task { network.start() }
+            .onDisappear { network.stop() }
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView()
+            }
+            .sheet(isPresented: $showingPairing) {
+                PairMacSheet(controller: remoteController)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showingAppearance) {
+                AppearanceSheet()
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showingLanguage) {
+                LanguageSheet(language: $language)
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+            }
+            .sheet(isPresented: $showingPro) {
+                ProStatusSheet()
+                    .presentationDetents([.medium])
+                    .presentationDragIndicator(.visible)
+            }
+            .navigationDestination(isPresented: $showingDevice) {
+                RemoteDeviceView(controller: remoteController, tab: $tab)
+            }
+            .navigationDestination(isPresented: $showingArchive) {
+                ArchiveView(store: store)
+            }
+            .navigationDestination(isPresented: $showingAbout) {
+                AboutView(showOnboarding: showOnboarding)
+            }
         }
+    }
+
+    private var meHeader: some View {
+        Text("Me")
+            .flowCueFont(17, relativeTo: .headline, weight: .semibold)
+            .foregroundStyle(FlowCueTheme.textPrimary)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 44)
+            .padding(.top, 10)
+    }
+
+    private var profile: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle().fill(FlowCueTheme.surface)
+                Circle().strokeBorder(FlowCueTheme.hairline)
+                FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                    .frame(width: 28, height: 28)
+            }
+            .frame(width: 44, height: 44)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(FlowCueProfile.name)
+                    .flowCueFont(18, relativeTo: .title3, weight: .semibold)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                Text(FlowCueProfile.handle)
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var stats: some View {
+        LazyVGrid(
+            columns: Array(
+                repeating: GridItem(.flexible(), spacing: 8),
+                count: dynamicTypeSize.isAccessibilitySize ? 2 : 4
+            ),
+            spacing: 8
+        ) {
+            MeStatCard(value: activeIdeas.count, label: "IDEAS")
+            MeStatCard(value: queuedIdeas.count, label: "QUEUED")
+            MeStatCard(value: agentCount, label: "AGENTS")
+            MeStatCard(value: deviceCount, label: "DEVICES")
+        }
+    }
+
+    private var settingsRows: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Text("Sync to iCloud")
+                    .flowCueFont(13, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                Spacer(minLength: 8)
+                Toggle("", isOn: syncBinding)
+                    .labelsHidden()
+                    .tint(FlowCueTheme.accent)
+                    .disabled(!syncController.isAvailable)
+                    .accessibilityLabel("Sync to iCloud")
+            }
+            .padding(.vertical, 8)
+            .frame(minHeight: 48)
+
+            divider
+
+            Button {
+                if remoteController.isConnected {
+                    showingDevice = true
+                } else {
+                    showingPairing = true
+                }
+            } label: {
+                MeRowLabel(title: "Devices", value: deviceValue, valueColor: deviceValueColor)
+            }
+            .buttonStyle(.plain)
+
+            divider
+
+            Button {
+                openPro()
+            } label: {
+                MeRowLabel(title: "FlowCue Pro", value: proValue, valueColor: proValueColor)
+            }
+            .buttonStyle(.plain)
+
+            divider
+
+            Button {
+                showingAppearance = true
+            } label: {
+                MeRowLabel(
+                    title: "Appearance",
+                    value: FlowCueThemePreference.effectiveName(raw: appearance, scheme: colorScheme)
+                )
+            }
+            .buttonStyle(.plain)
+
+            divider
+
+            Button {
+                showingLanguage = true
+            } label: {
+                MeRowLabel(
+                    title: "Language",
+                    value: AppLanguage(rawValue: language)?.displayName ?? "English"
+                )
+            }
+            .buttonStyle(.plain)
+
+            divider
+
+            NavigationLink {
+                ArchiveView(store: store)
+            } label: {
+                MeRowLabel(title: "Archive")
+            }
+            .buttonStyle(.plain)
+
+            divider
+
+            NavigationLink {
+                AboutView(showOnboarding: showOnboarding)
+            } label: {
+                MeRowLabel(title: "About", value: versionString)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private var proButton: some View {
+        Button {
+            showingPaywall = true
+        } label: {
+            Text("Get FlowCue Pro")
+                .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.onAccent)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(Capsule().fill(FlowCueTheme.accent))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Get FlowCue Pro")
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(FlowCueTheme.hairline)
+            .frame(height: 1)
+            .accessibilityHidden(true)
+    }
+
+    // MARK: Values
+
+    private var activeIdeas: [CaptureItem] {
+        store.captures.filter { $0.status != .draft && $0.status != .archived }
+    }
+
+    private var queuedIdeas: [CaptureItem] {
+        store.captures.filter { $0.status == .queued || $0.status == .queueing }
+    }
+
+    private var agentCount: Int {
+        guard remoteController.isConnected else { return 0 }
+        return remoteController.dshBridgeAvailable ? 2 : 1
+    }
+
+    private var deviceCount: Int {
+        remoteController.selected == nil ? 0 : 1
+    }
+
+    private var deviceValue: String {
+        guard let selected = remoteController.selected else { return "Not paired" }
+        let name = FlowCueLinkFormat.deviceName(selected.name)
+        return network.isOnline ? "\(name) · online" : "\(name) · offline"
+    }
+
+    private var deviceValueColor: Color {
+        remoteController.selected == nil ? FlowCueTheme.textSecondary : (network.isOnline ? FlowCueTheme.textPrimary : FlowCueTheme.warning)
+    }
+
+    private var proValue: String {
+        if subscription.isLoading { return "Checking…" }
+        return subscription.isPro ? "Active" : "Upgrade"
+    }
+
+    private var proValueColor: Color {
+        subscription.isPro ? FlowCueTheme.textSecondary : FlowCueTheme.accent
+    }
+
+    private var versionString: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
+    }
+
+    private var syncBinding: Binding<Bool> {
+        Binding(
+            get: { syncController.isEnabled },
+            set: { enabled in
+                if enabled && !subscription.isPro {
+                    showingPaywall = true
+                } else {
+                    syncController.setEnabled(enabled)
+                    if enabled {
+                        Task { await syncController.synchronizeNow() }
+                    }
+                }
+            }
+        )
+    }
+
+    private func openPro() {
+        if subscription.isPro {
+            showingPro = true
+        } else {
+            showingPaywall = true
+        }
+    }
+}
+
+private struct MeStatCard: View {
+    let value: Int
+    let label: String
+
+    var body: some View {
+        VStack(spacing: 5) {
+            Text("\(value)")
+                .flowCueFont(15, relativeTo: .subheadline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            Text(label)
+                .flowCueFont(9.5, relativeTo: .caption2)
+                .tracking(1.0)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                .fill(FlowCueTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                .strokeBorder(FlowCueTheme.hairline.opacity(0.6))
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(value) \(label.capitalized)")
+    }
+}
+
+private struct MeRowLabel: View {
+    let title: String
+    var value: String?
+    var valueColor: Color = FlowCueTheme.textSecondary
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .flowCueFont(13, relativeTo: .subheadline)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            Spacer(minLength: 8)
+            if let value {
+                Text(value)
+                    .flowCueFont(10, relativeTo: .caption2)
+                    .foregroundStyle(valueColor)
+                    .lineLimit(1)
+            }
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 13)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Appearance / language
+
+private struct AppearanceSheet: View {
+    @AppStorage(FlowCueThemePreference.key) private var appearance = FlowCueThemePreference.system.rawValue
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(FlowCueThemePreference.allCases) { option in
+                        Button {
+                            appearance = option.rawValue
+                            dismiss()
+                        } label: {
+                            HStack(spacing: 10) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(option.title)
+                                        .flowCueFont(14, relativeTo: .subheadline)
+                                        .foregroundStyle(FlowCueTheme.textPrimary)
+                                    if let subtitle = option.subtitle {
+                                        Text(subtitle)
+                                            .flowCueFont(10.5, relativeTo: .caption2)
+                                            .foregroundStyle(FlowCueTheme.textSecondary)
+                                    }
+                                }
+                                Spacer(minLength: 8)
+                                if appearance == option.rawValue {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(FlowCueTheme.accent)
+                                }
+                            }
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        if option != FlowCueThemePreference.allCases.last {
+                            Rectangle()
+                                .fill(FlowCueTheme.hairline)
+                                .frame(height: 1)
+                        }
+                    }
+
+                    Text("Airy is the current theme. Additional themes are on the roadmap.")
+                        .flowCueFont(11, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .padding(.top, 16)
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 10)
+                .padding(.bottom, 24)
+            }
+            .background { FlowCueScreenBackground() }
+            .navigationTitle("Appearance")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(FlowCueTheme.accent)
+                }
+            }
+        }
+    }
+}
+
+private struct LanguageSheet: View {
+    @Binding var language: String
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(AppLanguage.allCases, id: \.rawValue) { option in
+                        Button {
+                            language = option.rawValue
+                            dismiss()
+                        } label: {
+                            HStack {
+                                Text(option.displayName)
+                                    .flowCueFont(14, relativeTo: .subheadline)
+                                    .foregroundStyle(FlowCueTheme.textPrimary)
+                                Spacer()
+                                if language == option.rawValue {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(FlowCueTheme.accent)
+                                }
+                            }
+                            .padding(.vertical, 14)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        if option != AppLanguage.allCases.last {
+                            Rectangle()
+                                .fill(FlowCueTheme.hairline)
+                                .frame(height: 1)
+                        }
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+            }
+            .background { FlowCueScreenBackground() }
+            .navigationTitle("Language")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(FlowCueTheme.accent)
+                }
+            }
+        }
+    }
+}
+
+private struct ProStatusSheet: View {
+    @Environment(SubscriptionManager.self) private var subscription
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.system(size: 22))
+                            .foregroundStyle(FlowCueTheme.mint)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("FlowCue Pro")
+                                .flowCueFont(20, relativeTo: .title3, weight: .semibold)
+                                .foregroundStyle(FlowCueTheme.textPrimary)
+                            Text("Active")
+                                .flowCueFont(11, relativeTo: .caption2)
+                                .foregroundStyle(FlowCueTheme.mint)
+                        }
+                        Spacer()
+                    }
+                    Text("iCloud sync and remote continuation are active.")
+                        .flowCueFont(12.5, relativeTo: .caption)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .padding(.top, 12)
+
+                    VStack(spacing: 0) {
+                        Button {
+                            UIApplication.shared.open(FlowCueProduct.manageSubscriptionsURL)
+                        } label: {
+                            HStack {
+                                Text("Manage subscription")
+                                    .flowCueFont(13, relativeTo: .subheadline)
+                                    .foregroundStyle(FlowCueTheme.textPrimary)
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundStyle(FlowCueTheme.textSecondary)
+                            }
+                            .padding(.vertical, 13)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+                        Button {
+                            Task { await subscription.restore() }
+                        } label: {
+                            HStack {
+                                Text("Restore purchases")
+                                    .flowCueFont(13, relativeTo: .subheadline)
+                                    .foregroundStyle(FlowCueTheme.textPrimary)
+                                Spacer()
+                            }
+                            .padding(.vertical, 13)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 18)
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 16)
+            }
+            .background { FlowCueScreenBackground() }
+            .navigationTitle("Subscription")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                        .foregroundStyle(FlowCueTheme.accent)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Archive
+
+private struct ArchiveView: View {
+    @Bindable var store: IdeaDockStore
+
+    private var archived: [CaptureItem] {
+        store.captures.filter { $0.status == .archived }
+    }
+
+    var body: some View {
+        ScrollView {
+            if archived.isEmpty {
+                emptyState
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(archived) { capture in
+                        archiveRow(capture)
+                        Rectangle()
+                            .fill(FlowCueTheme.hairline)
+                            .frame(height: 1)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
+            }
+        }
+        .background { FlowCueScreenBackground() }
+        .navigationTitle("Archive")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 0) {
+            FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                .frame(width: 60, height: 60)
+            Text("No archived ideas")
+                .flowCueFont(18, relativeTo: .title3, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.top, 18)
+            Text("Archived ideas stay here until you restore them.")
+                .flowCueFont(12.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 6)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 120)
+        .padding(.horizontal, 18)
+    }
+
+    private func archiveRow(_ capture: CaptureItem) -> some View {
+        HStack(alignment: .top, spacing: 11) {
+            Circle()
+                .fill(FlowCueTheme.textTertiary)
+                .frame(width: 6, height: 6)
+                .padding(.top, 5)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(capture.text)
+                    .flowCueFont(14, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                    .lineLimit(2)
+                Text("ARCHIVED · \(HomeFormat.meta(for: capture.updatedAt))")
+                    .flowCueFont(10.5, relativeTo: .caption2)
+                    .tracking(0.2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+            Spacer(minLength: 8)
+            Button("Restore") {
+                store.undoArchive(capture.id)
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+            .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+            .foregroundStyle(FlowCueTheme.accent)
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - About
+
+private struct AboutView: View {
+    let showOnboarding: () -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    private var versionString: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                        .fill(FlowCueTheme.surface)
+                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                        .strokeBorder(FlowCueTheme.hairline)
+                    FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                        .frame(width: 40, height: 40)
+                }
+                .frame(width: 56, height: 56)
+
+                Text("FlowCue")
+                    .flowCueFont(22, relativeTo: .title2, weight: .semibold)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                    .padding(.top, 16)
+                Text("Version \(versionString)")
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .padding(.top, 4)
+                Text("A quiet place for the ideas that deserve a next step. Capture now, continue with your agents later.")
+                    .flowCueFont(12.5, relativeTo: .caption)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineSpacing(3)
+                    .padding(.top, 14)
+
+                VStack(spacing: 0) {
+                    aboutLink("Privacy Policy", destination: FlowCueProduct.privacyURL)
+                    Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+                    aboutLink("Terms of Use", destination: FlowCueProduct.termsURL)
+                    Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+                    Button {
+                        dismiss()
+                        showOnboarding()
+                    } label: {
+                        HStack {
+                            Text("Replay welcome")
+                                .flowCueFont(13, relativeTo: .subheadline)
+                                .foregroundStyle(FlowCueTheme.textPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                        }
+                        .padding(.vertical, 13)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.top, 20)
+
+                Text("Independent app, not affiliated with any agent provider. FlowCue never reads your coding-agent conversations for sync.")
+                    .flowCueFont(10.5, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textTertiary)
+                    .lineSpacing(3)
+                    .padding(.top, 24)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 20)
+            .padding(.bottom, 28)
+        }
+        .background { FlowCueScreenBackground() }
+        .navigationTitle("About")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+    }
+
+    private func aboutLink(_ title: String, destination: URL) -> some View {
+        Link(destination: destination) {
+            HStack {
+                Text(title)
+                    .flowCueFont(13, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+            }
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
