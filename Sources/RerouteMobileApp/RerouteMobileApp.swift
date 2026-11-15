@@ -2610,26 +2610,15 @@ private struct PairMacSheet: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    codeSection
-                    nearbySection
-                    manualSection
-                    if let error = controller.lastError {
-                        FlowCueInlineBanner(
-                            kind: .failure,
-                            title: error,
-                            actionTitle: "Retry",
-                            action: { Task { await connect() } }
-                        )
-                        .padding(.top, 12)
-                    }
+            Group {
+                if isPairing {
+                    pairingView
+                } else if hasFailed {
+                    pairingFailedView
+                } else {
+                    form
                 }
-                .padding(.horizontal, AgentsLayout.margin)
-                .padding(.top, 12)
-                .padding(.bottom, 24)
             }
-            .scrollDismissesKeyboard(.interactively)
             .background { FlowCueScreenBackground() }
             .navigationTitle("Pair a Mac")
             .navigationBarTitleDisplayMode(.inline)
@@ -2642,7 +2631,9 @@ private struct PairMacSheet: View {
                 }
             }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                connectButton
+                if !isPairing && !hasFailed {
+                    connectButton
+                }
             }
             .task {
                 if !controller.isScanning { controller.startDiscovery() }
@@ -2655,6 +2646,96 @@ private struct PairMacSheet: View {
                 if connected { dismiss() }
             }
         }
+    }
+
+    private var isPairing: Bool { controller.isLoading }
+    private var hasFailed: Bool { !controller.isLoading && controller.lastError != nil }
+
+    private var form: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                codeSection
+                nearbySection
+                manualSection
+            }
+            .padding(.horizontal, AgentsLayout.margin)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
+        }
+        .scrollDismissesKeyboard(.interactively)
+    }
+
+    private var pairingView: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            AgentsRingSpinner(size: 34)
+            Text("Pairing with \(pairingDeviceName)")
+                .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.top, 18)
+            Text("Approve the code on your Mac")
+                .flowCueFont(12, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .padding(.top, 4)
+            Text(controller.pairingCode.map(String.init).joined(separator: " "))
+                .font(.system(size: 24, weight: .semibold, design: .monospaced))
+                .tracking(4)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.top, 18)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, AgentsLayout.margin)
+    }
+
+    private var pairingFailedView: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 0)
+            ZStack {
+                Circle().fill(FlowCueTheme.failure.opacity(0.16)).frame(width: 56, height: 56)
+                Image(systemName: "exclamationmark")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.failure)
+            }
+            Text("Pairing failed")
+                .flowCueFont(18, relativeTo: .title3, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.top, 14)
+            Text(controller.lastError ?? "The code expired or the Mac went offline.")
+                .flowCueFont(12, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+                .frame(maxWidth: 280)
+                .padding(.top, 6)
+            Button {
+                Task { await connect() }
+            } label: {
+                Text("Try again")
+                    .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
+                    .foregroundStyle(FlowCueTheme.onAccent)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Capsule().fill(FlowCueTheme.accent))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 18)
+            Button("Pair a different Mac") {
+                controller.lastError = nil
+                target = nil
+                showingManual = false
+            }
+            .flowCueFont(12, relativeTo: .caption)
+            .foregroundStyle(FlowCueTheme.textSecondary)
+            .padding(.top, 8)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, AgentsLayout.margin)
+    }
+
+    private var pairingDeviceName: String {
+        FlowCueLinkFormat.deviceName(target?.name ?? controller.lastAttempted?.name)
     }
 
     private var codeSection: some View {
@@ -2962,7 +3043,26 @@ private struct RemoteDeviceView: View {
     @Environment(\.dismiss) private var dismiss
 
     private var name: String {
-        FlowCueLinkFormat.deviceName(controller.selected?.name)
+        FlowCueLinkFormat.deviceName(controller.selected?.name ?? controller.lastAttempted?.name)
+    }
+
+    private var isOnline: Bool {
+        controller.isConnected && controller.lastError == nil
+    }
+
+    private var statusText: String {
+        if isOnline { return "Online · Wi-Fi" }
+        return controller.isConnected ? "Offline" : "Disconnected"
+    }
+
+    private var statusTint: Color {
+        isOnline ? FlowCueTheme.mint : (controller.isConnected ? FlowCueTheme.failure : FlowCueTheme.textSecondary)
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
     }
 
     var body: some View {
@@ -2983,19 +3083,25 @@ private struct RemoteDeviceView: View {
                         .foregroundStyle(FlowCueTheme.textPrimary)
                         .padding(.top, 14)
                     HStack(spacing: 5) {
-                        Circle()
-                            .fill(controller.isConnected ? FlowCueTheme.mint : FlowCueTheme.failure)
-                            .frame(width: 5, height: 5)
-                            .accessibilityHidden(true)
-                        Text(controller.isConnected ? "Online · Wi-Fi" : "Offline")
+                        if isOnline || controller.isConnected {
+                            Circle()
+                                .fill(statusTint)
+                                .frame(width: 5, height: 5)
+                        } else {
+                            Circle()
+                                .strokeBorder(statusTint, lineWidth: 1)
+                                .frame(width: 6, height: 6)
+                        }
+                        Text(statusText)
                     }
                     .flowCueFont(12, relativeTo: .caption)
-                    .foregroundStyle(controller.isConnected ? FlowCueTheme.mint : FlowCueTheme.failure)
+                    .foregroundStyle(statusTint)
                     .padding(.top, 6)
 
                     VStack(spacing: 0) {
                         infoRow("Latency", FlowCueLinkFormat.latency(controller.lastLatencyMs) ?? "—")
                         infoRow("Last sync", FlowCueLinkFormat.relative(controller.lastRefreshAt))
+                        infoRow("Version", appVersion, monospaced: true)
                         infoRow(
                             "Pairing",
                             FlowCueLinkFormat.fingerprint("\(name)|\(controller.pairingCode)"),
@@ -3012,33 +3118,48 @@ private struct RemoteDeviceView: View {
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 10) {
-                NavigationLink {
-                    chatDestination
-                } label: {
-                    Text("Open chat")
-                        .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
-                        .foregroundStyle(FlowCueTheme.onAccent)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Capsule().fill(FlowCueTheme.accent))
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Open chat")
+                if isOnline {
+                    NavigationLink {
+                        chatDestination
+                    } label: {
+                        Text("Open chat")
+                            .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                            .foregroundStyle(FlowCueTheme.onAccent)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Capsule().fill(FlowCueTheme.accent))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open chat")
 
-                Button {
-                    controller.disconnect()
-                    dismiss()
-                } label: {
-                    Text("Disconnect")
-                        .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
-                        .foregroundStyle(FlowCueTheme.textPrimary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 50)
-                        .background(Capsule().fill(FlowCueTheme.surface))
-                        .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+                    Button {
+                        controller.disconnect()
+                        dismiss()
+                    } label: {
+                        Text("Disconnect")
+                            .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                            .foregroundStyle(FlowCueTheme.textPrimary)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Capsule().fill(FlowCueTheme.surface))
+                            .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Disconnect from this Mac")
+                } else {
+                    Button {
+                        Task { await controller.retryLastAttempt() }
+                    } label: {
+                        Text("Reconnect")
+                            .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                            .foregroundStyle(FlowCueTheme.onAccent)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(Capsule().fill(FlowCueTheme.accent))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Reconnect")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Disconnect from this Mac")
             }
             .padding(.horizontal, AgentsLayout.margin)
             .padding(.top, 8)
@@ -5084,7 +5205,7 @@ private struct MeView: View {
 
     @State private var network = FlowCueNetworkMonitor()
     @State private var showingPaywall = false
-    @State private var showingPairing = false
+    @State private var showingPairing = MePreview.state == "pairing"
     @State private var showingDevice = false
     @State private var showingAppearance = MePreview.state == "appearance"
     @State private var showingLanguage = MePreview.state == "language"
