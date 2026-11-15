@@ -695,6 +695,7 @@ struct RerouteMobileApp: App {
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
     @AppStorage(FlowCueThemePreference.key) private var appearance = FlowCueThemePreference.system.rawValue
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
+    @State private var previewOnboarding = OnboardingPreview.isActive
 
     init() {
         let localStore = try? IdeaDockStore(
@@ -713,11 +714,12 @@ struct RerouteMobileApp: App {
         WindowGroup {
             Group {
                 if let store, let syncController {
-                    if hasSeenOnboarding {
+                    if hasSeenOnboarding && !previewOnboarding {
                         RootTabView(store: store, syncController: syncController, remoteController: remoteController)
                     } else {
                         OnboardingView {
                             hasSeenOnboarding = true
+                            previewOnboarding = false
                         }
                     }
                 } else {
@@ -6789,52 +6791,433 @@ private struct ProLockedView: View {
     }
 }
 
+/// 仅 DEBUG：--flowcue-onboarding 或 --flowcue-onboarding-page=N（1-based）直接预览。
+private enum OnboardingPreview {
+    static let isActive: Bool = {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("--flowcue-onboarding")
+            || arguments.contains { $0.hasPrefix("--flowcue-onboarding-page=") }
+        #else
+        return false
+        #endif
+    }()
+
+    static let initialPage: Int = {
+        #if DEBUG
+        guard let argument = ProcessInfo.processInfo.arguments.first(where: {
+            $0.hasPrefix("--flowcue-onboarding-page=")
+        }), let raw = Int(argument.dropFirst("--flowcue-onboarding-page=".count)), raw >= 1 else {
+            return 0
+        }
+        return min(raw - 1, 2)
+        #else
+        return 0
+        #endif
+    }()
+}
+
+private enum OnboardingVisualKind {
+    case capture
+    case sync
+    case privacy
+}
+
+private struct OnboardingPage {
+    let title: String
+    let body: String
+    let visual: OnboardingVisualKind
+
+    static let all: [OnboardingPage] = [
+        OnboardingPage(
+            title: "Catch the thought.",
+            body: "A quiet inbox for ideas, snippets, and next steps. Save now; decide later.",
+            visual: .capture
+        ),
+        OnboardingPage(
+            title: "Continue on iPhone.",
+            body: "With Pro, pair with your Mac on the same Wi-Fi. Read the last reply and send the next message.",
+            visual: .sync
+        ),
+        OnboardingPage(
+            title: "Private by default.",
+            body: "Your ideas stay yours — local first, private iCloud sync with Pro. No public feed, no ads, no tracking.",
+            visual: .privacy
+        )
+    ]
+}
+
 private struct OnboardingView: View {
     let onFinish: () -> Void
-    @State private var page = 0
 
-    private let pages: [(icon: String, title: String, body: String)] = [
-        ("sparkles", "Catch the thought before it disappears", "A quiet inbox for ideas, snippets, and next steps. Save now; decide later."),
-        ("iphone.and.macbook", "Capture on iPhone. Continue on Mac.", "FlowCue Pro keeps your ideas in sync and lets your Mac hand them to your coding agent."),
-        ("lock.shield", "Private by default", "Your ideas stay in your private iCloud account. No public feed, no ads, no tracking.")
-    ]
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var page = OnboardingPreview.initialPage
+
+    private let pages = OnboardingPage.all
 
     var body: some View {
         VStack(spacing: 0) {
+            topBar
+
             TabView(selection: $page) {
-                ForEach(pages.indices, id: \.self) { index in
-                    VStack(alignment: .leading, spacing: 18) {
-                        Spacer()
-                        Image(systemName: pages[index].icon)
-                            .font(.system(size: 52, weight: .semibold))
-                            .foregroundStyle(FlowCueTheme.mint)
-                        Text(pages[index].title)
-                            .font(.system(.largeTitle, design: .rounded, weight: .bold))
-                        Text(pages[index].body)
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(28)
-                    .tag(index)
+                ForEach(Array(pages.enumerated()), id: \.offset) { index, item in
+                    OnboardingPageView(page: item)
+                        .tag(index)
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .always))
-            VStack(spacing: 10) {
-                Button(page == pages.count - 1 ? "Get started" : "Continue") {
-                    if page == pages.count - 1 { onFinish() } else { withAnimation { page += 1 } }
-                }
-                .buttonStyle(.borderedProminent)
-                .tint(FlowCueTheme.accent)
-                .controlSize(.large)
-                .frame(maxWidth: .infinity)
-                Button("Skip") { onFinish() }
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(22)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+
+            bottomBar
         }
-        .background(FlowCueTheme.canvas)
+        .background { FlowCueScreenBackground() }
+    }
+
+    private var topBar: some View {
+        HStack(spacing: 8) {
+            ZStack {
+                Circle().fill(FlowCueTheme.surface)
+                Circle().strokeBorder(FlowCueTheme.hairline)
+                FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                    .frame(width: 16, height: 16)
+            }
+            .frame(width: 28, height: 28)
+
+            Text("FlowCue")
+                .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                .tracking(-0.14)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+
+            Spacer()
+
+            Button("Skip") {
+                onFinish()
+            }
+            .flowCueFont(12.5, relativeTo: .caption)
+            .foregroundStyle(FlowCueTheme.textSecondary)
+            .frame(minWidth: 44, minHeight: 44)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 6)
+    }
+
+    private var bottomBar: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 6) {
+                ForEach(pages.indices, id: \.self) { index in
+                    Capsule()
+                        .fill(index == page ? FlowCueTheme.accent : FlowCueTheme.textTertiary.opacity(0.4))
+                        .frame(width: index == page ? 20 : 6, height: 6)
+                        .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: page)
+                }
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Page \(page + 1) of \(pages.count)")
+
+            Button {
+                advance()
+            } label: {
+                Text(page == pages.count - 1 ? "Get started" : "Continue")
+                    .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                    .foregroundStyle(FlowCueTheme.onAccent)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Capsule().fill(FlowCueTheme.accent))
+            }
+            .buttonStyle(.plain)
+
+            Text("No account needed. Private by design.")
+                .flowCueFont(9.5, relativeTo: .caption2)
+                .foregroundStyle(FlowCueTheme.textTertiary)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+    }
+
+    private func advance() {
+        if page == pages.count - 1 {
+            onFinish()
+        } else if reduceMotion {
+            page += 1
+        } else {
+            withAnimation(.easeInOut(duration: 0.3)) {
+                page += 1
+            }
+        }
+    }
+}
+
+private struct OnboardingPageView: View {
+    let page: OnboardingPage
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                OnboardingVisual(kind: page.visual)
+
+                Text(page.title)
+                    .flowCueFont(28, relativeTo: .largeTitle, weight: .semibold)
+                    .tracking(-0.3)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 26)
+
+                Text(page.body)
+                    .flowCueFont(12.5, relativeTo: .caption)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 24)
+            .padding(.bottom, 24)
+        }
+        .scrollIndicators(.hidden)
+    }
+}
+
+private struct OnboardingVisual: View {
+    let kind: OnboardingVisualKind
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(FlowCueTheme.surface)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(FlowCueTheme.hairline)
+
+            switch kind {
+            case .capture:
+                OnboardingCapturePreview()
+            case .sync:
+                OnboardingSyncPreview()
+            case .privacy:
+                OnboardingPrivacyPreview()
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 230)
+        .accessibilityHidden(true)
+    }
+}
+
+private struct OnboardingCapturePreview: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 8) {
+                ZStack {
+                    Circle().fill(FlowCueTheme.canvas)
+                    Circle().strokeBorder(FlowCueTheme.hairline)
+                    FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                        .frame(width: 14, height: 14)
+                }
+                .frame(width: 24, height: 24)
+
+                Text("FlowCue")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+
+                Spacer()
+
+                Text("3 LOCAL")
+                    .font(.system(size: 8, weight: .medium))
+                    .tracking(0.6)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+
+            HStack(spacing: 8) {
+                Image(systemName: "plus")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                Text("Capture an idea")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                Spacer()
+                Image(systemName: "mic")
+                    .font(.system(size: 10))
+                    .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                ZStack {
+                    Circle().fill(FlowCueTheme.accent)
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                }
+                .frame(width: 26, height: 26)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 36)
+            .background(Capsule().fill(FlowCueTheme.canvas))
+            .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+
+            VStack(spacing: 0) {
+                OnboardingMiniIdeaRow(
+                    text: "Retry backoff feels too slow",
+                    meta: "DRAFT · 21:04",
+                    tint: FlowCueTheme.textSecondary
+                )
+                Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+                OnboardingMiniIdeaRow(
+                    text: "Character should blink once on save",
+                    meta: "QUEUED · 20:51",
+                    tint: FlowCueTheme.accent
+                )
+                Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+                OnboardingMiniIdeaRow(
+                    text: "Share sheet for Safari",
+                    meta: "QUEUED · 18:22",
+                    tint: FlowCueTheme.mint
+                )
+            }
+        }
+        .padding(14)
+    }
+}
+
+private struct OnboardingSyncPreview: View {
+    var body: some View {
+        VStack(spacing: 14) {
+            HStack(spacing: 8) {
+                OnboardingDeviceTile(icon: "laptopcomputer", title: "Mac", subtitle: "Online")
+                Image(systemName: "arrow.left.arrow.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.accent)
+                OnboardingDeviceTile(icon: "iphone", title: "iPhone", subtitle: "Same Wi-Fi")
+            }
+
+            HStack(spacing: 6) {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 8, weight: .semibold))
+                Text("Direct on your network · no relay")
+                    .font(.system(size: 8.5))
+            }
+            .foregroundStyle(FlowCueTheme.textSecondary)
+
+            HStack(spacing: 6) {
+                Image(systemName: "text.bubble")
+                    .font(.system(size: 9))
+                    .foregroundStyle(FlowCueTheme.accent)
+                Text("Read the last reply. Send the next message.")
+                    .font(.system(size: 8.5))
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+        }
+        .padding(14)
+    }
+}
+
+private struct OnboardingPrivacyPreview: View {
+    var body: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle().fill(FlowCueTheme.accentSoft).frame(width: 58, height: 58)
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 24, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.accent)
+            }
+
+            Text("Private iCloud")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(FlowCueTheme.textPrimary)
+
+            Text("Your own account. Your own ideas.")
+                .font(.system(size: 9))
+                .foregroundStyle(FlowCueTheme.textSecondary)
+
+            HStack(spacing: 6) {
+                OnboardingPrivacyChip(text: "No feed")
+                OnboardingPrivacyChip(text: "No ads")
+                OnboardingPrivacyChip(text: "No tracking")
+            }
+            .padding(.top, 2)
+        }
+        .padding(14)
+    }
+}
+
+private struct OnboardingDeviceTile: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+
+    var body: some View {
+        VStack(spacing: 6) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .fill(FlowCueTheme.canvas)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(FlowCueTheme.hairline)
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: .regular))
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+            }
+            .frame(width: 54, height: 54)
+
+            Text(title)
+                .font(.system(size: 10.5, weight: .semibold))
+                .foregroundStyle(FlowCueTheme.textPrimary)
+
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(FlowCueTheme.mint)
+                    .frame(width: 4, height: 4)
+                Text(subtitle)
+                    .font(.system(size: 8.5))
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                .fill(FlowCueTheme.canvas)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                .strokeBorder(FlowCueTheme.hairline)
+        )
+    }
+}
+
+private struct OnboardingMiniIdeaRow: View {
+    let text: String
+    let meta: String
+    let tint: Color
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 7) {
+            Circle()
+                .fill(tint)
+                .frame(width: 4, height: 4)
+                .padding(.top, 5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(text)
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                    .lineLimit(1)
+                Text(meta)
+                    .font(.system(size: 7.5))
+                    .tracking(0.4)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 7)
+    }
+}
+
+private struct OnboardingPrivacyChip: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(.system(size: 8, weight: .medium))
+            .foregroundStyle(FlowCueTheme.textSecondary)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(Capsule().fill(FlowCueTheme.canvas))
+            .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
     }
 }
