@@ -5531,6 +5531,7 @@ private struct MeView: View {
     @State private var showingPro = MePreview.state == "pro"
     @State private var showingArchive = MePreview.state == "archive"
     @State private var showingAbout = MePreview.state == "about"
+    @State private var showingFeedback = MePreview.state == "feedback"
 
     var body: some View {
         NavigationStack {
@@ -5608,6 +5609,9 @@ private struct MeView: View {
             }
             .navigationDestination(isPresented: $showingAbout) {
                 AboutView(showOnboarding: showOnboarding)
+            }
+            .navigationDestination(isPresented: $showingFeedback) {
+                FeedbackView()
             }
         }
     }
@@ -6220,6 +6224,23 @@ private struct AboutView: View {
                     Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
                     aboutLink("Terms of Use", destination: FlowCueProduct.termsURL)
                     Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+                    NavigationLink {
+                        FeedbackView()
+                    } label: {
+                        HStack {
+                            Text("Send feedback")
+                                .flowCueFont(13, relativeTo: .subheadline)
+                                .foregroundStyle(FlowCueTheme.textPrimary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                        }
+                        .padding(.vertical, 13)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
                     Button {
                         dismiss()
                         showOnboarding()
@@ -6274,6 +6295,184 @@ private struct AboutView: View {
         .buttonStyle(.plain)
     }
 }
+
+private enum FeedbackKind: String, CaseIterable, Identifiable {
+    case problem = "Problem"
+    case idea = "Idea"
+    case other = "Other"
+
+    var id: String { rawValue }
+}
+
+private struct FeedbackView: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
+    @AppStorage(FlowCueThemePreference.key) private var appearance = FlowCueThemePreference.system.rawValue
+
+    @State private var kind: FeedbackKind = .problem
+    @State private var message = ""
+    @State private var includeDiagnostics = true
+    @FocusState private var focused: Bool
+
+    private var trimmedMessage: String {
+        message.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
+    }
+
+    private var diagnostics: String {
+        """
+        — Diagnostics —
+        App: FlowCue \(appVersion)
+        Device: \(UIDevice.current.model)
+        iOS: \(UIDevice.current.systemVersion)
+        Appearance: \(FlowCueThemePreference.effectiveName(raw: appearance, scheme: colorScheme))
+        Language: \(AppLanguage(rawValue: language)?.displayName ?? language)
+        """
+    }
+
+    private var feedbackText: String {
+        var text = "\(kind.rawValue)\n\n\(trimmedMessage)"
+        if includeDiagnostics {
+            text += "\n\n\(diagnostics)"
+        }
+        return text
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Tell us what's not right")
+                    .flowCueFont(22, relativeTo: .title2, weight: .semibold)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                Text("No account needed. We read every note. Please don't include chat content.")
+                    .flowCueFont(11.5, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineSpacing(2)
+                    .padding(.top, 4)
+
+                typeChips
+                    .padding(.top, 18)
+
+                editor
+                    .padding(.top, 14)
+
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Attach diagnostics")
+                            .flowCueFont(13, relativeTo: .subheadline)
+                            .foregroundStyle(FlowCueTheme.textPrimary)
+                        Text("App version, device, iOS, language. No chat content.")
+                            .flowCueFont(10.5, relativeTo: .caption2)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                    }
+                    Spacer(minLength: 8)
+                    Toggle("", isOn: $includeDiagnostics)
+                        .labelsHidden()
+                        .tint(FlowCueTheme.accent)
+                        .accessibilityLabel("Attach diagnostics")
+                }
+                .padding(.top, 18)
+
+                Text("Screenshots can be attached in the share sheet.")
+                    .flowCueFont(10, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textTertiary)
+                    .padding(.top, 18)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
+            .padding(.bottom, 28)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .background { FlowCueScreenBackground() }
+        .navigationTitle("Feedback")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 6) {
+                ShareLink(item: feedbackText) {
+                    Text("Send feedback")
+                        .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 50)
+                        .background(Capsule().fill(FlowCueTheme.accent))
+                }
+                .disabled(trimmedMessage.isEmpty)
+                .opacity(trimmedMessage.isEmpty ? 0.45 : 1)
+
+                Text("No account needed. No chat content.")
+                    .flowCueFont(9.5, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textTertiary)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 8)
+            .padding(.bottom, 8)
+            .background(FlowCueTheme.canvas)
+        }
+    }
+
+    private var typeChips: some View {
+        HStack(spacing: 8) {
+            ForEach(FeedbackKind.allCases) { option in
+                Button {
+                    kind = option
+                } label: {
+                    Text(option.rawValue)
+                        .flowCueFont(12.5, relativeTo: .caption, weight: kind == option ? .semibold : .regular)
+                        .foregroundStyle(kind == option ? FlowCueTheme.onAccent : FlowCueTheme.textPrimary)
+                        .padding(.horizontal, 14)
+                        .frame(height: 34)
+                        .background(
+                            Capsule()
+                                .fill(kind == option ? FlowCueTheme.accent : FlowCueTheme.surface)
+                        )
+                        .overlay(
+                            Capsule()
+                                .strokeBorder(kind == option ? Color.clear : FlowCueTheme.hairline)
+                        )
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(kind == option ? .isSelected : [])
+            }
+        }
+    }
+
+    private var editor: some View {
+        ZStack(alignment: .topLeading) {
+            if message.isEmpty {
+                Text("What happened?")
+                    .flowCueFont(13, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.textTertiary)
+                    .padding(.horizontal, 18)
+                    .padding(.top, 14)
+                    .allowsHitTesting(false)
+            }
+            TextEditor(text: $message)
+                .focused($focused)
+                .scrollContentBackground(.hidden)
+                .flowCueFont(13, relativeTo: .subheadline)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .frame(minHeight: 180)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                .fill(FlowCueTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                .strokeBorder(focused ? FlowCueTheme.accent.opacity(0.6) : FlowCueTheme.hairline)
+        )
+    }
+}
+
 
 // MARK: - Paywall and onboarding
 
