@@ -805,7 +805,7 @@ private struct RootTabView: View {
         }
         .onOpenURL { url in
             guard url.scheme == "flowcue" else { return }
-            tab = .inbox
+            tab = url.host == "chat" ? .agents : .inbox
         }
         .sheet(isPresented: $showingSharePreview) {
             ShareExtensionView(
@@ -4417,6 +4417,7 @@ private struct ChatScreen: View {
     @State private var showingSwitcher = false
     @State private var showingDevice = false
     @State private var showingDisconnect = false
+    @State private var live = FlowCueLiveActivityController.shared
 
     private var target: ChatTarget { switchedTarget ?? initialTarget }
 
@@ -4494,6 +4495,9 @@ private struct ChatScreen: View {
         .task { network.start() }
         .onDisappear { network.stop() }
         .task(id: target.id) { await runChat() }
+        .onChange(of: displayMessages.last?.id) { _, _ in updateLiveActivity() }
+        .onChange(of: isWorking) { _, _ in updateLiveActivity() }
+        .onChange(of: pending?.state == .failed) { _, _ in updateLiveActivity() }
         .sheet(isPresented: $showingSwitcher) {
             ChatSwitcherSheet(
                 controller: controller,
@@ -4562,6 +4566,13 @@ private struct ChatScreen: View {
                 Menu {
                     Button("Refresh") {
                         Task { await reloadOnce() }
+                    }
+                    Button(live.isActive ? "Stop Live Activity" : "Start Live Activity") {
+                        if live.isActive {
+                            stopLiveActivity()
+                        } else {
+                            startLiveActivity()
+                        }
                     }
                     Button("Device info") {
                         showingDevice = true
@@ -4665,6 +4676,53 @@ private struct ChatScreen: View {
     }
 
     // MARK: Data
+
+    private var liveSessionTitle: String {
+        target.codexThread?.title ?? target.dshSession?.title ?? target.agentName
+    }
+
+    private func liveState(status: FlowCueActivityStatus) -> FlowCueActivityAttributes.ContentState {
+        let detailSource = displayMessages.last(where: { $0.role == "assistant" })?.text
+            ?? pending?.text
+            ?? "Waiting for the next reply"
+        let elapsed: String
+        if let startedAt = live.startedAt {
+            let seconds = max(0, Int(Date.now.timeIntervalSince(startedAt)))
+            elapsed = seconds < 60 ? "\(seconds)s" : "\(seconds / 60)m \(seconds % 60)s"
+        } else {
+            elapsed = "0s"
+        }
+        return FlowCueActivityAttributes.ContentState(
+            title: liveSessionTitle,
+            detail: String(detailSource.prefix(90)),
+            status: status,
+            elapsed: elapsed,
+            updatedAt: .now
+        )
+    }
+
+    private func startLiveActivity() {
+        guard !live.isActive else { return }
+        live.start(
+            attributes: FlowCueActivityAttributes(
+                sessionID: target.id,
+                agent: target.agentName,
+                startedAt: .now
+            ),
+            state: liveState(status: .running)
+        )
+    }
+
+    private func stopLiveActivity() {
+        guard live.isActive else { return }
+        live.stop(liveState(status: .completed))
+    }
+
+    private func updateLiveActivity() {
+        guard live.isActive else { return }
+        let failed = pending?.state == .failed
+        live.update(liveState(status: failed ? .failed : .running))
+    }
 
     private func runChat() async {
         loading = true
@@ -5640,6 +5698,7 @@ private struct MeView: View {
     @State private var showingAbout = MePreview.state == "about"
     @State private var showingFeedback = MePreview.state == "feedback"
     @State private var showingWidgets = MePreview.state == "widgets"
+    @State private var showingLiveActivity = MePreview.state == "liveactivity"
 
     var body: some View {
         NavigationStack {
@@ -5723,6 +5782,9 @@ private struct MeView: View {
             }
             .navigationDestination(isPresented: $showingWidgets) {
                 WidgetGalleryView()
+            }
+            .navigationDestination(isPresented: $showingLiveActivity) {
+                LiveActivityGalleryView()
             }
         }
     }
@@ -6668,6 +6730,74 @@ private struct WidgetGalleryView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                 .overlay(
                     RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(FlowCueTheme.hairline)
+                )
+        }
+    }
+}
+
+// MARK: - Live Activity gallery (DEBUG preview)
+
+private struct LiveActivityGalleryView: View {
+    private let attributes: FlowCueActivityAttributes = {
+        FlowCueActivityAttributes(
+            sessionID: "preview",
+            agent: "Codex",
+            startedAt: .now.addingTimeInterval(-122)
+        )
+    }()
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                card("RUNNING", state: state(
+                    .running,
+                    detail: "Editing CharacterView.swift",
+                    elapsed: "2m"
+                ))
+                card("COMPLETED", state: state(
+                    .completed,
+                    detail: "Changed 2 files · 3m 12s",
+                    elapsed: "3m 12s"
+                ))
+                card("FAILED", state: state(
+                    .failed,
+                    detail: "Permission denied — write confirmation needed",
+                    elapsed: "1m 40s"
+                ))
+            }
+            .padding(18)
+        }
+        .background { FlowCueScreenBackground() }
+        .navigationTitle("Live Activity")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+    }
+
+    private func state(
+        _ status: FlowCueActivityStatus,
+        detail: String,
+        elapsed: String
+    ) -> FlowCueActivityAttributes.ContentState {
+        FlowCueActivityAttributes.ContentState(
+            title: "Character should blink once on save",
+            detail: detail,
+            status: status,
+            elapsed: elapsed,
+            updatedAt: .now
+        )
+    }
+
+    private func card(_ title: String, state: FlowCueActivityAttributes.ContentState) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .flowCueFont(10, relativeTo: .caption2)
+                .tracking(1.0)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+            FlowCueLiveActivityLockScreenView(attributes: attributes, state: state)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .strokeBorder(FlowCueTheme.hairline)
                 )
         }

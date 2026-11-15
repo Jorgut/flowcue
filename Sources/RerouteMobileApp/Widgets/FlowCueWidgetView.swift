@@ -221,7 +221,7 @@ private struct WidgetPalette {
     var failure: Color { Color(hex: tokens.failure) }
 }
 
-private struct WidgetFaceMark: View {
+struct WidgetFaceMark: View {
     var ink: Color
     var smile: Color
 

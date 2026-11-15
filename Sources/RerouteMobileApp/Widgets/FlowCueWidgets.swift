@@ -52,5 +52,6 @@ struct FlowCueIdeasWidget: Widget {
 struct FlowCueWidgets: WidgetBundle {
     var body: some Widget {
         FlowCueIdeasWidget()
+        FlowCueLiveActivityWidget()
     }
 }

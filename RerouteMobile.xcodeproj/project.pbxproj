@@ -9,17 +9,23 @@
 /* Begin PBXBuildFile section */
 		09895B252C12785DAAAE3B4C /* FlowCueSharedCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAB2DA78F832E477418838E9 /* FlowCueSharedCapture.swift */; };
 		0B7624B3DC825DE37F4D29B3 /* FlowCueDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000050 /* FlowCueDesignTokens.swift */; };
+		18512EC28CE532D74D3C9E91 /* FlowCueLiveActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB8E35A98922C72F05B0BFD1 /* FlowCueLiveActivityView.swift */; };
+		38456561202B7E96C9F88216 /* FlowCueActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B806B76F975783839C768A9D /* FlowCueActivityAttributes.swift */; };
 		463F655843F2D1D30B82EA51 /* FlowCueDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000050 /* FlowCueDesignTokens.swift */; };
 		57AF54AAC3BA221B57BEC26C /* ShareExtensionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E97C14542DD6535EF46D4DD /* ShareExtensionView.swift */; };
 		6205EF3B1A2002EECF524F96 /* FlowCueWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D9B91518FD5CE2D92E67973 /* FlowCueWidgetSnapshot.swift */; };
 		70B0B2C5956669782D144BF6 /* ShareExtensionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E97C14542DD6535EF46D4DD /* ShareExtensionView.swift */; };
 		7845BB8FDA3CBA3BC9C98398 /* MobileAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000001 /* MobileAssets.xcassets */; };
 		7B63AC85E6B3D89739538513 /* FlowCueWidgetsExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 98D22AD83AF7AE07B8603E41 /* FlowCueWidgetsExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		95713800F4CD38F968525A34 /* FlowCueLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71B0675BC87B1719A11EDC23 /* FlowCueLiveActivityController.swift */; };
+		9F93860531ED2181F4F4BA95 /* FlowCueActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B806B76F975783839C768A9D /* FlowCueActivityAttributes.swift */; };
 		A405EE48F80752BCD1E4E480 /* FlowCueMobileTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000040 /* FlowCueMobileTheme.swift */; };
 		A7E14076680E076E1F560942 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46CF8E619C22915D53D3CB10 /* ShareViewController.swift */; };
+		AD66B9DC891E3764B1D6C061 /* FlowCueLiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90FBCBE15C15338CA047A256 /* FlowCueLiveActivityWidget.swift */; };
 		AE23D37F40CCE353518572ED /* FlowCueShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 4B1B856760554637E25AE225 /* FlowCueShareExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		B7264863660A15C72F390BEB /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15B23628291E03CACEF44C47 /* Foundation.framework */; };
 		BBF9EA60124722D89FA0B336 /* FlowCueWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B5183A562D5272BA79667F5 /* FlowCueWidgetView.swift */; };
+		BC5E09C52BF3FA4D7A3EE0D5 /* FlowCueLiveActivityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB8E35A98922C72F05B0BFD1 /* FlowCueLiveActivityView.swift */; };
 		BEDCB79A2152D0FE5529FA3E /* FlowCueMobileTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000040 /* FlowCueMobileTheme.swift */; };
 		C0DEA7B3D415E10401A63A15 /* FlowCueWidgetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B5183A562D5272BA79667F5 /* FlowCueWidgetView.swift */; };
 		C6D967B97D1841C33D4A1D03 /* FlowCueSharedCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAB2DA78F832E477418838E9 /* FlowCueSharedCapture.swift */; };
@@ -87,7 +93,9 @@
 		4B1B856760554637E25AE225 /* FlowCueShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FlowCueShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		64273DD49714C67ADC172586 /* FlowCueMobile.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = FlowCueMobile.entitlements; sourceTree = "<group>"; };
 		6B5183A562D5272BA79667F5 /* FlowCueWidgetView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowCueWidgetView.swift; sourceTree = "<group>"; };
+		71B0675BC87B1719A11EDC23 /* FlowCueLiveActivityController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowCueLiveActivityController.swift; sourceTree = "<group>"; };
 		8D9B91518FD5CE2D92E67973 /* FlowCueWidgetSnapshot.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowCueWidgetSnapshot.swift; sourceTree = "<group>"; };
+		90FBCBE15C15338CA047A256 /* FlowCueLiveActivityWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowCueLiveActivityWidget.swift; sourceTree = "<group>"; };
 		98D22AD83AF7AE07B8603E41 /* FlowCueWidgetsExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FlowCueWidgetsExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		9E97C14542DD6535EF46D4DD /* ShareExtensionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareExtensionView.swift; sourceTree = "<group>"; };
 		A00000000000000000000001 /* CaptureHostPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureHostPolicy.swift; sourceTree = "<group>"; };
@@ -103,12 +111,14 @@
 		B00000000000000000000040 /* FlowCueMobileTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowCueMobileTheme.swift; sourceTree = "<group>"; };
 		B00000000000000000000050 /* FlowCueDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../CodexIdeaDockCore/FlowCueDesignTokens.swift; sourceTree = "<group>"; };
 		B00000000000000000000060 /* FlowCueComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../CodexIdeaDockCore/FlowCueComponents.swift; sourceTree = "<group>"; };
+		B806B76F975783839C768A9D /* FlowCueActivityAttributes.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowCueActivityAttributes.swift; sourceTree = "<group>"; };
 		BAB2DA78F832E477418838E9 /* FlowCueSharedCapture.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowCueSharedCapture.swift; sourceTree = "<group>"; };
 		C00000000000000000000001 /* MobileAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = MobileAssets.xcassets; sourceTree = "<group>"; };
 		C00000000000000000000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		C00000000000000000000003 /* MobileInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = MobileInfo.plist; sourceTree = "<group>"; };
 		C00000000000000000000004 /* AppStore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AppStore.entitlements; sourceTree = "<group>"; };
 		C07DD7DC6F50AF7C48D79D74 /* FlowCueWidgets.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = FlowCueWidgets.entitlements; sourceTree = "<group>"; };
+		FB8E35A98922C72F05B0BFD1 /* FlowCueLiveActivityView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowCueLiveActivityView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -193,6 +203,7 @@
 				BAB2DA78F832E477418838E9 /* FlowCueSharedCapture.swift */,
 				FDE2D791658DBB6200CCA839 /* ShareExtension */,
 				A5C3553C74F3518EF3B2456D /* Widgets */,
+				80429AE87816790B3B4297E9 /* LiveActivity */,
 			);
 			path = RerouteMobileApp;
 			sourceTree = "<group>";
@@ -222,6 +233,18 @@
 				15B23628291E03CACEF44C47 /* Foundation.framework */,
 			);
 			name = iOS;
+			sourceTree = "<group>";
+		};
+		80429AE87816790B3B4297E9 /* LiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				B806B76F975783839C768A9D /* FlowCueActivityAttributes.swift */,
+				FB8E35A98922C72F05B0BFD1 /* FlowCueLiveActivityView.swift */,
+				71B0675BC87B1719A11EDC23 /* FlowCueLiveActivityController.swift */,
+				90FBCBE15C15338CA047A256 /* FlowCueLiveActivityWidget.swift */,
+			);
+			name = LiveActivity;
+			path = LiveActivity;
 			sourceTree = "<group>";
 		};
 		A5C3553C74F3518EF3B2456D /* Widgets */ = {
@@ -392,6 +415,9 @@
 				70B0B2C5956669782D144BF6 /* ShareExtensionView.swift in Sources */,
 				D5A2D2DA7AE5860474CEEF02 /* FlowCueWidgetSnapshot.swift in Sources */,
 				C0DEA7B3D415E10401A63A15 /* FlowCueWidgetView.swift in Sources */,
+				9F93860531ED2181F4F4BA95 /* FlowCueActivityAttributes.swift in Sources */,
+				18512EC28CE532D74D3C9E91 /* FlowCueLiveActivityView.swift in Sources */,
+				95713800F4CD38F968525A34 /* FlowCueLiveActivityController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -404,6 +430,9 @@
 				6205EF3B1A2002EECF524F96 /* FlowCueWidgetSnapshot.swift in Sources */,
 				BEDCB79A2152D0FE5529FA3E /* FlowCueMobileTheme.swift in Sources */,
 				463F655843F2D1D30B82EA51 /* FlowCueDesignTokens.swift in Sources */,
+				38456561202B7E96C9F88216 /* FlowCueActivityAttributes.swift in Sources */,
+				BC5E09C52BF3FA4D7A3EE0D5 /* FlowCueLiveActivityView.swift in Sources */,
+				AD66B9DC891E3764B1D6C061 /* FlowCueLiveActivityWidget.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -479,7 +508,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueMobile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -509,7 +538,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueMobile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -540,7 +569,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -571,7 +600,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/Widgets/FlowCueWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -602,7 +631,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/Widgets/FlowCueWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -634,7 +663,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 38;
+				CURRENT_PROJECT_VERSION = 39;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
