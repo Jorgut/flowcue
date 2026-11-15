@@ -1143,6 +1143,14 @@ private enum HomePreview {
         #endif
     }()
 
+    static let archivedSamples: [CaptureItem] = {
+        #if DEBUG
+        [sample("Old widget idea", hour: 16, minute: 10, status: .archived)]
+        #else
+        []
+        #endif
+    }()
+
     #if DEBUG
     private static func sample(
         _ text: String,
@@ -1638,9 +1646,15 @@ private struct ScrollViewOffsetReader: View {
 
 // MARK: - Search
 
+private enum SearchScope {
+    case all
+    case archived
+}
+
 private struct SearchView: View {
     @Bindable var store: IdeaDockStore
     let startVoice: Bool
+    var scope: SearchScope = .all
 
     @Environment(\.dismiss) private var dismiss
     @State private var query = SearchPreview.requestedQuery ?? ""
@@ -1659,7 +1673,8 @@ private struct SearchView: View {
     private var results: [CaptureItem] {
         guard !normalizedQuery.isEmpty else { return [] }
         return searchCaptures.filter { capture in
-            capture.text.localizedCaseInsensitiveContains(normalizedQuery)
+            if scope == .archived, capture.status != .archived { return false }
+            return capture.text.localizedCaseInsensitiveContains(normalizedQuery)
                 || capture.sourceTitle?.localizedCaseInsensitiveContains(normalizedQuery) == true
                 || capture.targetTitle?.localizedCaseInsensitiveContains(normalizedQuery) == true
         }
@@ -1667,7 +1682,11 @@ private struct SearchView: View {
 
     private var searchCaptures: [CaptureItem] {
         #if DEBUG
-        if HomePreview.usesSamples { return HomePreview.samples }
+        if HomePreview.usesSamples {
+            return scope == .archived
+                ? HomePreview.archivedSamples
+                : HomePreview.samples + HomePreview.archivedSamples
+        }
         #endif
         return store.captures
     }
@@ -1729,7 +1748,7 @@ private struct SearchView: View {
                     .foregroundStyle(FlowCueTheme.textSecondary)
                     .accessibilityHidden(true)
 
-                TextField("Search your ideas", text: $query)
+                TextField(scope == .archived ? "Search archive" : "Search your ideas", text: $query)
                     .flowCueFont(12.5, relativeTo: .caption)
                     .foregroundStyle(FlowCueTheme.textPrimary)
                     .textInputAutocapitalization(.never)
@@ -1818,7 +1837,7 @@ private struct SearchView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 28, weight: .regular))
                 .foregroundStyle(FlowCueTheme.textTertiary)
-            Text("Search your ideas")
+            Text(scope == .archived ? "Search archived ideas" : "Search your ideas")
                 .flowCueFont(16, relativeTo: .headline, weight: .semibold)
                 .foregroundStyle(FlowCueTheme.textPrimary)
             Text("Titles, source, and agent target.")
@@ -6102,27 +6121,44 @@ private struct ProStatusSheet: View {
 
 private struct ArchiveView: View {
     @Bindable var store: IdeaDockStore
+    @State private var showingSearch = false
 
     private var archived: [CaptureItem] {
-        store.captures.filter { $0.status == .archived }
+        #if DEBUG
+        if HomePreview.usesSamples { return HomePreview.archivedSamples }
+        #endif
+        return store.captures.filter { $0.status == .archived }
     }
 
     var body: some View {
         ScrollView {
-            if archived.isEmpty {
-                emptyState
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(archived) { capture in
-                        archiveRow(capture)
-                        Rectangle()
-                            .fill(FlowCueTheme.hairline)
-                            .frame(height: 1)
-                            .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 0) {
+                if archived.isEmpty {
+                    emptyState
+                } else {
+                    searchEntry
+                        .padding(.horizontal, 18)
+                        .padding(.top, 10)
+
+                    Text("\(archived.count) ARCHIVED")
+                        .flowCueFont(10, relativeTo: .caption2)
+                        .tracking(1.0)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 16)
+
+                    VStack(spacing: 0) {
+                        ForEach(archived) { capture in
+                            archiveRow(capture)
+                            Rectangle()
+                                .fill(FlowCueTheme.hairline)
+                                .frame(height: 1)
+                                .accessibilityHidden(true)
+                        }
                     }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 2)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 8)
             }
         }
         .background { FlowCueScreenBackground() }
@@ -6130,6 +6166,35 @@ private struct ArchiveView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .navigationDestination(isPresented: $showingSearch) {
+            SearchView(store: store, startVoice: false, scope: .archived)
+        }
+    }
+
+    private var searchEntry: some View {
+        Button {
+            showingSearch = true
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 15))
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                Text("Search archive")
+                    .flowCueFont(12.5, relativeTo: .caption)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 13)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .background(
+            Capsule()
+                .fill(FlowCueTheme.surface)
+                .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+        )
+        .accessibilityLabel("Search archive")
     }
 
     private var emptyState: some View {
