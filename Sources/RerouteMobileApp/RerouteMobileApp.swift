@@ -2276,7 +2276,7 @@ private struct AgentsView: View {
                 network.stop()
                 controller.stopDiscovery()
             }
-            .sheet(isPresented: $showingPaywall) { PaywallView() }
+            .fullScreenCover(isPresented: $showingPaywall) { PaywallView() }
             .sheet(isPresented: $showingPairing) {
                 PairMacSheet(controller: controller)
                     .presentationDetents([.large])
@@ -5204,7 +5204,7 @@ private struct MeView: View {
     @AppStorage(FlowCueThemePreference.key) private var appearance = FlowCueThemePreference.system.rawValue
 
     @State private var network = FlowCueNetworkMonitor()
-    @State private var showingPaywall = false
+    @State private var showingPaywall = MePreview.state == "paywall"
     @State private var showingPairing = MePreview.state == "pairing"
     @State private var showingDevice = false
     @State private var showingAppearance = MePreview.state == "appearance"
@@ -5258,7 +5258,7 @@ private struct MeView: View {
             .toolbar(.hidden, for: .navigationBar)
             .task { network.start() }
             .onDisappear { network.stop() }
-            .sheet(isPresented: $showingPaywall) {
+            .fullScreenCover(isPresented: $showingPaywall) {
                 PaywallView()
             }
             .sheet(isPresented: $showingPairing) {
@@ -5961,117 +5961,287 @@ private struct AboutView: View {
 private struct PaywallView: View {
     @Environment(SubscriptionManager.self) private var subscription
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.colorScheme) private var colorScheme
     @State private var selectedID: String?
     @State private var purchasing = false
+    @State private var showingAppearance = false
+
+    private var monthly: Product? {
+        subscription.products.first { $0.id == FlowCueProduct.monthly }
+    }
+
+    private var yearly: Product? {
+        subscription.products.first { $0.id == FlowCueProduct.yearly }
+    }
 
     private var selectedProduct: Product? {
-        subscription.products.first { $0.id == selectedID } ?? subscription.products.first
+        if let selectedID, let product = subscription.products.first(where: { $0.id == selectedID }) {
+            return product
+        }
+        return monthly ?? yearly ?? subscription.products.first
+    }
+
+    private var isSelectedMonthly: Bool {
+        selectedProduct?.id == monthly?.id
+    }
+
+    private var ctaTitle: String {
+        if purchasing { return "Purchasing…" }
+        if let product = selectedProduct, let trial = subscription.trialDescription(for: product) {
+            return "Start \(trial)"
+        }
+        return "Continue with FlowCue Pro"
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Image(systemName: "sparkles")
-                            .font(.system(size: 32, weight: .semibold))
-                            .foregroundStyle(FlowCueTheme.mint)
-                        Text("FlowCue Pro").font(.system(.largeTitle, design: .rounded, weight: .bold))
-                        Text("Your ideas, available on every device — and ready to continue on your Mac.")
-                            .font(.body).foregroundStyle(.secondary)
-                    }
-                    VStack(alignment: .leading, spacing: 14) {
-                        FeatureLine(icon: "arrow.triangle.2.circlepath.icloud", text: "Private iCloud sync across iPhone and Mac")
-                        FeatureLine(icon: "text.bubble", text: "Read the last reply from your coding agent")
-                        FeatureLine(icon: "paperplane", text: "Send the next message from your phone")
-                        FeatureLine(icon: "lock.shield", text: "Same iCloud account; no public relay")
-                    }
-                    if subscription.isLoading {
-                        ProgressView().frame(maxWidth: .infinity)
-                    } else if subscription.products.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Subscriptions are not available right now.")
-                                .font(.subheadline)
-                            Text("Make sure the app is connected to the App Store, then try again.")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
+        ZStack(alignment: .topTrailing) {
+            paywallBackground
+            VStack(spacing: 0) {
+                HStack {
+                    Spacer()
+                    closeButton
+                }
+                .padding(.horizontal, 18)
+                .padding(.top, 14)
+
+                ScrollView {
+                    if subscription.isPro {
+                        proContent
                     } else {
-                        VStack(spacing: 10) {
-                            ForEach(subscription.products, id: \.id) { product in
-                                Button {
-                                    selectedID = product.id
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(product.displayName).font(.headline)
-                                            if let trial = subscription.trialDescription(for: product) {
-                                                Text(trial).font(.caption).foregroundStyle(FlowCueTheme.mint)
-                                            }
-                                        }
-                                        Spacer()
-                                        Text(product.displayPrice).font(.headline)
-                                        Image(systemName: selectedProduct?.id == product.id ? "checkmark.circle.fill" : "circle")
-                                            .foregroundStyle(selectedProduct?.id == product.id ? FlowCueTheme.accent : Color.secondary)
-                                    }
-                                    .padding(16)
-                                    .background(FlowCueTheme.surface, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            Button {
-                                guard let selectedProduct else { return }
-                                purchasing = true
-                                Task {
-                                    await subscription.purchase(selectedProduct)
-                                    purchasing = false
-                                }
-                            } label: {
-                                Text(purchasing ? "Purchasing…" : "Continue")
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 4)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(FlowCueTheme.accent)
-                            .disabled(purchasing || selectedProduct == nil)
-                        }
-                    }
-                    Button("Restore purchases") { Task { await subscription.restore() } }
-                        .font(.footnote)
-                    if let error = subscription.lastError {
-                        Text(error).font(.caption).foregroundStyle(.red)
-                    }
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Subscriptions renew automatically unless cancelled at least 24 hours before the end of the current period. Manage or cancel in App Store settings.")
-                            .font(.caption).foregroundStyle(.secondary)
-                        HStack(spacing: 16) {
-                            Link("Privacy Policy", destination: FlowCueProduct.privacyURL)
-                            Link("Terms of Use", destination: FlowCueProduct.termsURL)
-                        }
-                        .font(.caption)
+                        purchaseContent
                     }
                 }
-                .padding(22)
+                .scrollIndicators(.hidden)
+
+                if !subscription.isPro {
+                    footer
+                }
             }
-            .background(FlowCueTheme.canvas)
-            .navigationTitle("FlowCue Pro")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
-            .onChange(of: subscription.isPro) { _, isPro in if isPro { dismiss() } }
-            .task { if subscription.products.isEmpty { await subscription.refresh() } }
         }
+        .sheet(isPresented: $showingAppearance) {
+            AppearanceSheet()
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
+        .task {
+            if subscription.products.isEmpty { await subscription.refresh() }
+        }
+    }
+
+    private var paywallBackground: some View {
+        ZStack {
+            FlowCueTheme.canvas
+            RadialGradient(
+                colors: [FlowCueTheme.accent.opacity(colorScheme == .dark ? 0.30 : 0.16), .clear],
+                center: UnitPoint(x: 0.5, y: 0.08),
+                startRadius: 0,
+                endRadius: 480
+            )
+        }
+        .ignoresSafeArea()
+    }
+
+    private var closeButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(FlowCueTheme.surface))
+                .overlay(Circle().strokeBorder(FlowCueTheme.hairline))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Close")
+    }
+
+    private var purchaseContent: some View {
+        VStack(spacing: 0) {
+            FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
+                .frame(width: 64, height: 64)
+                .padding(.top, 16)
+
+            Text("FlowCue Pro")
+                .flowCueFont(30, relativeTo: .largeTitle, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.top, 16)
+
+            Text("Everything unlocked, on every device.")
+                .flowCueFont(12.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 6)
+
+            VStack(alignment: .leading, spacing: 14) {
+                PaywallBenefitRow(icon: "play.rectangle.fill", text: "Remote sessions from your Mac")
+                PaywallBenefitRow(icon: "icloud.fill", text: "Sync across iPhone and Mac")
+                PaywallBenefitRow(icon: "checkmark.shield.fill", text: "Approve DSH commands from your phone")
+            }
+            .frame(maxWidth: 300, alignment: .leading)
+            .padding(.top, 30)
+            .padding(.bottom, 28)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var proContent: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                Circle().fill(FlowCueTheme.mint.opacity(0.14)).frame(width: 56, height: 56)
+                Image(systemName: "checkmark")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.mint)
+            }
+            .padding(.top, 80)
+
+            Text("You're Pro")
+                .flowCueFont(24, relativeTo: .title2, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .padding(.top, 16)
+
+            Text("Remote sessions and iCloud sync are active.")
+                .flowCueFont(12.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 6)
+
+            Button {
+                showingAppearance = true
+            } label: {
+                Text("Pick a theme")
+                    .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                    .foregroundStyle(FlowCueTheme.onAccent)
+                    .frame(maxWidth: 300)
+                    .frame(height: 50)
+                    .background(Capsule().fill(FlowCueTheme.accent))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 24)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private var footer: some View {
+        VStack(spacing: 12) {
+            if subscription.isLoading {
+                ProgressView()
+                    .tint(FlowCueTheme.accent)
+                    .frame(height: 50)
+            } else if subscription.products.isEmpty {
+                VStack(spacing: 6) {
+                    Text("Subscriptions are unavailable right now.")
+                        .flowCueFont(12, relativeTo: .caption)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                    Button("Try again") {
+                        Task { await subscription.refresh() }
+                    }
+                    .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                    .foregroundStyle(FlowCueTheme.accent)
+                }
+                .frame(maxWidth: .infinity)
+            } else {
+                priceSelector
+                purchaseButton
+            }
+
+            if let error = subscription.lastError {
+                Text(error)
+                    .flowCueFont(10.5, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.failure)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+            }
+
+            Text("Auto-renews. Cancel anytime in App Store settings.")
+                .flowCueFont(9.5, relativeTo: .caption2)
+                .foregroundStyle(FlowCueTheme.textTertiary)
+
+            HStack(spacing: 18) {
+                Button("Restore") { Task { await subscription.restore() } }
+                Link("Terms", destination: FlowCueProduct.termsURL)
+                Link("Privacy", destination: FlowCueProduct.privacyURL)
+            }
+            .flowCueFont(10.5, relativeTo: .caption2)
+            .foregroundStyle(FlowCueTheme.textSecondary)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 8)
+        .padding(.bottom, 8)
+    }
+
+    private var priceSelector: some View {
+        HStack(spacing: 6) {
+            if let monthly {
+                priceButton(monthly, suffix: "/ month")
+            }
+            if monthly != nil, yearly != nil {
+                Text("·")
+                    .flowCueFont(10.5, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textTertiary)
+            }
+            if let yearly {
+                priceButton(yearly, suffix: "/ year", leadingWord: monthly == nil ? nil : "or")
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func priceButton(_ product: Product, suffix: String, leadingWord: String? = nil) -> some View {
+        let selected = selectedProduct?.id == product.id
+        return Button {
+            selectedID = product.id
+        } label: {
+            Text("\(leadingWord.map { "\($0) " } ?? "")\(product.displayPrice) \(suffix)")
+                .flowCueFont(10.5, relativeTo: .caption2, weight: selected ? .semibold : .regular)
+                .foregroundStyle(selected ? FlowCueTheme.textPrimary : FlowCueTheme.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    private var purchaseButton: some View {
+        Button {
+            guard let product = selectedProduct else { return }
+            purchasing = true
+            Task {
+                await subscription.purchase(product)
+                purchasing = false
+            }
+        } label: {
+            HStack(spacing: 8) {
+                if purchasing {
+                    ProgressView()
+                        .tint(FlowCueTheme.onAccent)
+                }
+                Text(ctaTitle)
+                    .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+            }
+            .foregroundStyle(FlowCueTheme.onAccent)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(Capsule().fill(FlowCueTheme.accent))
+        }
+        .buttonStyle(.plain)
+        .disabled(purchasing || selectedProduct == nil)
     }
 }
 
-private struct FeatureLine: View {
+private struct PaywallBenefitRow: View {
     let icon: String
     let text: String
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .frame(width: 28, height: 28)
-                .background(FlowCueTheme.accent.opacity(0.12), in: Circle())
+                .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(FlowCueTheme.accent)
-            Text(text).font(.subheadline)
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(FlowCueTheme.accentSoft))
+            Text(text)
+                .flowCueFont(12.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
