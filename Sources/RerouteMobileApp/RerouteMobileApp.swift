@@ -1085,6 +1085,16 @@ private enum HomeStatus {
         }
     }
 
+    static func title(_ status: CaptureStatus) -> String {
+        switch status {
+        case .draft, .saved: "Draft"
+        case .queueing, .queued: "Queued"
+        case .failed: "Failed"
+        case .unknown: "Needs check"
+        case .archived: "Archived"
+        }
+    }
+
     static func tint(_ status: CaptureStatus) -> Color {
         switch status {
         case .draft, .saved: FlowCueTheme.textSecondary
@@ -1156,6 +1166,23 @@ private enum HomePreview {
     #endif
 }
 
+/// 仅 DEBUG：直接打开 Search 并带查询，用于截图走查。
+private enum SearchPreview {
+    static let requestedQuery: String? = {
+        #if DEBUG
+        guard let argument = ProcessInfo.processInfo.arguments.first(where: {
+            $0.hasPrefix("--flowcue-search=")
+        }) else { return nil }
+        return String(argument.dropFirst("--flowcue-search=".count))
+        #else
+        return nil
+        #endif
+    }()
+
+    static var isActive: Bool { requestedQuery != nil }
+    static let seedRecent = ["character", "blink", "backoff"]
+}
+
 @MainActor
 @Observable
 private final class FlowCueNetworkMonitor {
@@ -1190,15 +1217,14 @@ private struct InboxView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var filter: HomeFilter = .all
     @State private var network = FlowCueNetworkMonitor()
-    @State private var searchDictation = VoiceDictation()
-    @State private var searchBase = ""
+    @State private var showingSearch = SearchPreview.isActive
+    @State private var startSearchVoice = false
     @State private var chipsCollapsed = false
     @State private var lastScrollOffset: CGFloat = 0
     @State private var hasCompletedInitialSync = false
     @FocusState private var captureFocused: Bool
     @ScaledMetric(relativeTo: .caption) private var searchHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .caption) private var chipHeight: CGFloat = 26
-    @FocusState private var searchFocused: Bool
 
     var body: some View {
         NavigationStack {
@@ -1225,34 +1251,22 @@ private struct InboxView: View {
                     }
                 }
                 HomeCaptureBar(store: store, focused: $captureFocused)
-                if !captureFocused && !searchFocused {
+                if !captureFocused {
                     FlowCueTabBar(selection: $tab)
                         .transition(.opacity)
                 }
             }
             .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: captureFocused)
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: searchFocused)
             .background { FlowCueScreenBackground() }
             .toolbar(.hidden, for: .navigationBar)
+            .navigationDestination(isPresented: $showingSearch) {
+                SearchView(store: store, startVoice: startSearchVoice)
+            }
             .task { network.start() }
             .onChange(of: syncController.isSyncing) { _, isSyncing in
                 if !isSyncing { hasCompletedInitialSync = true }
             }
-            .onDisappear {
-                network.stop()
-                searchDictation.stop()
-            }
-            .alert(
-                "Voice input unavailable",
-                isPresented: Binding(
-                    get: { searchDictation.error != nil },
-                    set: { if !$0 { searchDictation.error = nil } }
-                )
-            ) {
-                Button("OK", role: .cancel) { searchDictation.error = nil }
-            } message: {
-                Text(searchDictation.error ?? "")
-            }
+            .onDisappear { network.stop() }
         }
     }
 
@@ -1282,31 +1296,41 @@ private struct InboxView: View {
     }
 
     private var searchField: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 15))
-                .foregroundStyle(FlowCueTheme.textSecondary)
-                .accessibilityHidden(true)
-            TextField("Search your ideas", text: $store.searchText)
-                .flowCueFont(12.5, relativeTo: .caption)
-                .foregroundStyle(FlowCueTheme.textPrimary)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .focused($searchFocused)
-                .submitLabel(.search)
+        HStack(spacing: 0) {
             Button {
-                toggleSearchDictation()
+                startSearchVoice = false
+                showingSearch = true
             } label: {
-                Image(systemName: searchDictation.isRecording ? "waveform" : "mic")
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 15))
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .accessibilityHidden(true)
+                    Text("Search your ideas")
+                        .flowCueFont(12.5, relativeTo: .caption)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                    Spacer(minLength: 8)
+                }
+                .padding(.leading, 13)
+                .frame(minHeight: searchHeight)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Search your ideas")
+
+            Button {
+                startSearchVoice = true
+                showingSearch = true
+            } label: {
+                Image(systemName: "mic")
                     .font(.system(size: 14))
-                    .foregroundStyle(searchDictation.isRecording ? FlowCueTheme.accent : FlowCueTheme.textSecondary.opacity(0.7))
+                    .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
                     .frame(width: 42, height: searchHeight)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(searchDictation.isRecording ? "Stop voice search" : "Search by voice")
+            .accessibilityLabel("Search by voice")
         }
-        .padding(.leading, 13)
         .padding(.trailing, 4)
         .frame(minHeight: searchHeight)
         .background(
@@ -1409,15 +1433,10 @@ private struct InboxView: View {
 
     private var filteredEmptyState: some View {
         VStack(spacing: 10) {
-            Text(
-                store.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? "No \(filter.title.lowercased()) ideas"
-                    : "No ideas match your search"
-            )
-            .flowCueFont(14, relativeTo: .subheadline)
-            .foregroundStyle(FlowCueTheme.textSecondary)
+            Text("No \(filter.title.lowercased()) ideas")
+                .flowCueFont(14, relativeTo: .subheadline)
+                .foregroundStyle(FlowCueTheme.textSecondary)
             Button("Show all ideas") {
-                store.searchText = ""
                 filter = .all
             }
             .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
@@ -1455,21 +1474,15 @@ private struct InboxView: View {
     }
 
     private var visibleIdeas: [CaptureItem] {
-        let normalizedSearch = store.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return baseCaptures.filter { capture in
-            guard capture.status != .draft, filter.matches(capture.status) else { return false }
-            guard !normalizedSearch.isEmpty else { return true }
-            return capture.text.localizedCaseInsensitiveContains(normalizedSearch)
-                || capture.sourceTitle?.localizedCaseInsensitiveContains(normalizedSearch) == true
-                || capture.targetTitle?.localizedCaseInsensitiveContains(normalizedSearch) == true
+        baseCaptures.filter { capture in
+            capture.status != .draft && filter.matches(capture.status)
         }
     }
 
     private var showsEmptyState: Bool {
         guard visibleIdeas.isEmpty else { return false }
         if HomePreview.forcesEmpty { return true }
-        let normalizedSearch = store.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return activeIdeas.isEmpty && normalizedSearch.isEmpty && filter == .all
+        return activeIdeas.isEmpty && filter == .all
     }
 
     private var sectionHeader: some View {
@@ -1595,16 +1608,6 @@ private struct InboxView: View {
         }
     }
 
-    private func toggleSearchDictation() {
-        if searchDictation.isRecording {
-            searchDictation.stop()
-            return
-        }
-        searchBase = store.searchText
-        searchDictation.start { transcript in
-            store.searchText = searchBase.isEmpty ? transcript : searchBase + " " + transcript
-        }
-    }
 }
 
 private enum HomeScrollSpace {
@@ -1630,6 +1633,322 @@ private struct ScrollViewOffsetReader: View {
         .accessibilityHidden(true)
     }
 }
+
+// MARK: - Search
+
+private struct SearchView: View {
+    @Bindable var store: IdeaDockStore
+    let startVoice: Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = SearchPreview.requestedQuery ?? ""
+    @State private var recent: [String] = []
+    @State private var didPrepare = false
+    @State private var dictation = VoiceDictation()
+    @State private var dictationBase = ""
+    @FocusState private var focused: Bool
+
+    private static let recentKey = "FlowCue.recentSearches"
+
+    private var normalizedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var results: [CaptureItem] {
+        guard !normalizedQuery.isEmpty else { return [] }
+        return searchCaptures.filter { capture in
+            capture.text.localizedCaseInsensitiveContains(normalizedQuery)
+                || capture.sourceTitle?.localizedCaseInsensitiveContains(normalizedQuery) == true
+                || capture.targetTitle?.localizedCaseInsensitiveContains(normalizedQuery) == true
+        }
+    }
+
+    private var searchCaptures: [CaptureItem] {
+        #if DEBUG
+        if HomePreview.usesSamples { return HomePreview.samples }
+        #endif
+        return store.captures
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            searchHeader
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    if !recent.isEmpty {
+                        recentChips
+                    }
+                    if normalizedQuery.isEmpty {
+                        if recent.isEmpty { emptyHint }
+                    } else if results.isEmpty {
+                        noResults
+                    } else {
+                        resultsSection
+                    }
+                }
+            }
+            .scrollDismissesKeyboard(.interactively)
+        }
+        .background { FlowCueScreenBackground() }
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear(perform: prepare)
+        .onDisappear { dictation.stop() }
+        .alert(
+            "Voice input unavailable",
+            isPresented: Binding(
+                get: { dictation.error != nil },
+                set: { if !$0 { dictation.error = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { dictation.error = nil }
+        } message: {
+            Text(dictation.error ?? "")
+        }
+    }
+
+    private var searchHeader: some View {
+        HStack(spacing: 8) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back")
+
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 15))
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .accessibilityHidden(true)
+
+                TextField("Search your ideas", text: $query)
+                    .flowCueFont(12.5, relativeTo: .caption)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .focused($focused)
+                    .submitLabel(.search)
+                    .onSubmit { remember(normalizedQuery) }
+
+                if dictation.isRecording {
+                    Button {
+                        dictation.stop()
+                    } label: {
+                        Image(systemName: "waveform")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(FlowCueTheme.accent)
+                            .frame(width: 30, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Stop voice search")
+                } else if !query.isEmpty {
+                    Button {
+                        query = ""
+                        focused = true
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15))
+                            .foregroundStyle(FlowCueTheme.textTertiary)
+                            .frame(width: 30, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+                }
+            }
+            .padding(.leading, 13)
+            .padding(.trailing, 6)
+            .frame(minHeight: 44)
+            .background(
+                Capsule()
+                    .fill(FlowCueTheme.surface)
+                    .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+            )
+        }
+        .padding(.horizontal, 12)
+        .padding(.top, 6)
+    }
+
+    private var recentChips: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("RECENT")
+                .flowCueFont(10, relativeTo: .caption2)
+                .tracking(1.0)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .padding(.horizontal, 18)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(recent, id: \.self) { term in
+                        Button {
+                            query = term
+                            focused = true
+                        } label: {
+                            Text(term)
+                                .flowCueFont(12, relativeTo: .caption)
+                                .foregroundStyle(FlowCueTheme.textPrimary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .background(
+                                    Capsule()
+                                        .fill(FlowCueTheme.surface)
+                                        .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal, 18)
+            }
+        }
+        .padding(.top, 18)
+    }
+
+    private var emptyHint: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 28, weight: .regular))
+                .foregroundStyle(FlowCueTheme.textTertiary)
+            Text("Search your ideas")
+                .flowCueFont(16, relativeTo: .headline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            Text("Titles, source, and agent target.")
+                .flowCueFont(11.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 96)
+    }
+
+    private var resultsSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text("\(results.count) \(results.count == 1 ? "RESULT" : "RESULTS")")
+                .flowCueFont(10, relativeTo: .caption2)
+                .tracking(1.0)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .padding(.horizontal, 18)
+                .padding(.top, recent.isEmpty ? 18 : 10)
+                .padding(.bottom, 2)
+
+            ForEach(results) { capture in
+                NavigationLink {
+                    IdeaDetailView(store: store, capture: capture)
+                } label: {
+                    SearchResultRow(capture: capture)
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(TapGesture().onEnded { remember(normalizedQuery) })
+
+                Rectangle()
+                    .fill(FlowCueTheme.hairline)
+                    .frame(height: 1)
+                    .padding(.horizontal, 18)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+
+    private var noResults: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 26, weight: .regular))
+                .foregroundStyle(FlowCueTheme.textTertiary)
+            Text("No results for “\(normalizedQuery)”")
+                .flowCueFont(15, relativeTo: .subheadline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .multilineTextAlignment(.center)
+            Text("Try a different word.")
+                .flowCueFont(11.5, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+            Button("Clear search") {
+                query = ""
+                focused = true
+            }
+            .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+            .foregroundStyle(FlowCueTheme.accent)
+            .padding(.top, 2)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 24)
+        .padding(.top, 84)
+    }
+
+    private func prepare() {
+        guard !didPrepare else { return }
+        didPrepare = true
+        recent = UserDefaults.standard.stringArray(forKey: Self.recentKey) ?? []
+        if recent.isEmpty, SearchPreview.isActive {
+            recent = SearchPreview.seedRecent
+        }
+        if startVoice {
+            startDictation()
+        } else if query.isEmpty {
+            Task {
+                try? await Task.sleep(for: .milliseconds(250))
+                focused = true
+            }
+        }
+    }
+
+    private func startDictation() {
+        dictationBase = query
+        dictation.start { transcript in
+            query = dictationBase.isEmpty ? transcript : dictationBase + " " + transcript
+        }
+    }
+
+    private func remember(_ term: String) {
+        let trimmed = term.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        var next = recent.filter { $0.caseInsensitiveCompare(trimmed) != .orderedSame }
+        next.insert(trimmed, at: 0)
+        recent = Array(next.prefix(6))
+        UserDefaults.standard.set(recent, forKey: Self.recentKey)
+    }
+}
+
+private struct SearchResultRow: View {
+    let capture: CaptureItem
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Circle()
+                .fill(HomeStatus.tint(capture.status))
+                .frame(width: 6, height: 6)
+                .padding(.top, 5)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(capture.text)
+                    .flowCueFont(14, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                    .lineLimit(2)
+                Text("\(HomeStatus.title(capture.status)) · \(HomeFormat.meta(for: capture.updatedAt))")
+                    .flowCueFont(10.5, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                .padding(.top, 2)
+                .accessibilityHidden(true)
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 18)
+        .contentShape(Rectangle())
+    }
+}
+
 
 private struct HomeIdeaRow: View {
     let capture: CaptureItem
