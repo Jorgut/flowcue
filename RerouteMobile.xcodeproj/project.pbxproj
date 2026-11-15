@@ -7,42 +7,84 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		09895B252C12785DAAAE3B4C /* FlowCueSharedCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAB2DA78F832E477418838E9 /* FlowCueSharedCapture.swift */; };
+		0B7624B3DC825DE37F4D29B3 /* FlowCueDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000050 /* FlowCueDesignTokens.swift */; };
+		57AF54AAC3BA221B57BEC26C /* ShareExtensionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E97C14542DD6535EF46D4DD /* ShareExtensionView.swift */; };
+		70B0B2C5956669782D144BF6 /* ShareExtensionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E97C14542DD6535EF46D4DD /* ShareExtensionView.swift */; };
+		A405EE48F80752BCD1E4E480 /* FlowCueMobileTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000040 /* FlowCueMobileTheme.swift */; };
+		A7E14076680E076E1F560942 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46CF8E619C22915D53D3CB10 /* ShareViewController.swift */; };
+		AE23D37F40CCE353518572ED /* FlowCueShareExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 4B1B856760554637E25AE225 /* FlowCueShareExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		C6D967B97D1841C33D4A1D03 /* FlowCueSharedCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = BAB2DA78F832E477418838E9 /* FlowCueSharedCapture.swift */; };
+		C777C9DDD55209C08D48A5B8 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15B23628291E03CACEF44C47 /* Foundation.framework */; };
 		D00000000000000000000001 /* CaptureHostPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000001 /* CaptureHostPolicy.swift */; };
 		D00000000000000000000002 /* CodexBridging.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000002 /* CodexBridging.swift */; };
 		D00000000000000000000003 /* IdeaDockStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000003 /* IdeaDockStore.swift */; };
 		D00000000000000000000004 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000004 /* Models.swift */; };
+		D00000000000000000000005 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000005 /* Localization.swift */; };
+		D00000000000000000000006 /* SharedIdeaSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000006 /* SharedIdeaSync.swift */; };
+		D00000000000000000000007 /* CloudKitIdeaTransport.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000007 /* CloudKitIdeaTransport.swift */; };
+		D00000000000000000000008 /* RemoteDelivery.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000008 /* RemoteDelivery.swift */; };
+		D00000000000000000000009 /* IdeaSyncController.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000009 /* IdeaSyncController.swift */; };
+		D00000000000000000000020 /* RerouteMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* RerouteMobileApp.swift */; };
+		D00000000000000000000040 /* FlowCueMobileTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000040 /* FlowCueMobileTheme.swift */; };
+		D00000000000000000000050 /* FlowCueDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000050 /* FlowCueDesignTokens.swift */; };
+		D00000000000000000000060 /* FlowCueComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000060 /* FlowCueComponents.swift */; };
 		E00000000000000000000001 /* MobileAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000001 /* MobileAssets.xcassets */; };
 		E00000000000000000000002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000002 /* PrivacyInfo.xcprivacy */; };
-		D00000000000000000000005 = {isa = PBXBuildFile; fileRef = A00000000000000000000005; };
-		D00000000000000000000020 = {isa = PBXBuildFile; fileRef = B00000000000000000000010; };
-		D00000000000000000000040 = {isa = PBXBuildFile; fileRef = B00000000000000000000040; };
-		D00000000000000000000050 = {isa = PBXBuildFile; fileRef = B00000000000000000000050; };
-		D00000000000000000000060 = {isa = PBXBuildFile; fileRef = B00000000000000000000060; };
-		D00000000000000000000006 = {isa = PBXBuildFile; fileRef = A00000000000000000000006; };
-		D00000000000000000000007 = {isa = PBXBuildFile; fileRef = A00000000000000000000007; };
-		D00000000000000000000008 = {isa = PBXBuildFile; fileRef = A00000000000000000000008; };
-		D00000000000000000000009 = {isa = PBXBuildFile; fileRef = A00000000000000000000009; };
+		E3D2B745D159CD2847A60ED1 /* MobileAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000001 /* MobileAssets.xcassets */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C9768E056F0D9F57CD354909 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 001000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DC45B26874386B85C52D1FE4;
+			remoteInfo = FlowCueShareExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		AFF67DA402C18C542EACE060 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AE23D37F40CCE353518572ED /* FlowCueShareExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		005000000000000000000000 /* Reroute.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Reroute.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		15B23628291E03CACEF44C47 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS26.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		1C0EF7DCEC1909D89260BE88 /* FlowCueShareExtension.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = FlowCueShareExtension.entitlements; sourceTree = "<group>"; };
+		2CD190AE754AC96ACEA2C74F /* ShareExtensionInfo.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = ShareExtensionInfo.plist; sourceTree = "<group>"; };
+		46CF8E619C22915D53D3CB10 /* ShareViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		4B1B856760554637E25AE225 /* FlowCueShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FlowCueShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		64273DD49714C67ADC172586 /* FlowCueMobile.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = FlowCueMobile.entitlements; sourceTree = "<group>"; };
+		9E97C14542DD6535EF46D4DD /* ShareExtensionView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareExtensionView.swift; sourceTree = "<group>"; };
 		A00000000000000000000001 /* CaptureHostPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CaptureHostPolicy.swift; sourceTree = "<group>"; };
 		A00000000000000000000002 /* CodexBridging.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CodexBridging.swift; sourceTree = "<group>"; };
 		A00000000000000000000003 /* IdeaDockStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeaDockStore.swift; sourceTree = "<group>"; };
 		A00000000000000000000004 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		A00000000000000000000005 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
+		A00000000000000000000006 /* SharedIdeaSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedIdeaSync.swift; sourceTree = "<group>"; };
+		A00000000000000000000007 /* CloudKitIdeaTransport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitIdeaTransport.swift; sourceTree = "<group>"; };
+		A00000000000000000000008 /* RemoteDelivery.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDelivery.swift; sourceTree = "<group>"; };
+		A00000000000000000000009 /* IdeaSyncController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeaSyncController.swift; sourceTree = "<group>"; };
+		B00000000000000000000010 /* RerouteMobileApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RerouteMobileApp.swift; sourceTree = "<group>"; };
+		B00000000000000000000040 /* FlowCueMobileTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowCueMobileTheme.swift; sourceTree = "<group>"; };
+		B00000000000000000000050 /* FlowCueDesignTokens.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../CodexIdeaDockCore/FlowCueDesignTokens.swift; sourceTree = "<group>"; };
+		B00000000000000000000060 /* FlowCueComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../CodexIdeaDockCore/FlowCueComponents.swift; sourceTree = "<group>"; };
+		BAB2DA78F832E477418838E9 /* FlowCueSharedCapture.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowCueSharedCapture.swift; sourceTree = "<group>"; };
 		C00000000000000000000001 /* MobileAssets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = MobileAssets.xcassets; sourceTree = "<group>"; };
 		C00000000000000000000002 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		C00000000000000000000003 /* MobileInfo.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = MobileInfo.plist; sourceTree = "<group>"; };
 		C00000000000000000000004 /* AppStore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AppStore.entitlements; sourceTree = "<group>"; };
-		A00000000000000000000005 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
-		B00000000000000000000010 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RerouteMobileApp.swift; sourceTree = "<group>"; };
-		B00000000000000000000040 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FlowCueMobileTheme.swift; sourceTree = "<group>"; };
-		B00000000000000000000050 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../CodexIdeaDockCore/FlowCueDesignTokens.swift; sourceTree = "<group>"; };
-		B00000000000000000000060 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../CodexIdeaDockCore/FlowCueComponents.swift; sourceTree = "<group>"; };
-		A00000000000000000000006 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharedIdeaSync.swift; sourceTree = "<group>"; };
-		A00000000000000000000007 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudKitIdeaTransport.swift; sourceTree = "<group>"; };
-		A00000000000000000000008 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteDelivery.swift; sourceTree = "<group>"; };
-		A00000000000000000000009 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeaSyncController.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -50,6 +92,14 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A9C22066B7BF101337A254E3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C777C9DDD55209C08D48A5B8 /* Foundation.framework in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -62,6 +112,7 @@
 				006000000000000000000000 /* Sources */,
 				009000000000000000000000 /* Support */,
 				004000000000000000000000 /* Products */,
+				06011F33345699B11B8BB83D /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
@@ -69,6 +120,7 @@
 			isa = PBXGroup;
 			children = (
 				005000000000000000000000 /* Reroute.app */,
+				4B1B856760554637E25AE225 /* FlowCueShareExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -77,7 +129,7 @@
 			isa = PBXGroup;
 			children = (
 				007000000000000000000000 /* CodexIdeaDockCore */,
-				008000000000000000000000 /* CodexIdeaDockApp */,
+				008000000000000000000000 /* RerouteMobileApp */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -89,22 +141,24 @@
 				A00000000000000000000002 /* CodexBridging.swift */,
 				A00000000000000000000003 /* IdeaDockStore.swift */,
 				A00000000000000000000004 /* Models.swift */,
-				A00000000000000000000005,
-				A00000000000000000000009,
-				A00000000000000000000008,
-				A00000000000000000000007,
-				A00000000000000000000006,
+				A00000000000000000000005 /* Localization.swift */,
+				A00000000000000000000009 /* IdeaSyncController.swift */,
+				A00000000000000000000008 /* RemoteDelivery.swift */,
+				A00000000000000000000007 /* CloudKitIdeaTransport.swift */,
+				A00000000000000000000006 /* SharedIdeaSync.swift */,
 			);
 			path = CodexIdeaDockCore;
 			sourceTree = "<group>";
 		};
-		008000000000000000000000 /* CodexIdeaDockApp */ = {
+		008000000000000000000000 /* RerouteMobileApp */ = {
 			isa = PBXGroup;
 			children = (
-                B00000000000000000000010,
-                B00000000000000000000040,
-                B00000000000000000000050,
-                B00000000000000000000060,
+				B00000000000000000000010 /* RerouteMobileApp.swift */,
+				B00000000000000000000040 /* FlowCueMobileTheme.swift */,
+				B00000000000000000000050 /* FlowCueDesignTokens.swift */,
+				B00000000000000000000060 /* FlowCueComponents.swift */,
+				BAB2DA78F832E477418838E9 /* FlowCueSharedCapture.swift */,
+				FDE2D791658DBB6200CCA839 /* ShareExtension */,
 			);
 			path = RerouteMobileApp;
 			sourceTree = "<group>";
@@ -120,6 +174,35 @@
 			path = Support;
 			sourceTree = "<group>";
 		};
+		06011F33345699B11B8BB83D /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				3609A417F684A2FCC307E192 /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		3609A417F684A2FCC307E192 /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				15B23628291E03CACEF44C47 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		FDE2D791658DBB6200CCA839 /* ShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				46CF8E619C22915D53D3CB10 /* ShareViewController.swift */,
+				9E97C14542DD6535EF46D4DD /* ShareExtensionView.swift */,
+				2CD190AE754AC96ACEA2C74F /* ShareExtensionInfo.plist */,
+				1C0EF7DCEC1909D89260BE88 /* FlowCueShareExtension.entitlements */,
+				64273DD49714C67ADC172586 /* FlowCueMobile.entitlements */,
+			);
+			name = ShareExtension;
+			path = ShareExtension;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -130,15 +213,34 @@
 				010000000000000000000000 /* Sources */,
 				011000000000000000000000 /* Frameworks */,
 				012000000000000000000000 /* Resources */,
+				AFF67DA402C18C542EACE060 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				D25ABB02B173BAC7AE1F2389 /* PBXTargetDependency */,
 			);
 			name = RerouteMobile;
 			productName = Reroute;
 			productReference = 005000000000000000000000 /* Reroute.app */;
 			productType = "com.apple.product-type.application";
+		};
+		DC45B26874386B85C52D1FE4 /* FlowCueShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0C3C45D5197AAFB9EDAB36D1 /* Build configuration list for PBXNativeTarget "FlowCueShareExtension" */;
+			buildPhases = (
+				E5BC808CD335E2A3882927DF /* Sources */,
+				A9C22066B7BF101337A254E3 /* Frameworks */,
+				185AAE10A553E7E832FB29E2 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = FlowCueShareExtension;
+			productName = FlowCueShareExtension;
+			productReference = 4B1B856760554637E25AE225 /* FlowCueShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -169,6 +271,7 @@
 			projectRoot = "";
 			targets = (
 				002000000000000000000000 /* RerouteMobile */,
+				DC45B26874386B85C52D1FE4 /* FlowCueShareExtension */,
 			);
 		};
 /* End PBXProject section */
@@ -183,6 +286,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		185AAE10A553E7E832FB29E2 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E3D2B745D159CD2847A60ED1 /* MobileAssets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -194,19 +305,42 @@
 				D00000000000000000000002 /* CodexBridging.swift in Sources */,
 				D00000000000000000000003 /* IdeaDockStore.swift in Sources */,
 				D00000000000000000000004 /* Models.swift in Sources */,
-				D00000000000000000000005,
-				D00000000000000000000009,
-				D00000000000000000000008,
-				D00000000000000000000007,
-				D00000000000000000000006,
-                D00000000000000000000020,
-                D00000000000000000000040,
-                D00000000000000000000050,
-                D00000000000000000000060,
+				D00000000000000000000005 /* Localization.swift in Sources */,
+				D00000000000000000000009 /* IdeaSyncController.swift in Sources */,
+				D00000000000000000000008 /* RemoteDelivery.swift in Sources */,
+				D00000000000000000000007 /* CloudKitIdeaTransport.swift in Sources */,
+				D00000000000000000000006 /* SharedIdeaSync.swift in Sources */,
+				D00000000000000000000020 /* RerouteMobileApp.swift in Sources */,
+				D00000000000000000000040 /* FlowCueMobileTheme.swift in Sources */,
+				D00000000000000000000050 /* FlowCueDesignTokens.swift in Sources */,
+				D00000000000000000000060 /* FlowCueComponents.swift in Sources */,
+				09895B252C12785DAAAE3B4C /* FlowCueSharedCapture.swift in Sources */,
+				70B0B2C5956669782D144BF6 /* ShareExtensionView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E5BC808CD335E2A3882927DF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A7E14076680E076E1F560942 /* ShareViewController.swift in Sources */,
+				57AF54AAC3BA221B57BEC26C /* ShareExtensionView.swift in Sources */,
+				C6D967B97D1841C33D4A1D03 /* FlowCueSharedCapture.swift in Sources */,
+				A405EE48F80752BCD1E4E480 /* FlowCueMobileTheme.swift in Sources */,
+				0B7624B3DC825DE37F4D29B3 /* FlowCueDesignTokens.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		D25ABB02B173BAC7AE1F2389 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = FlowCueShareExtension;
+			target = DC45B26874386B85C52D1FE4 /* FlowCueShareExtension */;
+			targetProxy = C9768E056F0D9F57CD354909 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		013000000000000000000000 /* Debug */ = {
@@ -249,25 +383,28 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueMobile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CODE_SIGN_ENTITLEMENTS = Support/Mobile.entitlements;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Support/MobileInfo.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.archintera.FlowCue";
+				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCue;
 				PRODUCT_NAME = Reroute;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = NO;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-                TARGETED_DEVICE_FAMILY = "1,2";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) FLOWCUE_APP_STORE";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -276,25 +413,91 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueMobile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CODE_SIGN_ENTITLEMENTS = Support/Mobile.entitlements;
-				CURRENT_PROJECT_VERSION = 36;
+				CURRENT_PROJECT_VERSION = 37;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Support/MobileInfo.plist;
-				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
 				MARKETING_VERSION = 0.1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.archintera.FlowCue";
+				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCue;
 				PRODUCT_NAME = Reroute;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = NO;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
-                TARGETED_DEVICE_FAMILY = "1,2";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) FLOWCUE_APP_STORE";
 				SWIFT_STRICT_CONCURRENCY = complete;
 				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		1D3FC67A3B2CB21515FCC15E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 37;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = GB38532D8G;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/RerouteMobileApp/ShareExtension/ShareExtensionInfo.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCue.ShareExtension;
+				PRODUCT_NAME = FlowCueShareExtension;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F733920F5181C9222D151733 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueShareExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 37;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = GB38532D8G;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/RerouteMobileApp/ShareExtension/ShareExtensionInfo.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCue.ShareExtension;
+				PRODUCT_NAME = FlowCueShareExtension;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_STRICT_CONCURRENCY = minimal;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
@@ -315,6 +518,15 @@
 			buildConfigurations = (
 				015000000000000000000000 /* Debug */,
 				016000000000000000000000 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		0C3C45D5197AAFB9EDAB36D1 /* Build configuration list for PBXNativeTarget "FlowCueShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F733920F5181C9222D151733 /* Release */,
+				1D3FC67A3B2CB21515FCC15E /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

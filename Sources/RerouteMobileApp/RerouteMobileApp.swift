@@ -757,6 +757,14 @@ private struct RootTabView: View {
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
     @Environment(\.scenePhase) private var scenePhase
+    @State private var didSeedSharedPreview = false
+    @State private var showingSharePreview: Bool = {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--flowcue-share-extension-preview")
+        #else
+        false
+        #endif
+    }()
     @State private var tab: FlowCueTab = {
         #if DEBUG
         let arguments = ProcessInfo.processInfo.arguments
@@ -791,10 +799,51 @@ private struct RootTabView: View {
             .toolbar(.hidden, for: .tabBar)
         }
         .tint(FlowCueTheme.accent)
+        .sheet(isPresented: $showingSharePreview) {
+            ShareExtensionView(
+                initialText: "The retry backoff feels too slow on flaky Wi-Fi — should we make it exponential?",
+                onSave: { _, _ in showingSharePreview = false },
+                onCancel: { showingSharePreview = false }
+            )
+            .presentationDetents([.height(380)])
+            .presentationDragIndicator(.visible)
+        }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
+            #if DEBUG
+            if !didSeedSharedPreview,
+               ProcessInfo.processInfo.arguments.contains("--flowcue-share-preview") {
+                didSeedSharedPreview = true
+                FlowCueSharedCaptureStore.append(
+                    FlowCueSharedCapture(text: "Shared from Safari", target: .inbox, createdAt: .now)
+                )
+            }
+            #endif
+            importSharedCaptures()
             await syncController.runWhileActive()
         }
+    }
+
+    private func importSharedCaptures() {
+        let pending = FlowCueSharedCaptureStore.drain()
+        guard !pending.isEmpty else { return }
+
+        let previousTarget = store.targetThreadID
+        for item in pending {
+            if item.target == .codex, let context = store.contexts.first {
+                store.setTarget(context.id)
+            }
+            if !store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                _ = store.saveCurrent()
+            }
+            store.draftText = item.text
+            _ = store.saveCurrent()
+        }
+        store.setTarget(previousTarget)
+        store.notification = DockNotification(
+            kind: .success,
+            message: "Saved \(pending.count) shared idea\(pending.count == 1 ? "" : "s")."
+        )
     }
 }
 
