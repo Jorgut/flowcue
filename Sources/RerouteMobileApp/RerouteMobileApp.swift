@@ -1,4 +1,5 @@
 import SwiftUI
+import WidgetKit
 import SwiftData
 import StoreKit
 import Observation
@@ -799,6 +800,13 @@ private struct RootTabView: View {
             .toolbar(.hidden, for: .tabBar)
         }
         .tint(FlowCueTheme.accent)
+        .onChange(of: store.captures) { _, _ in
+            writeWidgetSnapshot()
+        }
+        .onOpenURL { url in
+            guard url.scheme == "flowcue" else { return }
+            tab = .inbox
+        }
         .sheet(isPresented: $showingSharePreview) {
             ShareExtensionView(
                 initialText: "The retry backoff feels too slow on flaky Wi-Fi — should we make it exponential?",
@@ -820,8 +828,37 @@ private struct RootTabView: View {
             }
             #endif
             importSharedCaptures()
+            writeWidgetSnapshot()
             await syncController.runWhileActive()
         }
+    }
+
+    private func writeWidgetSnapshot() {
+        let active = store.captures
+            .filter { $0.status != .archived }
+            .sorted { $0.updatedAt > $1.updatedAt }
+        let ideas = active.prefix(4).map { capture in
+            FlowCueWidgetSnapshot.Idea(
+                text: capture.text,
+                status: HomeStatus.label(capture.status),
+                updatedAt: capture.updatedAt
+            )
+        }
+        let status: String
+        if remoteController.isConnected, let latency = remoteController.lastLatencyMs {
+            status = "CODEX \(FlowCueLinkFormat.latency(latency) ?? "")"
+        } else {
+            status = "LOCAL"
+        }
+        FlowCueWidgetSnapshotStore.write(
+            FlowCueWidgetSnapshot(
+                ideas: Array(ideas),
+                totalIdeas: active.count,
+                status: status,
+                updatedAt: .now
+            )
+        )
+        WidgetCenter.shared.reloadAllTimelines()
     }
 
     private func importSharedCaptures() {
@@ -5602,6 +5639,7 @@ private struct MeView: View {
     @State private var showingArchive = MePreview.state == "archive"
     @State private var showingAbout = MePreview.state == "about"
     @State private var showingFeedback = MePreview.state == "feedback"
+    @State private var showingWidgets = MePreview.state == "widgets"
 
     var body: some View {
         NavigationStack {
@@ -5682,6 +5720,9 @@ private struct MeView: View {
             }
             .navigationDestination(isPresented: $showingFeedback) {
                 FeedbackView()
+            }
+            .navigationDestination(isPresented: $showingWidgets) {
+                WidgetGalleryView()
             }
         }
     }
@@ -6589,6 +6630,49 @@ private struct FeedbackView: View {
     }
 }
 
+
+// MARK: - Widget gallery (DEBUG preview)
+
+private struct WidgetGalleryView: View {
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                widgetCard("SMALL · 2×2", family: .systemSmall, width: 158, height: 158)
+                widgetCard("MEDIUM · 4×2", family: .systemMedium, width: 338, height: 158)
+                widgetCard("LARGE · 4×4", family: .systemLarge, width: 338, height: 354)
+            }
+            .padding(18)
+        }
+        .background { FlowCueScreenBackground() }
+        .navigationTitle("Widgets")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+    }
+
+    private func widgetCard(
+        _ title: String,
+        family: WidgetFamily,
+        width: CGFloat,
+        height: CGFloat
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .flowCueFont(10, relativeTo: .caption2)
+                .tracking(1.0)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+
+            FlowCueWidgetView(snapshot: .sample, family: family)
+                .frame(width: width, height: height)
+                .background(FlowCueWidgetBackground())
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(FlowCueTheme.hairline)
+                )
+        }
+    }
+}
 
 // MARK: - Paywall and onboarding
 

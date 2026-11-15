@@ -2,10 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>FlowCue uses on-device speech recognition for voice input.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>FlowCue uses the microphone for voice input when composing a message.</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
@@ -27,16 +23,39 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.archintera.FlowCue</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>flowcue</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>FlowCueCloudKitContainer</key>
+	<string>iCloud.com.altn.reroute.ideainbox</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_flowcue._tcp</string>
+	</array>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 hong liang zhu. All rights reserved.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>FlowCue connects to your Mac on the same Wi-Fi to continue coding sessions.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>FlowCue uses the microphone for voice input when composing a message.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>FlowCue uses on-device speech recognition for voice input.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -50,14 +69,6 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>FlowCue connects to your Mac on the same Wi-Fi to continue coding sessions.</string>
-	<key>NSBonjourServices</key>
-	<array>
-		<string>_flowcue._tcp</string>
-	</array>
-	<key>FlowCueCloudKitContainer</key>
-	<string>iCloud.com.altn.reroute.ideainbox</string>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
