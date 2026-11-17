@@ -22,6 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var settingsWindowController: SettingsWindowController?
     private var firstRunWindowController: FirstRunWindowController?
     private var globalHotKey: GlobalHotKey?
+    private let hookEventMonitor = HookEventMonitor()
     private var hotKeyRegistrationFailed = false
     private var captureHostState = CaptureHostState()
 
@@ -35,6 +36,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         #else
         NSApp.setActivationPolicy(.accessory)
         configureDockIconPolicy()
+        if CodexHooks.isInstalled() { hookEventMonitor.start() }
+        NotificationCenter.default.addObserver(
+            forName: .flowCueHooksChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            if CodexHooks.isInstalled() { self.hookEventMonitor.start() } else { self.hookEventMonitor.stop() }
+        }
         #endif
         do {
             #if FLOWCUE_APP_STORE

@@ -358,16 +358,35 @@ private struct IntegrationsSettingsPage: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                if !hooksInstalled {
-                    Text(L10n.text("装好 hooks 后，Codex 跑完才会回来通知这条想法。"))
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                    Button(L10n.text("查看安装指引")) {
-                        if let url = URL(string: "https://github.com/Jorgut/flowcue#hooks") {
-                            NSWorkspace.shared.open(url)
+                Text(hooksInstalled
+                     ? L10n.text("已接入：Codex 每跑完一轮，FlowCue 会收到通知。")
+                     : L10n.text("接入后，Codex 每跑完一轮，FlowCue 会收到通知。"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+
+                HStack(spacing: 8) {
+                    if hooksInstalled {
+                        Button(L10n.text("移除 hooks")) {
+                            try? CodexHooks.uninstall()
+                            checkBridge()
+                            NotificationCenter.default.post(name: .flowCueHooksChanged, object: nil)
                         }
+                        .controlSize(.small)
+                    } else {
+                        Button(L10n.text("安装 hooks")) {
+                            try? CodexHooks.install()
+                            checkBridge()
+                            NotificationCenter.default.post(name: .flowCueHooksChanged, object: nil)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .tint(Color(hex: FlowCueTokens.airyDark.accent))
                     }
-                    .controlSize(.small)
+                    if hooksInstalled {
+                        Text("~/.codex/hooks.json")
+                            .font(.system(size: 9).monospaced())
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
 
@@ -385,7 +404,7 @@ private struct IntegrationsSettingsPage: View {
         dshConfigured = DSHBridgeClient().isConfigured
         bridgeReachable = PortProbe.isOpen(port: 47823)
         portOccupied = PortProbe.isOccupied(port: 47823)
-        hooksInstalled = CodexHooks.isInstalled
+        hooksInstalled = CodexHooks.isInstalled()
     }
 
     @ViewBuilder
@@ -846,4 +865,9 @@ private struct SettingsRow<Content: View>: View {
             Divider().opacity(0.5)
         }
     }
+}
+
+
+extension Notification.Name {
+    static let flowCueHooksChanged = Notification.Name("FlowCue.hooksChanged")
 }

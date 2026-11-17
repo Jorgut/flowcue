@@ -367,5 +367,11 @@ public enum L10n {
         "模板": "Templates",
         "插入模板": "Insert template",
         "插入模板：今日待办 / 会议纪要 / 工作小结": "Insert a template: today's plan, meeting notes, or a work summary",
+        "已接入：Codex 每跑完一轮，FlowCue 会收到通知。": "Connected: FlowCue hears from Codex after each turn.",
+        "接入后，Codex 每跑完一轮，FlowCue 会收到通知。": "Once connected, FlowCue hears from Codex after each turn.",
+        "安装 hooks": "Install hooks",
+        "移除 hooks": "Remove hooks",
+        " 跑完了一轮": "",
+        "Codex 跑完了一轮": "Codex finished a turn",
     ]
 }

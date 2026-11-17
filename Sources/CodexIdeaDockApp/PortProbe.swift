@@ -61,14 +61,3 @@ enum PortProbe {
     }
 }
 
-enum CodexHooks {
-    /// hooks 已接入：`~/.codex/hooks.json` 存在，或 config.toml 里登记过。
-    static var isInstalled: Bool {
-        let home = NSHomeDirectory()
-        let hooksFile = home + "/.codex/hooks.json"
-        if FileManager.default.fileExists(atPath: hooksFile) { return true }
-        let config = home + "/.codex/config.toml"
-        guard let text = try? String(contentsOfFile: config, encoding: .utf8) else { return false }
-        return text.contains("hooks.json")
-    }
-}
