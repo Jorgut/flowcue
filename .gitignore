@@ -21,6 +21,7 @@ PROJECT_STATE.md
 # Apple distribution outputs and signing material
 *.app
 *.dmg
+!site/downloads/*.dmg
 *.ipa
 *.pkg
 *.xcarchive
@@ -34,8 +35,7 @@ AuthKey_*.p8
 !.env.example
 .secrets/
 
-# 发布产物，不入库
-site/downloads/
+# 发布产物：DMG 随站点部署（见 site/README.md），其余不入库
 
 # wrangler 本地状态
 .wrangler/
