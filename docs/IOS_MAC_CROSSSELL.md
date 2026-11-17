@@ -19,11 +19,12 @@ macOS 版已经可以下载：Developer ID 签名 + 公证通过的 DMG（Univer
 [ 二维码 ]
 扫码在 Mac 上打开
 
-在浏览器打开 flowcue.app/mac
+在浏览器打开 Mac 下载页
 ```
 
 - 二维码用 **CoreImage 的 `CIQRCodeGenerator`** 生成，不要引第三方库
-- 二维码内容：`https://flowcue.app/mac?from=ios-pairing`
+- 二维码内容：`https://github.com/Jorgut/flowcue/releases/latest?from=ios-pairing`
+- 注意：`flowcue.app` 目前是另一个 FlowCue（AI 提词器）产品，不是本 App 的站点；不要再用 `flowcue.app/mac`（`/mac` 只是 SPA fallback）
 - 文案中英都要，走 `L10n`（iOS 侧现有约定）
 
 ### ② 设置页新增一行
@@ -31,11 +32,11 @@ macOS 版已经可以下载：Developer ID 签名 + 公证通过的 DMG（Univer
 位置：设置列表里，Remote 附近。
 
 ```
-Mac 版                    flowcue.app/mac  ›
+Mac 版                    GitHub Releases  ›
 在 Mac 上安装，配对后可以继续编辑
 ```
 
-点击打开 `https://flowcue.app/mac?from=ios-settings`（用 `UIApplication.open`）。
+点击打开 `https://github.com/Jorgut/flowcue/releases/latest?from=ios-settings`（用 `UIApplication.open`）。
 
 ## 约束
 
@@ -57,5 +58,5 @@ Mac 版                    flowcue.app/mac  ›
 | 项 | 状态 |
 |---|---|
 | Mac DMG | ✅ 已公证，可下载（路径见 `docs/RELEASE_MACOS.md`） |
-| 官网 `/mac` 页面 | ❌ 未做，先用占位 URL |
-| iOS 入口 | ⬜ 本任务 |
+| 官网 `/mac` 页面 | ❌ 未做；`flowcue.app` 是另一个 FlowCue 产品。iOS 先指向 GitHub Release |
+| iOS 入口 | ✅ 配对页 QR + Settings 行（GitHub Release） |

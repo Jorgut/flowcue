@@ -3,8 +3,8 @@ import SwiftUI
 import UIKit
 
 enum FlowCueMacDownload {
-    static let pairingURL = URL(string: "https://flowcue.app/mac?from=ios-pairing")!
-    static let settingsURL = URL(string: "https://flowcue.app/mac?from=ios-settings")!
+    static let pairingURL = URL(string: "https://github.com/Jorgut/flowcue/releases/latest?from=ios-pairing")!
+    static let settingsURL = URL(string: "https://github.com/Jorgut/flowcue/releases/latest?from=ios-settings")!
 }
 
 struct FlowCueMacQRCode: View {

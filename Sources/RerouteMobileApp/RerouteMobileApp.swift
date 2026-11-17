@@ -3056,7 +3056,7 @@ private struct FlowCueMacPairingCard: View {
             Button {
                 UIApplication.shared.open(FlowCueMacDownload.pairingURL)
             } label: {
-                Text(isMandarin ? "在浏览器打开 flowcue.app/mac" : "Open flowcue.app/mac in a browser")
+                Text(isMandarin ? "在浏览器打开 Mac 下载页" : "Open the Mac download page")
                     .flowCueFont(11.5, relativeTo: .caption)
                     .foregroundStyle(FlowCueTheme.accent)
                     .padding(.top, 2)
@@ -6241,7 +6241,7 @@ private struct SettingsView: View {
                                 .flowCueFont(13, relativeTo: .subheadline)
                                 .foregroundStyle(FlowCueTheme.textPrimary)
                             Spacer(minLength: 8)
-                            Text("flowcue.app/mac")
+                            Text("GitHub Releases")
                                 .flowCueFont(10, relativeTo: .caption2)
                                 .foregroundStyle(FlowCueTheme.textSecondary)
                             Image(systemName: "chevron.right")
