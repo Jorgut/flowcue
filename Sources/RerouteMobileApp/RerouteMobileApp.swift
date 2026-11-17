@@ -21,55 +21,71 @@ enum FlowCueProduct {
 }
 
 private enum FlowCueTheme {
-    static let ink = Color(red: 0.11, green: 0.10, blue: 0.16)
+    nonisolated(unsafe) static var current: FlowCueThemeSpec = FlowCueThemeCatalog.spec(for: "airy")
 
-    private static func token(_ key: @escaping (FlowCueTokens) -> String) -> Color {
-        Color(uiColor: UIColor { traits in
-            let tokens = FlowCueTokens.tokens(for: traits.userInterfaceStyle == .dark ? .dark : .light)
-            return UIColor(flowCueHex: key(tokens))
-        })
+    static var accent: Color { Color(hex: current.accent) }
+    static var accentSoft: Color { accent.opacity(0.14) }
+    static var mint: Color { Color(hex: "#5CD9B8") }
+    static var surface: Color { Color(hex: current.card) }
+    static var canvas: Color { Color(hex: current.background) }
+    static var hairline: Color { current.hasBorder ? Color(hex: current.border) : .clear }
+    static var textPrimary: Color { Color(hex: current.foreground) }
+    static var textSecondary: Color { Color(hex: current.secondary) }
+    static var textTertiary: Color { Color(hex: current.secondary).opacity(0.68) }
+    static var warning: Color { Color(hex: "#F0B429") }
+    static var failure: Color { Color(hex: "#FF6B6B") }
+    static var onAccent: Color { Color(hex: "#0A0A12") }
+
+    static var radiusPanel: CGFloat { current.radius }
+    static var radiusCard: CGFloat { current.radius }
+    static var radiusInline: CGFloat { max(0, min(current.radius, 12)) }
+    static var radiusCapsule: CGFloat { current.radius }
+
+    static var hasGlow: Bool { current.glow }
+    static var hasGrid: Bool { current.grid }
+
+    static var navActive: Color {
+        switch current.id {
+        case "terminal": mint
+        case "paper": textPrimary
+        case "neutral": .white
+        default: accent
+        }
     }
 
-    static let accent = token { $0.accent }
-    static let accentSoft = accent.opacity(0.14)
-    static let mint = token { $0.success }
-    static let surface = token { $0.surface }
-    static let canvas = token { $0.canvas }
-    static let hairline = token { $0.border }
-    static let textPrimary = token { $0.textPrimary }
-    static let textSecondary = token { $0.textSecondary }
-    static let textTertiary = token { $0.textTertiary }
-    static let warning = token { $0.warning }
-    static let failure = token { $0.failure }
-    static let onAccent = ink
+    static func fontDesign(for style: Font.TextStyle) -> Font.Design {
+        switch style {
+        case .largeTitle, .title, .title2, .title3, .headline:
+            return design(current.titleFont)
+        case .caption, .caption2, .footnote:
+            return design(current.metaFont)
+        default:
+            return .default
+        }
+    }
 
-    /// Airy 的「顶部冷光」；浅色只留很淡的一层，保持表面干净。
-    static func topGlow(_ scheme: ColorScheme) -> RadialGradient {
-        RadialGradient(
-            stops: [
-                .init(color: accent.opacity(scheme == .dark ? 0.18 : 0.10), location: 0),
-                .init(color: accent.opacity(scheme == .dark ? 0.05 : 0.03), location: 0.46),
-                .init(color: .clear, location: 0.78)
-            ],
-            center: .top,
-            startRadius: 0,
-            endRadius: 420
-        )
+    private static func design(_ value: String) -> Font.Design {
+        switch value {
+        case "serif": .serif
+        case "mono": .monospaced
+        default: .default
+        }
     }
 }
 
-/// 按设计稿字号渲染，同时跟随 Dynamic Type 放大。
 private struct FlowCueFontModifier: ViewModifier {
     @ScaledMetric private var size: CGFloat
     private let weight: Font.Weight
+    private let style: Font.TextStyle
 
     init(size: CGFloat, relativeTo style: Font.TextStyle, weight: Font.Weight) {
         _size = ScaledMetric(wrappedValue: size, relativeTo: style)
         self.weight = weight
+        self.style = style
     }
 
     func body(content: Content) -> some View {
-        content.font(.system(size: size, weight: weight))
+        content.font(.system(size: size, weight: weight, design: FlowCueTheme.fontDesign(for: style)))
     }
 }
 
@@ -83,55 +99,51 @@ private extension View {
     }
 }
 
-/// 全屏底色 + Airy 顶部冷光，Home / Agents 共用。
+/// 全屏底色：按当前主题决定冷光 / 网格 / 纯色。
 private struct FlowCueScreenBackground: View {
-    @Environment(\.colorScheme) private var colorScheme
-
     var body: some View {
         ZStack {
             FlowCueTheme.canvas
-            FlowCueTheme.topGlow(colorScheme)
+            if FlowCueTheme.hasGlow {
+                RadialGradient(
+                    stops: [
+                        .init(color: FlowCueTheme.accent.opacity(0.20), location: 0),
+                        .init(color: FlowCueTheme.accent.opacity(0.06), location: 0.46),
+                        .init(color: .clear, location: 0.78)
+                    ],
+                    center: .top,
+                    startRadius: 0,
+                    endRadius: 420
+                )
+            }
+            if FlowCueTheme.hasGrid {
+                FlowCueGridBackground()
+            }
         }
         .ignoresSafeArea()
     }
 }
 
-/// 当前只有 Airy 一套 token；先提供 System / Airy Light / Airy Dark 三档。
-private enum FlowCueThemePreference: String, CaseIterable, Identifiable {
-    case system
-    case light
-    case dark
-
-    static let key = "FlowCue.appearance"
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .system: "System"
-        case .light: "Airy Light"
-        case .dark: "Airy Dark"
+private struct FlowCueGridBackground: View {
+    var body: some View {
+        let color = FlowCueTheme.hairline.opacity(0.55)
+        Canvas { context, size in
+            var path = Path()
+            var x: CGFloat = 0
+            while x <= size.width {
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: size.height))
+                x += 28
+            }
+            var y: CGFloat = 0
+            while y <= size.height {
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: size.width, y: y))
+                y += 28
+            }
+            context.stroke(path, with: .color(color), lineWidth: 1)
         }
-    }
-
-    var subtitle: String? {
-        self == .system ? "Follows the system appearance" : nil
-    }
-
-    var colorScheme: ColorScheme? {
-        switch self {
-        case .system: nil
-        case .light: .light
-        case .dark: .dark
-        }
-    }
-
-    static func effectiveName(raw: String, scheme: ColorScheme) -> String {
-        switch FlowCueThemePreference(rawValue: raw) ?? .system {
-        case .light: "Airy Light"
-        case .dark: "Airy Dark"
-        case .system: scheme == .dark ? "Airy Dark" : "Airy Light"
-        }
+        .ignoresSafeArea()
     }
 }
 
@@ -694,11 +706,12 @@ struct RerouteMobileApp: App {
     @State private var subscription = SubscriptionManager()
     @State private var remoteController = LANRemoteController()
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
-    @AppStorage(FlowCueThemePreference.key) private var appearance = FlowCueThemePreference.system.rawValue
+    @AppStorage(FlowCueThemeSelection.key) private var themeID = FlowCueThemeSelection.defaultID
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
     @State private var previewOnboarding = OnboardingPreview.isActive
 
     init() {
+        FlowCueThemeSelection.migrateIfNeeded()
         let localStore = try? IdeaDockStore(
             modelContainer: IdeaDockPersistence.makeDefaultContainer(),
             bridge: MobileLocalBridge(),
@@ -713,6 +726,8 @@ struct RerouteMobileApp: App {
 
     var body: some Scene {
         WindowGroup {
+            let theme = FlowCueThemeCatalog.spec(for: themeID)
+            let _ = FlowCueTheme.current = theme
             Group {
                 if let store, let syncController {
                     if hasSeenOnboarding && !previewOnboarding {
@@ -731,10 +746,10 @@ struct RerouteMobileApp: App {
                     )
                 }
             }
-            .id(language)
+            .id("\(themeID)|\(language)")
             .environment(subscription)
             .environment(\.locale, Locale(identifier: language))
-            .preferredColorScheme((FlowCueThemePreference(rawValue: appearance) ?? .system).colorScheme)
+            .preferredColorScheme(theme.group.colorScheme)
         }
     }
 }
@@ -1007,9 +1022,9 @@ private struct FlowCueTabBar: View {
         }
         .frame(height: 44)
         .background(
-            Capsule()
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                 .fill(FlowCueTheme.surface)
-                .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+                .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
         )
         .padding(.horizontal, HomeLayout.barMargin)
         .padding(.vertical, 6)
@@ -1018,7 +1033,7 @@ private struct FlowCueTabBar: View {
 
     private func itemButton(_ item: Item) -> some View {
         let isSelected = selection == item.tab
-        let tint = isSelected ? FlowCueTheme.accent : FlowCueTheme.textSecondary
+        let tint = isSelected ? FlowCueTheme.navActive : FlowCueTheme.textSecondary
         return Button {
             guard selection != item.tab else { return }
             UISelectionFeedbackGenerator().selectionChanged()
@@ -1430,9 +1445,9 @@ private struct InboxView: View {
         .padding(.trailing, 4)
         .frame(minHeight: searchHeight)
         .background(
-            Capsule()
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                 .fill(FlowCueTheme.surface)
-                .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+                .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
         )
     }
 
@@ -1465,11 +1480,11 @@ private struct InboxView: View {
                 .padding(.horizontal, 12)
                 .frame(minHeight: chipHeight)
                 .background(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                         .fill(isSelected ? FlowCueTheme.accentSoft : Color.clear)
                 )
                 .overlay(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                         .strokeBorder(isSelected ? Color.clear : FlowCueTheme.hairline)
                 )
                 .foregroundStyle(isSelected ? FlowCueTheme.accent : FlowCueTheme.textSecondary)
@@ -1874,9 +1889,9 @@ private struct SearchView: View {
             .padding(.trailing, 6)
             .frame(minHeight: 44)
             .background(
-                Capsule()
+                RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                     .fill(FlowCueTheme.surface)
-                    .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+                    .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
             )
         }
         .padding(.horizontal, 12)
@@ -1904,9 +1919,9 @@ private struct SearchView: View {
                                 .padding(.horizontal, 12)
                                 .padding(.vertical, 7)
                                 .background(
-                                    Capsule()
+                                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                                         .fill(FlowCueTheme.surface)
-                                        .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+                                        .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
                                 )
                         }
                         .buttonStyle(.plain)
@@ -2131,11 +2146,11 @@ private struct FlowCueInlineBanner: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .fill(FlowCueTheme.textPrimary.opacity(0.04))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .strokeBorder(tint.opacity(0.33))
         )
         .accessibilityElement(children: .contain)
@@ -2176,11 +2191,11 @@ private struct HomeNoticeStrip: View {
         .padding(.trailing, 4)
         .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusInline, style: .continuous)
                 .fill(FlowCueTheme.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusInline, style: .continuous)
                 .strokeBorder(tint.opacity(0.33))
         )
     }
@@ -2283,9 +2298,9 @@ private struct HomeCaptureBar: View {
         .padding(.trailing, 4)
         .padding(.vertical, 2)
         .background(
-            Capsule()
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                 .fill(FlowCueTheme.surface)
-                .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+                .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
         )
         .padding(.horizontal, HomeLayout.barMargin)
         .padding(.top, 8)
@@ -2452,7 +2467,7 @@ private struct AgentsFaceBadge: View {
     var ink: Color = FlowCueTheme.textPrimary
     var smile: Color = FlowCueTheme.accent
     var background: Color = FlowCueTheme.surface
-    var cornerRadius: CGFloat = FlowCueMetrics.radiusInline
+    var cornerRadius: CGFloat = FlowCueTheme.radiusInline
     var bordered: Bool = false
 
     var body: some View {
@@ -2502,7 +2517,7 @@ private struct AgentsDeviceCard: View {
                 size: AgentsLayout.deviceIcon,
                 faceSize: 22,
                 background: FlowCueTheme.canvas,
-                cornerRadius: FlowCueMetrics.radiusInline,
+                cornerRadius: FlowCueTheme.radiusInline,
                 bordered: true
             )
             VStack(alignment: .leading, spacing: 2) {
@@ -2531,14 +2546,14 @@ private struct AgentsDeviceCard: View {
         }
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
                 .fill(FlowCueTheme.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
                 .strokeBorder(FlowCueTheme.hairline)
         )
-        .contentShape(RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous))
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(title), \(isOnline ? "online" : "offline")\(latency.map { ", \($0)" } ?? "")"
@@ -2925,7 +2940,7 @@ private struct AgentsView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 8)
                     .frame(minHeight: 40)
-                    .background(Capsule().fill(FlowCueTheme.accent))
+                    .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
             }
             .buttonStyle(.plain)
             .padding(.top, 16)
@@ -3142,7 +3157,7 @@ private struct PairMacSheet: View {
                     .foregroundStyle(FlowCueTheme.onAccent)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
-                    .background(Capsule().fill(FlowCueTheme.accent))
+                    .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
             }
             .buttonStyle(.plain)
             .padding(.top, 18)
@@ -3185,11 +3200,11 @@ private struct PairMacSheet: View {
                 .padding(.vertical, 8)
                 .frame(minHeight: 54)
                 .background(
-                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                         .fill(FlowCueTheme.surface)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                         .strokeBorder(codeFocused ? FlowCueTheme.accent.opacity(0.6) : FlowCueTheme.hairline)
                 )
                 .padding(.top, 14)
@@ -3253,7 +3268,7 @@ private struct PairMacSheet: View {
                 size: 30,
                 faceSize: 20,
                 background: FlowCueTheme.canvas,
-                cornerRadius: FlowCueMetrics.radiusInline,
+                cornerRadius: FlowCueTheme.radiusInline,
                 bordered: true
             )
             VStack(alignment: .leading, spacing: 2) {
@@ -3273,11 +3288,11 @@ private struct PairMacSheet: View {
         }
         .padding(11)
         .background(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .fill(FlowCueTheme.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .strokeBorder(selected ? FlowCueTheme.accent.opacity(0.6) : FlowCueTheme.hairline)
         )
         .contentShape(Rectangle())
@@ -3294,11 +3309,11 @@ private struct PairMacSheet: View {
                     .padding(.horizontal, 12)
                     .frame(height: 44)
                     .background(
-                        RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                        RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                             .fill(FlowCueTheme.surface)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+                        RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                             .strokeBorder(FlowCueTheme.hairline)
                     )
                 Text("Use this if the Mac does not appear automatically.")
@@ -3333,14 +3348,14 @@ private struct PairMacSheet: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
                 .background(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                         .fill(canConnect ? FlowCueTheme.accent : FlowCueTheme.surface)
                 )
                 .overlay(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                         .strokeBorder(canConnect ? Color.clear : FlowCueTheme.hairline)
                 )
-                .contentShape(Capsule())
+                .contentShape(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous))
             }
             .buttonStyle(.plain)
             .disabled(!canConnect || controller.isLoading)
@@ -3448,7 +3463,7 @@ private struct AddAgentSheet: View {
                     .foregroundStyle(FlowCueTheme.onAccent)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
-                    .background(Capsule().fill(FlowCueTheme.accent))
+                    .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
                 }
                 .buttonStyle(.plain)
                 .disabled(refreshing)
@@ -3501,7 +3516,7 @@ private struct RemoteDeviceView: View {
                         size: 56,
                         faceSize: 40,
                         background: FlowCueTheme.surface,
-                        cornerRadius: FlowCueMetrics.radiusPanel,
+                        cornerRadius: FlowCueTheme.radiusPanel,
                         bordered: true
                     )
                     Text(name)
@@ -3553,7 +3568,7 @@ private struct RemoteDeviceView: View {
                             .foregroundStyle(FlowCueTheme.onAccent)
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
-                            .background(Capsule().fill(FlowCueTheme.accent))
+                            .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Open chat")
@@ -3567,8 +3582,8 @@ private struct RemoteDeviceView: View {
                             .foregroundStyle(FlowCueTheme.textPrimary)
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
-                            .background(Capsule().fill(FlowCueTheme.surface))
-                            .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+                            .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.surface))
+                            .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Disconnect from this Mac")
@@ -3581,7 +3596,7 @@ private struct RemoteDeviceView: View {
                             .foregroundStyle(FlowCueTheme.onAccent)
                             .frame(maxWidth: .infinity)
                             .frame(height: 50)
-                            .background(Capsule().fill(FlowCueTheme.accent))
+                            .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Reconnect")
@@ -3691,7 +3706,7 @@ private struct DSHApprovalCard: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 34)
                         .background(
-                            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous)
+                            RoundedRectangle(cornerRadius: FlowCueTheme.radiusInline, style: .continuous)
                                 .fill(FlowCueTheme.accent)
                         )
                 }
@@ -3708,7 +3723,7 @@ private struct DSHApprovalCard: View {
                         .frame(maxWidth: .infinity)
                         .frame(height: 34)
                         .overlay(
-                            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous)
+                            RoundedRectangle(cornerRadius: FlowCueTheme.radiusInline, style: .continuous)
                                 .strokeBorder(FlowCueTheme.hairline)
                         )
                 }
@@ -3724,11 +3739,11 @@ private struct DSHApprovalCard: View {
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
                 .fill(FlowCueTheme.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
                 .strokeBorder(FlowCueTheme.hairline)
         )
     }
@@ -4000,7 +4015,7 @@ private struct NewSessionSheet: View {
                     .foregroundStyle(FlowCueTheme.onAccent)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
-                    .background(Capsule().fill(FlowCueTheme.accent))
+                    .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
                 }
                 .buttonStyle(.plain)
                 .disabled(refreshing)
@@ -4174,13 +4189,13 @@ private struct CodexAgentView: View {
                 .padding(.vertical, 6)
                 .frame(minHeight: 40)
                 .overlay(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                         .strokeBorder(
                             FlowCueTheme.hairline,
                             style: StrokeStyle(lineWidth: 1, dash: [4, 4])
                         )
                 )
-                .contentShape(Capsule())
+                .contentShape(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous))
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 14)
@@ -4319,13 +4334,13 @@ private struct DSHAgentView: View {
                 .padding(.vertical, 6)
                 .frame(minHeight: 40)
                 .overlay(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                         .strokeBorder(
                             FlowCueTheme.hairline,
                             style: StrokeStyle(lineWidth: 1, dash: [4, 4])
                         )
                 )
-                .contentShape(Capsule())
+                .contentShape(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous))
         }
         .buttonStyle(.plain)
         .padding(.horizontal, 14)
@@ -4907,7 +4922,7 @@ private struct ChatMessageBubble: View {
             .padding(.horizontal, 13)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
                     .fill(FlowCueTheme.accent)
             )
         }
@@ -4926,11 +4941,11 @@ private struct ChatMessageBubble: View {
             .padding(.horizontal, 13)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
                     .fill(FlowCueTheme.surface)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
                     .strokeBorder(FlowCueTheme.hairline.opacity(0.6))
             )
             Spacer(minLength: 32)
@@ -4957,7 +4972,7 @@ private struct ChatPendingBubble: View {
                                         .resizable()
                                         .scaledToFill()
                                         .frame(width: 86, height: 86)
-                                        .clipShape(RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous))
+                                        .clipShape(RoundedRectangle(cornerRadius: FlowCueTheme.radiusInline, style: .continuous))
                                 }
                             }
                         }
@@ -4973,11 +4988,11 @@ private struct ChatPendingBubble: View {
                 .padding(.horizontal, 13)
                 .padding(.vertical, 10)
                 .background(
-                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
                         .fill(failed ? FlowCueTheme.failure.opacity(0.16) : FlowCueTheme.accent)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
                         .strokeBorder(failed ? FlowCueTheme.failure.opacity(0.5) : Color.clear)
                 )
             }
@@ -5047,7 +5062,7 @@ private struct ChatComposer: View {
                                     .resizable()
                                     .scaledToFill()
                                     .frame(width: 58, height: 58)
-                                    .clipShape(RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous))
+                                    .clipShape(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous))
                             }
                         }
                     }
@@ -5682,10 +5697,9 @@ private struct MeView: View {
     let showOnboarding: () -> Void
 
     @Environment(SubscriptionManager.self) private var subscription
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
-    @AppStorage(FlowCueThemePreference.key) private var appearance = FlowCueThemePreference.system.rawValue
+    @AppStorage(FlowCueThemeSelection.key) private var themeID = FlowCueThemeSelection.defaultID
 
     @State private var network = FlowCueNetworkMonitor()
     @State private var showingPaywall = MePreview.state == "paywall"
@@ -5753,11 +5767,6 @@ private struct MeView: View {
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
             }
-            .sheet(isPresented: $showingAppearance) {
-                AppearanceSheet()
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
-            }
             .sheet(isPresented: $showingLanguage) {
                 LanguageSheet(language: $language)
                     .presentationDetents([.medium])
@@ -5770,6 +5779,9 @@ private struct MeView: View {
             }
             .navigationDestination(isPresented: $showingDevice) {
                 RemoteDeviceView(controller: remoteController, tab: $tab)
+            }
+            .navigationDestination(isPresented: $showingAppearance) {
+                AppearanceView(showsDone: false)
             }
             .navigationDestination(isPresented: $showingArchive) {
                 ArchiveView(store: store)
@@ -5881,7 +5893,7 @@ private struct MeView: View {
             } label: {
                 MeRowLabel(
                     title: "Appearance",
-                    value: FlowCueThemePreference.effectiveName(raw: appearance, scheme: colorScheme)
+                    value: FlowCueThemeCatalog.spec(for: themeID).name
                 )
             }
             .buttonStyle(.plain)
@@ -5927,7 +5939,7 @@ private struct MeView: View {
                 .foregroundStyle(FlowCueTheme.onAccent)
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
-                .background(Capsule().fill(FlowCueTheme.accent))
+                .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Get FlowCue Pro")
@@ -6028,11 +6040,11 @@ private struct MeStatCard: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 9)
         .background(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .fill(FlowCueTheme.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .strokeBorder(FlowCueTheme.hairline.opacity(0.6))
         )
         .accessibilityElement(children: .combine)
@@ -6069,71 +6081,205 @@ private struct MeRowLabel: View {
 
 // MARK: - Appearance / language
 
-private struct AppearanceSheet: View {
-    @AppStorage(FlowCueThemePreference.key) private var appearance = FlowCueThemePreference.system.rawValue
+private struct AppearanceView: View {
+    let showsDone: Bool
+
+    @Environment(SubscriptionManager.self) private var subscription
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.colorScheme) private var colorScheme
+    @AppStorage(FlowCueThemeSelection.key) private var themeID = FlowCueThemeSelection.defaultID
+    @State private var group: FlowCueThemeGroup?
+    @State private var showingPaywall = false
+
+    private var currentSpec: FlowCueThemeSpec {
+        FlowCueThemeCatalog.spec(for: themeID)
+    }
+
+    private var activeGroup: FlowCueThemeGroup {
+        group ?? currentSpec.group
+    }
+
+    private var themes: [FlowCueThemeSpec] {
+        FlowCueThemeCatalog.themes(in: activeGroup)
+    }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(FlowCueThemePreference.allCases) { option in
-                        Button {
-                            appearance = option.rawValue
-                            dismiss()
-                        } label: {
-                            HStack(spacing: 10) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(option.title)
-                                        .flowCueFont(14, relativeTo: .subheadline)
-                                        .foregroundStyle(FlowCueTheme.textPrimary)
-                                    if let subtitle = option.subtitle {
-                                        Text(subtitle)
-                                            .flowCueFont(10.5, relativeTo: .caption2)
-                                            .foregroundStyle(FlowCueTheme.textSecondary)
-                                    }
-                                }
-                                Spacer(minLength: 8)
-                                if appearance == option.rawValue {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(FlowCueTheme.accent)
-                                }
-                            }
-                            .padding(.vertical, 12)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                groupPicker
+                    .padding(.top, 10)
 
-                        if option != FlowCueThemePreference.allCases.last {
-                            Rectangle()
-                                .fill(FlowCueTheme.hairline)
-                                .frame(height: 1)
+                Text("\(themes.count) THEMES · \(themes.filter { !$0.isPro }.count) FREE")
+                    .flowCueFont(10, relativeTo: .caption2, weight: .medium)
+                    .tracking(1.0)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .padding(.top, 18)
+
+                VStack(spacing: 14) {
+                    ForEach(Array(stride(from: 0, to: themes.count, by: 2)), id: \.self) { index in
+                        if index + 1 < themes.count {
+                            HStack(alignment: .top, spacing: 12) {
+                                themeCard(themes[index])
+                                themeCard(themes[index + 1])
+                            }
+                        } else {
+                            themeCard(themes[index])
                         }
                     }
-
-                    Text("Airy is the current theme. Additional themes are on the roadmap.")
-                        .flowCueFont(11, relativeTo: .caption2)
-                        .foregroundStyle(FlowCueTheme.textSecondary)
-                        .padding(.top, 16)
                 }
-                .padding(.horizontal, 18)
-                .padding(.top, 10)
-                .padding(.bottom, 24)
+                .padding(.top, 12)
+
+                if !subscription.isPro {
+                    unlockButton
+                        .padding(.top, 22)
+                }
             }
-            .background { FlowCueScreenBackground() }
-            .navigationTitle("Appearance")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
+            .padding(.horizontal, 18)
+            .padding(.bottom, 26)
+        }
+        .background { FlowCueScreenBackground() }
+        .navigationTitle("Appearance")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            if showsDone {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                         .foregroundStyle(FlowCueTheme.accent)
                 }
             }
         }
+        .fullScreenCover(isPresented: $showingPaywall) {
+            PaywallView()
+        }
+    }
+
+    private var groupPicker: some View {
+        HStack(spacing: 3) {
+            ForEach(FlowCueThemeGroup.allCases) { value in
+                Button {
+                    group = value
+                } label: {
+                    Text(value.title)
+                        .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                        .foregroundStyle(activeGroup == value ? FlowCueTheme.onAccent : FlowCueTheme.textSecondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 32)
+                        .background(
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(activeGroup == value ? FlowCueTheme.accent : Color.clear)
+                        )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(FlowCueTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(FlowCueTheme.hairline)
+        )
+    }
+
+    private func themeCard(_ spec: FlowCueThemeSpec) -> some View {
+        let selected = spec.id == themeID
+        return Button {
+            select(spec)
+        } label: {
+            VStack(alignment: .leading, spacing: 7) {
+                themePreview(spec)
+
+                HStack(spacing: 5) {
+                    Text(spec.name)
+                        .flowCueFont(11, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.textPrimary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    Spacer(minLength: 2)
+                    if spec.isPro {
+                        Text("PRO")
+                            .font(.system(size: 8, weight: .medium))
+                            .tracking(0.8)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                    .strokeBorder(FlowCueTheme.hairline)
+                            )
+                    } else {
+                        Text("FREE")
+                            .font(.system(size: 8, weight: .medium))
+                            .tracking(0.8)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                    }
+                    if selected {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(FlowCueTheme.accent)
+                    }
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+    }
+
+    private func themePreview(_ spec: FlowCueThemeSpec) -> some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color(hex: spec.background))
+
+            VStack(alignment: .leading, spacing: 5) {
+                RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
+                    .fill(Color(hex: spec.foreground).opacity(0.85))
+                    .frame(width: 34, height: 5)
+                RoundedRectangle(cornerRadius: min(8, spec.radius), style: .continuous)
+                    .fill(Color(hex: spec.card))
+                    .frame(height: 22)
+                RoundedRectangle(cornerRadius: min(8, spec.radius), style: .continuous)
+                    .fill(Color(hex: spec.card))
+                    .frame(height: 22)
+            }
+            .padding(9)
+
+            Circle()
+                .fill(Color(hex: spec.accent))
+                .frame(width: 12, height: 12)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                .padding(9)
+        }
+        .frame(height: 92)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.06))
+        )
+    }
+
+    private var unlockButton: some View {
+        Button {
+            showingPaywall = true
+        } label: {
+            Text("Unlock all themes")
+                .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.onAccent)
+                .frame(maxWidth: .infinity)
+                .frame(height: 44)
+                .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func select(_ spec: FlowCueThemeSpec) {
+        if spec.isPro && !subscription.isPro {
+            showingPaywall = true
+            return
+        }
+        themeID = spec.id
     }
 }
 
@@ -6342,9 +6488,9 @@ private struct ArchiveView: View {
         }
         .buttonStyle(.plain)
         .background(
-            Capsule()
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                 .fill(FlowCueTheme.surface)
-                .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+                .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
         )
         .accessibilityLabel("Search archive")
     }
@@ -6415,9 +6561,9 @@ private struct AboutView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 ZStack {
-                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
                         .fill(FlowCueTheme.surface)
-                    RoundedRectangle(cornerRadius: FlowCueMetrics.radiusPanel, style: .continuous)
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
                         .strokeBorder(FlowCueTheme.hairline)
                     FlowCueFaceMark(ink: FlowCueTheme.textPrimary, smile: FlowCueTheme.accent)
                         .frame(width: 40, height: 40)
@@ -6524,9 +6670,8 @@ private enum FeedbackKind: String, CaseIterable, Identifiable {
 }
 
 private struct FeedbackView: View {
-    @Environment(\.colorScheme) private var colorScheme
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
-    @AppStorage(FlowCueThemePreference.key) private var appearance = FlowCueThemePreference.system.rawValue
+    @AppStorage(FlowCueThemeSelection.key) private var themeID = FlowCueThemeSelection.defaultID
 
     @State private var kind: FeedbackKind = .problem
     @State private var message = ""
@@ -6549,7 +6694,7 @@ private struct FeedbackView: View {
         App: FlowCue \(appVersion)
         Device: \(UIDevice.current.model)
         iOS: \(UIDevice.current.systemVersion)
-        Appearance: \(FlowCueThemePreference.effectiveName(raw: appearance, scheme: colorScheme))
+        Appearance: \(FlowCueThemeCatalog.spec(for: themeID).name)
         Language: \(AppLanguage(rawValue: language)?.displayName ?? language)
         """
     }
@@ -6620,7 +6765,7 @@ private struct FeedbackView: View {
                         .foregroundStyle(FlowCueTheme.onAccent)
                         .frame(maxWidth: .infinity)
                         .frame(height: 50)
-                        .background(Capsule().fill(FlowCueTheme.accent))
+                        .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
                 }
                 .disabled(trimmedMessage.isEmpty)
                 .opacity(trimmedMessage.isEmpty ? 0.45 : 1)
@@ -6648,11 +6793,11 @@ private struct FeedbackView: View {
                         .padding(.horizontal, 14)
                         .frame(height: 34)
                         .background(
-                            Capsule()
+                            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                                 .fill(kind == option ? FlowCueTheme.accent : FlowCueTheme.surface)
                         )
                         .overlay(
-                            Capsule()
+                            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                                 .strokeBorder(kind == option ? Color.clear : FlowCueTheme.hairline)
                         )
                 }
@@ -6682,11 +6827,11 @@ private struct FeedbackView: View {
                 .frame(minHeight: 180)
         }
         .background(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .fill(FlowCueTheme.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .strokeBorder(focused ? FlowCueTheme.accent.opacity(0.6) : FlowCueTheme.hairline)
         )
     }
@@ -6867,9 +7012,11 @@ private struct PaywallView: View {
             }
         }
         .sheet(isPresented: $showingAppearance) {
-            AppearanceSheet()
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+            NavigationStack {
+                AppearanceView(showsDone: true)
+            }
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .task {
             if subscription.products.isEmpty { await subscription.refresh() }
@@ -6962,7 +7109,7 @@ private struct PaywallView: View {
                     .foregroundStyle(FlowCueTheme.onAccent)
                     .frame(maxWidth: 300)
                     .frame(height: 50)
-                    .background(Capsule().fill(FlowCueTheme.accent))
+                    .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
             }
             .buttonStyle(.plain)
             .padding(.top, 24)
@@ -7068,7 +7215,7 @@ private struct PaywallView: View {
             .foregroundStyle(FlowCueTheme.onAccent)
             .frame(maxWidth: .infinity)
             .frame(height: 50)
-            .background(Capsule().fill(FlowCueTheme.accent))
+            .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
         }
         .buttonStyle(.plain)
         .disabled(purchasing || selectedProduct == nil)
@@ -7232,7 +7379,7 @@ private struct OnboardingView: View {
         VStack(spacing: 14) {
             HStack(spacing: 6) {
                 ForEach(pages.indices, id: \.self) { index in
-                    Capsule()
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                         .fill(index == page ? FlowCueTheme.accent : FlowCueTheme.textTertiary.opacity(0.4))
                         .frame(width: index == page ? 20 : 6, height: 6)
                         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: page)
@@ -7251,7 +7398,7 @@ private struct OnboardingView: View {
                     .minimumScaleFactor(0.75)
                     .frame(maxWidth: .infinity)
                     .frame(height: 50)
-                    .background(Capsule().fill(FlowCueTheme.accent))
+                    .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
             }
             .buttonStyle(.plain)
 
@@ -7312,9 +7459,9 @@ private struct OnboardingVisual: View {
 
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .fill(FlowCueTheme.surface)
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .strokeBorder(FlowCueTheme.hairline)
 
             switch kind {
@@ -7377,8 +7524,8 @@ private struct OnboardingCapturePreview: View {
             }
             .padding(.horizontal, 10)
             .frame(height: 36)
-            .background(Capsule().fill(FlowCueTheme.canvas))
-            .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+            .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.canvas))
+            .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
 
             VStack(spacing: 0) {
                 OnboardingMiniIdeaRow(
@@ -7473,9 +7620,9 @@ private struct OnboardingDeviceTile: View {
     var body: some View {
         VStack(spacing: 6) {
             ZStack {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: FlowCueTheme.radiusInline, style: .continuous)
                     .fill(FlowCueTheme.canvas)
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                RoundedRectangle(cornerRadius: FlowCueTheme.radiusInline, style: .continuous)
                     .strokeBorder(FlowCueTheme.hairline)
                 Image(systemName: icon)
                     .font(.system(size: 22, weight: .regular))
@@ -7499,11 +7646,11 @@ private struct OnboardingDeviceTile: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .fill(FlowCueTheme.canvas)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
                 .strokeBorder(FlowCueTheme.hairline)
         )
     }
@@ -7545,7 +7692,7 @@ private struct OnboardingPrivacyChip: View {
             .foregroundStyle(FlowCueTheme.textSecondary)
             .padding(.horizontal, 8)
             .padding(.vertical, 5)
-            .background(Capsule().fill(FlowCueTheme.canvas))
-            .overlay(Capsule().strokeBorder(FlowCueTheme.hairline))
+            .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.canvas))
+            .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
     }
 }
