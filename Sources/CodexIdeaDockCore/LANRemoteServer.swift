@@ -160,6 +160,20 @@ public final class LANRemoteServer {
             } catch {
                 return Self.response(status: 409, body: Data("{}".utf8))
             }
+        case ("POST", "/v1/pro/expiry"):
+            struct Report: Decodable { let expiry: String? }
+            guard let report = try? JSONDecoder().decode(Report.self, from: request.body) else {
+                return Self.response(status: 400, body: Data("{}".utf8))
+            }
+            if let raw = report.expiry {
+                guard let date = ISO8601DateFormatter().date(from: raw) else {
+                    return Self.response(status: 400, body: Data("{}".utf8))
+                }
+                ProEntitlement.publish(expiry: date)
+            } else {
+                ProEntitlement.publish(expiry: nil)
+            }
+            return Self.response(status: 200, body: Data("{}".utf8))
         case ("GET", let path) where path.hasPrefix("/v1/threads/") && path.hasSuffix("/messages"):
             let encoded = String(path.dropFirst("/v1/threads/".count).dropLast("/messages".count))
             guard let threadID = encoded.removingPercentEncoding, !threadID.isEmpty else {

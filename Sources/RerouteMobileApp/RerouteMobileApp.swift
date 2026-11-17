@@ -310,6 +310,9 @@ final class LANRemoteController {
     private(set) var lastAttempted: DiscoveredMac?
 
     private var browser: NWBrowser?
+    /// 最近一次成功推给 Mac 的 Pro 到期时间；nil 表示本次连接还没推过。
+    @ObservationIgnored private var lastPushedProExpiry: String?
+    @ObservationIgnored private var didPushPro = false
 
     init() {
         #if DEBUG
@@ -418,6 +421,7 @@ final class LANRemoteController {
             threads = snapshots.sorted { $0.updatedAt > $1.updatedAt }
             await refreshDSHApprovals()
             await refreshDSHSessions()
+            await syncProToMac(force: true)
             statusMessage = threads.isEmpty ? "Connected. No sessions are available yet." : "Connected."
             lastError = nil
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -440,6 +444,8 @@ final class LANRemoteController {
         lastRefreshAt = nil
         lastAttempted = nil
         lastError = nil
+        didPushPro = false
+        lastPushedProExpiry = nil
         startDiscovery()
     }
 
@@ -456,6 +462,7 @@ final class LANRemoteController {
             threads = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data).sorted { $0.updatedAt > $1.updatedAt }
             await refreshDSHApprovals()
             await refreshDSHSessions()
+            await syncProToMac()
             lastError = nil
         } catch {
             lastError = "Connection lost. Make sure the Mac app is still running on the same Wi-Fi."
@@ -533,6 +540,26 @@ final class LANRemoteController {
 
     func refreshApprovals() async {
         await refreshDSHApprovals()
+        await syncProToMac()
+    }
+
+    /// 把 iPhone 上的订阅到期时间推给 Mac，让 Pro 在 Mac 解锁。
+    /// 只在首次连接或值变化时发送；失败不打扰用户，下一次轮询自动重试。
+    func syncProToMac(force: Bool = false) async {
+        guard let selected else { return }
+        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard code.count == 6 else { return }
+        let raw = ProEntitlement.expiry.map { ISO8601DateFormatter().string(from: $0) } ?? ""
+        guard force || !didPushPro || raw != lastPushedProExpiry else { return }
+        struct Report: Encodable { let expiry: String? }
+        do {
+            let body = try JSONEncoder().encode(Report(expiry: raw.isEmpty ? nil : raw))
+            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/pro/expiry", token: code, body: body)
+            didPushPro = true
+            lastPushedProExpiry = raw
+        } catch {
+            // 网络抖动或 Mac 未运行时静默失败，下一次轮询再试。
+        }
     }
 
     @discardableResult

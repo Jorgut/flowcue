@@ -1,112 +1,84 @@
-# iOS → macOS Pro 解锁（给 iOS 工作流）
+# iOS → macOS Pro 解锁
 
 ## 背景
 
-Mac 版**不开内购**，也不接 Paddle。Pro 只在 iPhone 上订阅；
-Mac 通过 iCloud 键值存储读到到期时间就自动解锁。这是 Agent HUD 的做法。
+Mac 版**不开内购**，也不接 Paddle。Pro 只在 iPhone 上订阅。
+Mac 需要知道「这个用户的订阅到什么时候」，才能解锁 Pro 功能。
 
-## Mac 侧（已完成）
+最初的设计是走 iCloud 键值存储，但发布包是 Developer ID 签名、没有 iCloud
+entitlement 和 provisioning profile，`NSUbiquitousKeyValueStore` 在 Mac 上不会同步；
+而且 KV 默认按 bundle id 隔离，两个不同 App 共享还要额外的 profile 配合。
+所以**实际通道改走局域网**：iPhone 连上 Mac 时把到期时间推过去。
 
-`Sources/CodexIdeaDockCore/ProEntitlement.swift`
+## 数据流
 
-```swift
-ProEntitlement.isPro()        // 到期时间 + 7 天宽限
-ProEntitlement.expiry         // Date?
-ProEntitlement.publish(expiry:)  // 写入 iCloud KV + 本地兜底
+```
+StoreKit（iPhone）→ SubscriptionManager.refresh()
+  → ProEntitlement.publish(expiry:)        # iPhone 本地缓存（KV + UserDefaults）
+  → LANRemoteController.syncProToMac()     # POST /v1/pro/expiry（带配对码）
+    → Mac LANRemoteServer
+      → ProEntitlement.publish(expiry:)    # Mac 本地 UserDefaults
+        → ProEntitlement.isPro()           # 设置 → Pro、AgentBrowser 发消息
 ```
 
-设置 → Pro 页会显示「已解锁 / 未订阅」和续订日期，并可手动刷新。
+Mac 端只认一个日期，不存在支付逻辑；退款或过期时 iPhone 会推 `nil` 把 Mac 重新锁上。
 
-> **前提（发布版尚未满足）**：`NSUbiquitousKeyValueStore` 需要 iCloud entitlement 和带该
-> entitlement 的 provisioning profile。当前 Developer ID 发布包两者都没有，所以 iOS 写入的
-> 值到不了 Mac。要真正解锁，二选一：
-> 1. 给 Mac 加 `com.apple.developer.ubiquity-kvstore-identifier` + iCloud profile 并重新签名公证；
-> 2. 改走局域网：Mac 的 LAN server 已有配对码，加一个 `POST /v1/pro/expiry`，iOS 连上时推送到期时间。
+## Mac 侧
 
-## iOS 侧要做的（唯一改动点）
-
-`Sources/RerouteMobileApp/RerouteMobileApp.swift` 里的 `SubscriptionManager.refresh()`。
-
-现在的写法（约 174 行）：
+`Sources/CodexIdeaDockCore/LANRemoteServer.swift`
 
 ```swift
-var entitled = false
-for await result in Transaction.currentEntitlements {
-    guard case .verified(let transaction) = result,
-          FlowCueProduct.all.contains(transaction.productID) else { continue }
-    if transaction.revocationDate == nil,
-       (transaction.expirationDate ?? .distantFuture) > .now {
-        entitled = true
-    }
-}
-isPro = entitled || isTestFlightBuild
+POST /v1/pro/expiry
+Authorization: Bearer <6 位配对码>
+{"expiry":"2026-12-18T00:00:00Z"}   // 或 {} / {"expiry":null} 表示未订阅
 ```
 
-改成（只加三处，其余不动）：
+- 只接受 ISO8601；格式错误返回 400，未带配对码返回 401。
+- 写入 `ProEntitlement.publish(expiry:)`，`isPro()` 读到期时间 + 7 天宽限。
 
-```swift
-var entitled = false
-var latestExpiry: Date?                       // ① 新增
-for await result in Transaction.currentEntitlements {
-    guard case .verified(let transaction) = result,
-          FlowCueProduct.all.contains(transaction.productID) else { continue }
-    if transaction.revocationDate == nil,
-       (transaction.expirationDate ?? .distantFuture) > .now {
-        entitled = true
-        if let expiry = transaction.expirationDate {   // ② 记录到期时间
-            latestExpiry = max(latestExpiry ?? expiry, expiry)
-        }
-    }
-}
-isPro = entitled || isTestFlightBuild
-ProEntitlement.publish(expiry: entitled ? latestExpiry : nil)   // ③ 同步给 Mac
-```
+## iOS 侧
 
-### 为什么放在 `refresh()`
+`Sources/RerouteMobileApp/RerouteMobileApp.swift`
 
-`refresh()` 已经覆盖了所有状态变化：
-
-| 调用来源 | 场景 |
-|---|---|
-| App 启动 | 冷启动对齐 |
-| `purchase()` 成功 | 购买后立即生效 |
-| `Transaction.updates` | 续订、退款、过期 |
-
-不需要在别处再调。
-
-### 一个刻意的决定
-
-**TestFlight 构建会给 `isPro = true`，但不要 publish。**
-测试者没有真实订阅，若把 `entitled` 一起写出去，Mac 会被永久解锁。
-
-所以第 ③ 行用的是 `entitled ? latestExpiry : nil`，不是 `isPro ? ... : nil`。
+1. `SubscriptionManager.refresh()`：取 `Transaction.currentEntitlements` 里最晚的
+   `expirationDate`，只上报**真实订阅**。TestFlight 的临时 Pro 不写出去，否则 Mac 会被
+   永久解锁。
+2. `LANRemoteController.syncProToMac(force:)`：仅在首次连接或值变化时发送，失败静默，
+   下次轮询自动重试，不打扰用户。
+3. 触发点：连接成功后 `force: true`；用户手动刷新后；Chat 页每 3 秒的审批轮询里
+   （值没变就不发请求）。
 
 ## 验证
 
-1. iOS 上用一个**没有订阅**的账号：设置 → Pro 显示未订阅
-2. Mac 打开 设置 → Pro：应显示 `Not subscribed`
-3. iOS 完成一次沙盒购买后，Mac 点「Refresh status」：应变成 `Unlocked` 并显示续订日期
-4. 退款/过期后重跑：Mac 应回到 `Not subscribed`（宽限期 7 天内仍解锁）
+已验证：
 
-Mac 侧的读取链路已用单测与手写 KV 验证过（`ProEntitlementTests`）。
+- `POST /v1/pro/expiry` 带配对码返回 200，值写入 Mac 的 `FlowCue.proUntil`；
+- 不带配对码返回 401；非法日期返回 400；`{}` 清空后 Mac 回到未订阅；
+- `ProEntitlementTests` 覆盖到期时间、7 天宽限与清空。
+
+尚未端到端验证：
+
+- iPhone 真实沙盒购买 → Mac 解锁。需要一次沙盒购买才能触发非空到期时间；
+  代码路径已接入，但没在真机上跑过整条链路。
 
 ## 约束
 
 | 项 | 要求 |
 |---|---|
-| 只改 `Sources/RerouteMobileApp/` | `ProEntitlement` 在 Core，已完成，不要改 |
-| 不新增依赖 | 用 `NSUbiquitousKeyValueStore`，系统自带 |
 | 不做支付 UI 到 Mac | Mac 端不出现任何购买按钮或价格 |
+| 不新增依赖 | 只用系统框架 |
+| 配对码即权限 | 同一 Wi-Fi 下知道 6 位码即可推送；与会话/审批同一信任模型 |
 
-## 为什么不用 CloudKit 记录
-
-现有同步层是「想法」专用的记录类型，加一种记录要改 schema。
-订阅状态只是一个日期，用 KV 存储足够，且天然跨设备、可离线读。
-
-## 取舍（需要产品接受）
+## 取舍
 
 | 取舍 | 影响 |
 |---|---|
-| 只覆盖有 iPhone 的用户 | 纯 Mac 用户无法付费，未来若要覆盖需接 Paddle |
-| 可被本地篡改 | KV 存的是日期，改 UserDefaults 就能伪造；小规模产品可接受 |
-| 需要在 iOS 发布后才有值 | Mac 未解锁时只能用免费功能 |
+| 需要 iPhone 至少连过一次 Mac | 纯 Mac 用户无法付费；未来若要覆盖需接 Paddle |
+| Mac 状态是本地缓存 | 换机或重装后要等 iPhone 再连一次 |
+| 可被本地篡改 | 改 UserDefaults 就能伪造；小规模产品可接受 |
+| 依赖 iOS 先联网 | Mac 未解锁时只能用免费功能 |
+
+## 为什么不用 CloudKit 记录
+
+现有同步层是「想法」专用的记录类型，加一种记录要改 schema，而且 Mac 端同样需要
+iCloud entitlement 才能读。订阅状态只是一个日期，局域网推送足够且零签名成本。
