@@ -13,16 +13,37 @@ public struct DSHAgentAdapter: AgentAdapter {
 
     public func listSessions(limit: Int = 50) async throws -> [AgentSession] {
         guard client.isConfigured else { throw AgentAdapterError.notFound }
-        let pending = try await client.pending()
 
-        var bySession: [String: Int] = [:]
+        // Sessions come from the local DSH session logs, not only from pending
+        // approvals. Pending approvals are merged in as a per-session badge.
+        let pending = (try? await client.pending()) ?? []
+        var pendingCounts: [String: Int] = [:]
         for item in pending {
             guard let sessionID = item.sessionId else { continue }
-            bySession[sessionID, default: 0] += 1
+            pendingCounts[sessionID, default: 0] += 1
         }
 
-        let now = Date()
-        return bySession
+        let reader = DSHSessionReader()
+        let localSessions = reader.sessions(limit: limit)
+        var sessions: [AgentSession] = localSessions.map { session in
+            let count = pendingCounts[session.id] ?? 0
+            let title = count > 0 ? "\(session.title) · \(count) 个待审" : session.title
+            return AgentSession(
+                id: session.id,
+                agentID: agentID,
+                title: title,
+                updatedAt: session.updatedAt,
+                projectPath: session.projectDirectory,
+                messageCount: nil,
+                locator: session.id
+            )
+        }
+
+        // Approvals whose session no longer appears in the local logs still
+        // need a surface so the request is never silently lost.
+        let known = Set(localSessions.map(\.id))
+        let pendingOnly = pendingCounts
+            .filter { !known.contains($0.key) }
             .sorted { $0.value > $1.value }
             .prefix(limit)
             .map { sessionID, count in
@@ -30,12 +51,14 @@ public struct DSHAgentAdapter: AgentAdapter {
                     id: sessionID,
                     agentID: agentID,
                     title: "DSH 会话 · \(count) 个待审",
-                    updatedAt: now,
+                    updatedAt: Date(),
                     projectPath: nil,
                     messageCount: nil,
                     locator: sessionID
                 )
             }
+
+        return Array((sessions + pendingOnly).prefix(limit))
     }
 
     public func messages(in session: AgentSession, limit: Int = 80) async throws -> [AgentMessage] {
