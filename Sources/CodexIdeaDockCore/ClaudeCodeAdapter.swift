@@ -132,10 +132,17 @@ public struct ClaudeCodeAdapter: AgentAdapter {
         let chunk = handle.readData(ofLength: readLimit)
         guard let text = String(data: chunk, encoding: .utf8) else { return L10n.text("未命名会话") }
 
+        var fallbackName: String?
         for line in text.split(separator: "\n") {
             guard let data = line.data(using: .utf8),
-                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  (obj["type"] as? String) == "user",
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+
+            if fallbackName == nil, let cwd = obj["cwd"] as? String, !cwd.isEmpty {
+                let last = (cwd as NSString).lastPathComponent
+                if !last.isEmpty { fallbackName = last }
+            }
+
+            guard (obj["type"] as? String) == "user",
                   (obj["isSidechain"] as? Bool) != true,
                   let message = obj["message"] as? [String: Any]
             else { continue }
@@ -151,6 +158,8 @@ public struct ClaudeCodeAdapter: AgentAdapter {
             guard !body.isEmpty, !Self.isSystemPrompt(body) else { continue }
             return String(body.prefix(60))
         }
-        return L10n.text("未命名会话")
+        if let fallbackName, fallbackName != "/" { return fallbackName }
+        // 会话在根目录启动、又没有像样的用户消息时，用会话 id 短码兜底
+        return "#" + file.deletingPathExtension().lastPathComponent.prefix(8)
     }
 }

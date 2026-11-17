@@ -11,6 +11,11 @@ struct AgentBrowserView: View {
     @State private var selectedSession: AgentSession?
     @State private var messages: [AgentMessage] = []
     @State private var note: String?
+    @State private var search = ""
+    @State private var starredOnly = false
+    @State private var crossAgentResults: [AgentSession] = []
+    @State private var searchingAll = false
+    @State private var reloadToken = 0
 
     private let service = AgentService.default
 
@@ -73,10 +78,32 @@ struct AgentBrowserView: View {
                 Text(selectedAgent?.displayName ?? L10n.text("会话"))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                Button { starredOnly.toggle() } label: {
+                    Image(systemName: starredOnly ? "star.fill" : "star")
+                        .font(.caption)
+                        .foregroundStyle(starredOnly ? Color(hex: FlowCueTokens.airyDark.warning) : .secondary)
+                }
+                .buttonStyle(.plain)
+                .help(L10n.text("只看收藏"))
                 Button { Task { await reloadSessions() } } label: { Image(systemName: "arrow.clockwise") }
                     .buttonStyle(.plain).font(.caption)
             }
             .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 6)
+
+            HStack(spacing: 5) {
+                Image(systemName: "magnifyingglass").font(.system(size: 9)).foregroundStyle(.secondary)
+                TextField("", text: $search, prompt: Text(L10n.text("搜索会话")))
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11))
+                    .onSubmit { Task { await searchAllAgentsIfNeeded() } }
+                if !search.isEmpty {
+                    Button { search = ""; crossAgentResults = [] } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).font(.system(size: 9)).foregroundStyle(.tertiary)
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
+            .padding(.horizontal, 12).padding(.bottom, 6)
 
             if let note {
                 VStack(alignment: .leading, spacing: 6) {
@@ -92,11 +119,18 @@ struct AgentBrowserView: View {
 
             ScrollView(.vertical) {
                 LazyVStack(spacing: 2) {
-                    ForEach(sessions) { session in
+                    ForEach(visibleSessions) { session in
                         Button { select(session) } label: {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(session.title).font(.callout).lineLimit(2)
-                                    .multilineTextAlignment(.leading)
+                                HStack(spacing: 4) {
+                                    if AgentSessionArchive.isStarred(agentID: session.agentID, sessionID: session.id) {
+                                        Image(systemName: "star.fill")
+                                            .font(.system(size: 8))
+                                            .foregroundStyle(Color(hex: FlowCueTokens.airyDark.warning))
+                                    }
+                                    Text(session.title).font(.callout).lineLimit(2)
+                                        .multilineTextAlignment(.leading)
+                                }
                                 Text(session.updatedAt, format: .relative(presentation: .named))
                                     .font(.caption2).foregroundStyle(.secondary)
                             }
@@ -108,6 +142,13 @@ struct AgentBrowserView: View {
                         }
                         .buttonStyle(.plain)
                         .padding(.horizontal, 6)
+                        .contextMenu {
+                            Button(AgentSessionArchive.isStarred(agentID: session.agentID, sessionID: session.id)
+                                   ? L10n.text("取消收藏") : L10n.text("收藏会话")) {
+                                _ = AgentSessionArchive.toggle(agentID: session.agentID, sessionID: session.id)
+                                reloadToken &+= 1
+                            }
+                        }
                     }
                 }
                 .padding(.bottom, 8)
@@ -225,6 +266,42 @@ struct AgentBrowserView: View {
     }
 
     // MARK: 动作
+
+    private var visibleSessions: [AgentSession] {
+        let base = search.isEmpty ? sessions : sessions.filter { matches($0) }
+        let filtered = starredOnly
+            ? base.filter { AgentSessionArchive.isStarred(agentID: $0.agentID, sessionID: $0.id) }
+            : base
+        if search.isEmpty { return filtered }
+        // 搜索时把其它 agent 的结果接在后面
+        let others = crossAgentResults.filter { result in
+            result.agentID != selectedAgent?.id && matches(result)
+                && (!starredOnly || AgentSessionArchive.isStarred(agentID: result.agentID, sessionID: result.id))
+        }
+        return filtered + others
+    }
+
+    private func matches(_ session: AgentSession) -> Bool {
+        let query = search.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return true }
+        return session.title.lowercased().contains(query)
+            || (session.projectPath ?? "").lowercased().contains(query)
+    }
+
+    private func searchAllAgentsIfNeeded() async {
+        guard !search.isEmpty, !searchingAll else { return }
+        searchingAll = true
+        defer { searchingAll = false }
+        let targets = agents.filter { $0.capabilities.contains(.chat) && $0.id != selectedAgent?.id }
+        var collected: [AgentSession] = []
+        await withTaskGroup(of: [AgentSession].self) { group in
+            for agent in targets {
+                group.addTask { (try? await service.sessions(for: agent.id, limit: 20)) ?? [] }
+            }
+            for await chunk in group { collected.append(contentsOf: chunk) }
+        }
+        crossAgentResults = collected
+    }
 
     private func select(_ agent: AgentRecord?) {
         selectedAgent = agent

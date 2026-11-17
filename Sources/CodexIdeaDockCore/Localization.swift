@@ -385,5 +385,9 @@ public enum L10n {
         "并行分发": "Broadcast",
         "同时发给所有可对话 agent 的最近会话": "Send to the latest session of every chat-capable agent",
         "未命名会话": "Untitled session",
+        "搜索会话": "Search sessions",
+        "只看收藏": "Starred only",
+        "收藏会话": "Star this session",
+        "取消收藏": "Remove star",
     ]
 }
