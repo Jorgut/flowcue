@@ -728,6 +728,7 @@ struct RerouteMobileApp: App {
         WindowGroup {
             let theme = FlowCueThemeCatalog.spec(for: themeID)
             let _ = FlowCueTheme.current = theme
+            let _ = FlowCueThemeSharing.publish(themeID)
             Group {
                 if let store, let syncController {
                     if hasSeenOnboarding && !previewOnboarding {

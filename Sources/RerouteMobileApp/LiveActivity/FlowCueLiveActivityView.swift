@@ -4,13 +4,13 @@ struct FlowCueLiveActivityLockScreenView: View {
     let attributes: FlowCueActivityAttributes
     let state: FlowCueActivityAttributes.ContentState
 
-    private var palette: LiveActivityPalette { LiveActivityPalette(tokens: .airyDark) }
+    private var palette: LiveActivityPalette { LiveActivityPalette(spec: FlowCueThemeSharing.currentSpec()) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 5) {
                 Text("FLOWCUE · \(attributes.agent.uppercased())")
-                    .font(.system(size: 9, weight: .semibold))
+                    .font(.system(size: 9, weight: .semibold, design: palette.metaDesign))
                     .tracking(0.8)
                     .foregroundStyle(palette.textSecondary)
                 Spacer(minLength: 4)
@@ -18,7 +18,7 @@ struct FlowCueLiveActivityLockScreenView: View {
             }
 
             Text(state.title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold, design: palette.titleDesign))
                 .foregroundStyle(palette.textPrimary)
                 .lineLimit(1)
 
@@ -37,12 +37,12 @@ struct FlowCueLiveActivityLockScreenView: View {
                     .foregroundStyle(palette.textTertiary)
                 if state.status == .running {
                     Text(attributes.startedAt, style: .timer)
-                        .font(.system(size: 9.5, weight: .medium))
+                        .font(.system(size: 9.5, weight: .medium, design: palette.metaDesign))
                         .foregroundStyle(palette.textSecondary)
                         .monospacedDigit()
                 } else {
                     Text(state.elapsed)
-                        .font(.system(size: 9.5, weight: .medium))
+                        .font(.system(size: 9.5, weight: .medium, design: palette.metaDesign))
                         .foregroundStyle(palette.textSecondary)
                         .monospacedDigit()
                 }
@@ -52,7 +52,7 @@ struct FlowCueLiveActivityLockScreenView: View {
         }
         .padding(14)
         .background(FlowCueWidgetBackground())
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: palette.spec.radius, style: .continuous))
     }
 
     private var statusPill: some View {
@@ -61,7 +61,7 @@ struct FlowCueLiveActivityLockScreenView: View {
                 .fill(statusColor)
                 .frame(width: 4, height: 4)
             Text(statusText)
-                .font(.system(size: 8.5, weight: .semibold))
+                .font(.system(size: 8.5, weight: .semibold, design: palette.metaDesign))
                 .tracking(0.6)
                 .foregroundStyle(statusColor)
         }
@@ -103,30 +103,30 @@ struct FlowCueLiveActivityLockScreenView: View {
         case .completed:
             Link(destination: URL(string: "flowcue://chat")!) {
                 Text("View changes")
-                    .font(.system(size: 9.5, weight: .semibold))
+                    .font(.system(size: 9.5, weight: .semibold, design: palette.metaDesign))
                     .foregroundStyle(palette.onAccent)
                     .padding(.horizontal, 10)
                     .frame(height: 24)
-                    .background(Capsule().fill(palette.accent))
+                    .background(RoundedRectangle(cornerRadius: min(12, palette.spec.radius), style: .continuous).fill(palette.accent))
             }
         case .failed:
             HStack(spacing: 6) {
                 Link(destination: URL(string: "flowcue://chat")!) {
                     Text("Ignore")
-                        .font(.system(size: 9.5, weight: .medium))
+                        .font(.system(size: 9.5, weight: .medium, design: palette.metaDesign))
                         .foregroundStyle(palette.textSecondary)
                         .padding(.horizontal, 10)
                         .frame(height: 24)
-                        .background(Capsule().fill(palette.surface))
-                        .overlay(Capsule().strokeBorder(palette.border))
+                        .background(RoundedRectangle(cornerRadius: min(12, palette.spec.radius), style: .continuous).fill(palette.surface))
+                        .overlay(RoundedRectangle(cornerRadius: min(12, palette.spec.radius), style: .continuous).strokeBorder(palette.border))
                 }
                 Link(destination: URL(string: "flowcue://chat")!) {
                     Text("Retry")
-                        .font(.system(size: 9.5, weight: .semibold))
+                        .font(.system(size: 9.5, weight: .semibold, design: palette.metaDesign))
                         .foregroundStyle(palette.onAccent)
                         .padding(.horizontal, 10)
                         .frame(height: 24)
-                        .background(Capsule().fill(palette.accent))
+                        .background(RoundedRectangle(cornerRadius: min(12, palette.spec.radius), style: .continuous).fill(palette.accent))
                 }
             }
         }
@@ -134,16 +134,18 @@ struct FlowCueLiveActivityLockScreenView: View {
 }
 
 struct LiveActivityPalette {
-    let tokens: FlowCueTokens
+    let spec: FlowCueThemeSpec
 
-    var accent: Color { Color(hex: tokens.accent) }
-    var canvas: Color { Color(hex: tokens.canvas) }
-    var surface: Color { Color(hex: tokens.surface) }
-    var border: Color { Color(hex: tokens.border) }
-    var textPrimary: Color { Color(hex: tokens.textPrimary) }
-    var textSecondary: Color { Color(hex: tokens.textSecondary) }
-    var textTertiary: Color { Color(hex: tokens.textTertiary) }
-    var success: Color { Color(hex: tokens.success) }
-    var failure: Color { Color(hex: tokens.failure) }
-    var onAccent: Color { Color(hex: "#1C1A29") }
+    var accent: Color { Color(hex: spec.accent) }
+    var canvas: Color { Color(hex: spec.background) }
+    var surface: Color { Color(hex: spec.card) }
+    var border: Color { spec.hasBorder ? Color(hex: spec.border) : .clear }
+    var textPrimary: Color { Color(hex: spec.foreground) }
+    var textSecondary: Color { Color(hex: spec.secondary) }
+    var textTertiary: Color { Color(hex: spec.secondary).opacity(0.68) }
+    var success: Color { Color(hex: "#5CD9B8") }
+    var failure: Color { Color(hex: "#FF6B6B") }
+    var onAccent: Color { Color(hex: "#0A0A12") }
+    var titleDesign: Font.Design { spec.titleDesign }
+    var metaDesign: Font.Design { spec.metaDesign }
 }

@@ -45,6 +45,8 @@
 		D00000000000000000000050 /* FlowCueDesignTokens.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000050 /* FlowCueDesignTokens.swift */; };
 		D00000000000000000000060 /* FlowCueComponents.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000060 /* FlowCueComponents.swift */; };
 		D5A2D2DA7AE5860474CEEF02 /* FlowCueWidgetSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D9B91518FD5CE2D92E67973 /* FlowCueWidgetSnapshot.swift */; };
+		D7B017E9398D710D4D76A467 /* FlowCueThemeCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21D622559225C40C154A00F /* FlowCueThemeCatalog.swift */; };
+		DFB8AC897DA53CEEF4F84F50 /* FlowCueThemeCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21D622559225C40C154A00F /* FlowCueThemeCatalog.swift */; };
 		E00000000000000000000001 /* MobileAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000001 /* MobileAssets.xcassets */; };
 		E00000000000000000000002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000002 /* PrivacyInfo.xcprivacy */; };
 		E3D2B745D159CD2847A60ED1 /* MobileAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000001 /* MobileAssets.xcassets */; };
@@ -437,6 +439,7 @@
 				38456561202B7E96C9F88216 /* FlowCueActivityAttributes.swift in Sources */,
 				BC5E09C52BF3FA4D7A3EE0D5 /* FlowCueLiveActivityView.swift in Sources */,
 				AD66B9DC891E3764B1D6C061 /* FlowCueLiveActivityWidget.swift in Sources */,
+				DFB8AC897DA53CEEF4F84F50 /* FlowCueThemeCatalog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -449,6 +452,7 @@
 				C6D967B97D1841C33D4A1D03 /* FlowCueSharedCapture.swift in Sources */,
 				A405EE48F80752BCD1E4E480 /* FlowCueMobileTheme.swift in Sources */,
 				0B7624B3DC825DE37F4D29B3 /* FlowCueDesignTokens.swift in Sources */,
+				D7B017E9398D710D4D76A467 /* FlowCueThemeCatalog.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -512,7 +516,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueMobile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -542,7 +546,7 @@
 				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueMobile.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -573,7 +577,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -604,7 +608,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/Widgets/FlowCueWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -635,7 +639,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/Widgets/FlowCueWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -667,7 +671,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 41;
+				CURRENT_PROJECT_VERSION = 42;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;

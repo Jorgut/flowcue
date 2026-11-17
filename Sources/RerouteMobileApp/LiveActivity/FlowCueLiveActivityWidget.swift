@@ -3,7 +3,7 @@ import SwiftUI
 import WidgetKit
 
 struct FlowCueLiveActivityWidget: Widget {
-    private let palette = LiveActivityPalette(tokens: .airyDark)
+    private var palette: LiveActivityPalette { LiveActivityPalette(spec: FlowCueThemeSharing.currentSpec()) }
 
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: FlowCueActivityAttributes.self) { context in
@@ -20,7 +20,7 @@ struct FlowCueLiveActivityWidget: Widget {
                         WidgetFaceMark(ink: palette.textPrimary, smile: palette.accent)
                             .frame(width: 18, height: 18)
                         Text(context.attributes.agent.uppercased())
-                            .font(.system(size: 10, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold, design: palette.metaDesign))
                             .foregroundStyle(palette.textSecondary)
                     }
                 }
@@ -30,7 +30,7 @@ struct FlowCueLiveActivityWidget: Widget {
                             .fill(context.state.status == .failed ? palette.failure : palette.success)
                             .frame(width: 4, height: 4)
                         Text(context.state.status == .failed ? "FAILED" : (context.state.status == .completed ? "DONE" : "LIVE"))
-                            .font(.system(size: 9, weight: .semibold))
+                            .font(.system(size: 9, weight: .semibold, design: palette.metaDesign))
                             .tracking(0.5)
                             .foregroundStyle(palette.textSecondary)
                     }
@@ -38,11 +38,11 @@ struct FlowCueLiveActivityWidget: Widget {
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(context.state.title)
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 12, weight: .semibold, design: palette.titleDesign))
                             .foregroundStyle(palette.textPrimary)
                             .lineLimit(1)
                         Text(context.state.detail)
-                            .font(.system(size: 9.5))
+                            .font(.system(size: 9.5, design: palette.metaDesign))
                             .foregroundStyle(palette.textSecondary)
                             .lineLimit(1)
                     }

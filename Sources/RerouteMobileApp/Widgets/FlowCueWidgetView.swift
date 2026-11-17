@@ -5,7 +5,7 @@ struct FlowCueWidgetView: View {
     let snapshot: FlowCueWidgetSnapshot
     let family: WidgetFamily
 
-    private var palette: WidgetPalette { WidgetPalette(tokens: .airyDark) }
+    private var palette: WidgetPalette { WidgetPalette(spec: FlowCueThemeSharing.currentSpec()) }
 
     var body: some View {
         Group {
@@ -26,7 +26,7 @@ struct FlowCueWidgetView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 4) {
                 Text("FLOWCUE")
-                    .font(.system(size: 8.5, weight: .semibold))
+                    .font(.system(size: 8.5, weight: .semibold, design: palette.metaDesign))
                     .tracking(0.9)
                     .foregroundStyle(palette.textSecondary)
                 Spacer(minLength: 4)
@@ -37,13 +37,13 @@ struct FlowCueWidgetView: View {
             Spacer(minLength: 0)
 
             Text("\(snapshot.totalIdeas)")
-                .font(.system(size: 46, weight: .semibold))
+                .font(.system(size: 46, weight: .semibold, design: palette.titleDesign))
                 .foregroundStyle(palette.textPrimary)
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
 
             Text("IDEAS")
-                .font(.system(size: 8.5, weight: .medium))
+                .font(.system(size: 8.5, weight: .medium, design: palette.metaDesign))
                 .tracking(1.1)
                 .foregroundStyle(palette.textSecondary)
                 .padding(.top, 1)
@@ -57,11 +57,11 @@ struct FlowCueWidgetView: View {
 
             HStack(alignment: .firstTextBaseline) {
                 Text("\(snapshot.totalIdeas)")
-                    .font(.system(size: 30, weight: .semibold))
+                    .font(.system(size: 30, weight: .semibold, design: palette.titleDesign))
                     .foregroundStyle(palette.textPrimary)
                 Spacer(minLength: 8)
                 Text("IDEAS")
-                    .font(.system(size: 8.5, weight: .medium))
+                    .font(.system(size: 8.5, weight: .medium, design: palette.metaDesign))
                     .tracking(1.1)
                     .foregroundStyle(palette.textSecondary)
             }
@@ -79,7 +79,7 @@ struct FlowCueWidgetView: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 6) {
                 Text("FLOWCUE · INBOX")
-                    .font(.system(size: 8.5, weight: .semibold))
+                    .font(.system(size: 8.5, weight: .semibold, design: palette.metaDesign))
                     .tracking(0.9)
                     .foregroundStyle(palette.textSecondary)
                 Spacer(minLength: 4)
@@ -88,11 +88,11 @@ struct FlowCueWidgetView: View {
 
             HStack(alignment: .firstTextBaseline) {
                 Text("\(snapshot.totalIdeas)")
-                    .font(.system(size: 32, weight: .semibold))
+                    .font(.system(size: 32, weight: .semibold, design: palette.titleDesign))
                     .foregroundStyle(palette.textPrimary)
                 Spacer(minLength: 8)
                 Text("IDEAS")
-                    .font(.system(size: 8.5, weight: .medium))
+                    .font(.system(size: 8.5, weight: .medium, design: palette.metaDesign))
                     .tracking(1.1)
                     .foregroundStyle(palette.textSecondary)
             }
@@ -109,16 +109,16 @@ struct FlowCueWidgetView: View {
 
             Link(destination: URL(string: "flowcue://capture")!) {
                 Text("+ New idea")
-                    .font(.system(size: 10.5, weight: .semibold))
+                    .font(.system(size: 10.5, weight: .semibold, design: palette.titleDesign))
                     .foregroundStyle(palette.accent)
                     .frame(maxWidth: .infinity)
                     .frame(height: 30)
                     .background(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        RoundedRectangle(cornerRadius: min(12, palette.spec.radius), style: .continuous)
                             .fill(palette.accent.opacity(0.12))
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        RoundedRectangle(cornerRadius: min(12, palette.spec.radius), style: .continuous)
                             .strokeBorder(palette.accent.opacity(0.35))
                     )
             }
@@ -128,7 +128,7 @@ struct FlowCueWidgetView: View {
     private var widgetHeader: some View {
         HStack(spacing: 4) {
             Text("FLOWCUE")
-                .font(.system(size: 8.5, weight: .semibold))
+                .font(.system(size: 8.5, weight: .semibold, design: palette.metaDesign))
                 .tracking(0.9)
                 .foregroundStyle(palette.textSecondary)
             Spacer(minLength: 4)
@@ -138,17 +138,47 @@ struct FlowCueWidgetView: View {
 }
 
 struct FlowCueWidgetBackground: View {
-    private let tokens = FlowCueTokens.airyDark
+    private var spec: FlowCueThemeSpec { FlowCueThemeSharing.currentSpec() }
 
     var body: some View {
+        let spec = spec
         ZStack {
-            Color(hex: tokens.canvas)
-            RadialGradient(
-                colors: [Color(hex: tokens.accent).opacity(0.34), .clear],
-                center: UnitPoint(x: 0.18, y: 0.08),
-                startRadius: 0,
-                endRadius: 300
-            )
+            Color(hex: spec.background)
+            if spec.glow {
+                RadialGradient(
+                    colors: [Color(hex: spec.accent).opacity(0.34), .clear],
+                    center: UnitPoint(x: 0.18, y: 0.08),
+                    startRadius: 0,
+                    endRadius: 300
+                )
+            }
+            if spec.grid {
+                WidgetGridBackground(spec: spec)
+            }
+        }
+    }
+}
+
+private struct WidgetGridBackground: View {
+    let spec: FlowCueThemeSpec
+
+    var body: some View {
+        let color = (spec.hasBorder ? Color(hex: spec.border) : Color.white.opacity(0.08)).opacity(0.55)
+        Canvas { context, size in
+            var path = Path()
+            var x: CGFloat = 0
+            while x <= size.width {
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: size.height))
+                x += 28
+            }
+            var y: CGFloat = 0
+            while y <= size.height {
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: size.width, y: y))
+                y += 28
+            }
+            context.stroke(path, with: .color(color), lineWidth: 1)
         }
     }
 }
@@ -165,7 +195,7 @@ private struct WidgetStatusPill: View {
                 .fill(isLocal ? palette.textTertiary : palette.accent)
                 .frame(width: 4, height: 4)
             Text(status)
-                .font(.system(size: 8, weight: .medium))
+                .font(.system(size: 8, weight: .medium, design: palette.metaDesign))
                 .tracking(0.6)
                 .foregroundStyle(isLocal ? palette.textTertiary : palette.textSecondary)
         }
@@ -198,7 +228,7 @@ private struct WidgetIdeaRow: View {
             Spacer(minLength: 4)
             if showsStatus {
                 Text(idea.status)
-                    .font(.system(size: 8, weight: .medium))
+                    .font(.system(size: 8, weight: .medium, design: palette.metaDesign))
                     .tracking(0.4)
                     .foregroundStyle(palette.textSecondary)
                     .lineLimit(1)
@@ -208,17 +238,19 @@ private struct WidgetIdeaRow: View {
 }
 
 private struct WidgetPalette {
-    let tokens: FlowCueTokens
+    let spec: FlowCueThemeSpec
 
-    var accent: Color { Color(hex: tokens.accent) }
-    var surface: Color { Color(hex: tokens.surface) }
-    var border: Color { Color(hex: tokens.border) }
-    var textPrimary: Color { Color(hex: tokens.textPrimary) }
-    var textSecondary: Color { Color(hex: tokens.textSecondary) }
-    var textTertiary: Color { Color(hex: tokens.textTertiary) }
-    var success: Color { Color(hex: tokens.success) }
-    var warning: Color { Color(hex: tokens.warning) }
-    var failure: Color { Color(hex: tokens.failure) }
+    var accent: Color { Color(hex: spec.accent) }
+    var surface: Color { Color(hex: spec.card) }
+    var border: Color { spec.hasBorder ? Color(hex: spec.border) : .clear }
+    var textPrimary: Color { Color(hex: spec.foreground) }
+    var textSecondary: Color { Color(hex: spec.secondary) }
+    var textTertiary: Color { Color(hex: spec.secondary).opacity(0.68) }
+    var success: Color { Color(hex: "#5CD9B8") }
+    var warning: Color { Color(hex: "#F0B429") }
+    var failure: Color { Color(hex: "#FF6B6B") }
+    var titleDesign: Font.Design { spec.titleDesign }
+    var metaDesign: Font.Design { spec.metaDesign }
 }
 
 struct WidgetFaceMark: View {

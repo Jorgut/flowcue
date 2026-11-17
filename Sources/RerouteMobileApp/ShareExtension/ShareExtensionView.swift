@@ -6,14 +6,13 @@ struct ShareExtensionView: View {
     let onCancel: () -> Void
 
     @State private var target: FlowCueShareTarget = .inbox
-    @Environment(\.colorScheme) private var colorScheme
 
     private var trimmedText: String {
         initialText.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var palette: SharePalette {
-        SharePalette(tokens: FlowCueMobileTheme.tokens(for: colorScheme))
+        SharePalette(spec: FlowCueThemeSharing.currentSpec())
     }
 
     var body: some View {
@@ -26,7 +25,7 @@ struct ShareExtensionView: View {
             Spacer(minLength: 12)
             saveButton
             Text("Saves locally · offline safe.")
-                .font(.system(size: 9.5))
+                .font(.system(size: 9.5, design: palette.metaDesign))
                 .foregroundStyle(palette.textTertiary)
                 .frame(maxWidth: .infinity)
                 .padding(.top, 8)
@@ -35,7 +34,7 @@ struct ShareExtensionView: View {
         .padding(.top, 14)
         .padding(.bottom, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(palette.canvas.ignoresSafeArea())
+        .background(ShareBackground(spec: palette.spec))
     }
 
     private var header: some View {
@@ -49,7 +48,7 @@ struct ShareExtensionView: View {
             .frame(width: 28, height: 28)
 
             Text("FlowCue")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold, design: palette.titleDesign))
                 .foregroundStyle(palette.textPrimary)
 
             Spacer()
@@ -71,7 +70,7 @@ struct ShareExtensionView: View {
     private var textCard: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("SHARED TEXT")
-                .font(.system(size: 9, weight: .medium))
+                .font(.system(size: 9, weight: .medium, design: palette.metaDesign))
                 .tracking(0.8)
                 .foregroundStyle(palette.textSecondary)
             Text(trimmedText.isEmpty ? "Nothing to save." : trimmedText)
@@ -83,11 +82,11 @@ struct ShareExtensionView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: palette.spec.radius, style: .continuous)
                 .fill(palette.surface)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: FlowCueMetrics.radiusCard, style: .continuous)
+            RoundedRectangle(cornerRadius: palette.spec.radius, style: .continuous)
                 .strokeBorder(palette.border)
         )
     }
@@ -111,11 +110,11 @@ struct ShareExtensionView: View {
                 .padding(.horizontal, 14)
                 .frame(height: 34)
                 .background(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: min(12, palette.spec.radius), style: .continuous)
                         .fill(selected ? palette.accent : palette.surface)
                 )
                 .overlay(
-                    Capsule()
+                    RoundedRectangle(cornerRadius: min(12, palette.spec.radius), style: .continuous)
                         .strokeBorder(selected ? Color.clear : palette.border)
                 )
         }
@@ -128,11 +127,11 @@ struct ShareExtensionView: View {
             onSave(trimmedText, target)
         } label: {
             Text("Save")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold, design: palette.titleDesign))
                 .foregroundStyle(palette.onAccent)
                 .frame(maxWidth: .infinity)
                 .frame(height: 50)
-                .background(Capsule().fill(palette.accent))
+                .background(RoundedRectangle(cornerRadius: palette.spec.radius, style: .continuous).fill(palette.accent))
         }
         .buttonStyle(.plain)
         .disabled(trimmedText.isEmpty)
@@ -141,16 +140,64 @@ struct ShareExtensionView: View {
 }
 
 private struct SharePalette {
-    let tokens: FlowCueTokens
+    let spec: FlowCueThemeSpec
 
-    var accent: Color { Color(hex: tokens.accent) }
-    var canvas: Color { Color(hex: tokens.canvas) }
-    var surface: Color { Color(hex: tokens.surface) }
-    var border: Color { Color(hex: tokens.border) }
-    var textPrimary: Color { Color(hex: tokens.textPrimary) }
-    var textSecondary: Color { Color(hex: tokens.textSecondary) }
-    var textTertiary: Color { Color(hex: tokens.textTertiary) }
-    var onAccent: Color { Color(hex: "#1C1A29") }
+    var accent: Color { Color(hex: spec.accent) }
+    var canvas: Color { Color(hex: spec.background) }
+    var surface: Color { Color(hex: spec.card) }
+    var border: Color { spec.hasBorder ? Color(hex: spec.border) : .clear }
+    var textPrimary: Color { Color(hex: spec.foreground) }
+    var textSecondary: Color { Color(hex: spec.secondary) }
+    var textTertiary: Color { Color(hex: spec.secondary).opacity(0.68) }
+    var onAccent: Color { Color(hex: "#0A0A12") }
+    var titleDesign: Font.Design { spec.titleDesign }
+    var metaDesign: Font.Design { spec.metaDesign }
+}
+
+private struct ShareBackground: View {
+    let spec: FlowCueThemeSpec
+
+    var body: some View {
+        ZStack {
+            Color(hex: spec.background)
+            if spec.glow {
+                RadialGradient(
+                    colors: [Color(hex: spec.accent).opacity(0.34), .clear],
+                    center: UnitPoint(x: 0.18, y: 0.08),
+                    startRadius: 0,
+                    endRadius: 300
+                )
+            }
+            if spec.grid {
+                ShareGridBackground(spec: spec)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
+private struct ShareGridBackground: View {
+    let spec: FlowCueThemeSpec
+
+    var body: some View {
+        let color = (spec.hasBorder ? Color(hex: spec.border) : Color.white.opacity(0.08)).opacity(0.55)
+        Canvas { context, size in
+            var path = Path()
+            var x: CGFloat = 0
+            while x <= size.width {
+                path.move(to: CGPoint(x: x, y: 0))
+                path.addLine(to: CGPoint(x: x, y: size.height))
+                x += 28
+            }
+            var y: CGFloat = 0
+            while y <= size.height {
+                path.move(to: CGPoint(x: 0, y: y))
+                path.addLine(to: CGPoint(x: size.width, y: y))
+                y += 28
+            }
+            context.stroke(path, with: .color(color), lineWidth: 1)
+        }
+    }
 }
 
 private struct ShareFaceMark: View {

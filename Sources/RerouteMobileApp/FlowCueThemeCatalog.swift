@@ -28,6 +28,17 @@ struct FlowCueThemeSpec: Identifiable, Hashable {
     let grid: Bool
 
     var hasBorder: Bool { border != "transparent" }
+
+    var titleDesign: Font.Design { design(titleFont) }
+    var metaDesign: Font.Design { design(metaFont) }
+
+    private func design(_ value: String) -> Font.Design {
+        switch value {
+        case "serif": .serif
+        case "mono": .monospaced
+        default: .default
+        }
+    }
 }
 
 enum FlowCueThemeCatalog {
@@ -145,5 +156,32 @@ enum FlowCueThemeSelection {
         default: dark = UITraitCollection.current.userInterfaceStyle == .dark
         }
         UserDefaults.standard.set(dark ? "airy" : "airy_light", forKey: key)
+    }
+}
+
+
+/// App → 扩展（Widgets / Share / Live Activity）共享当前主题。
+enum FlowCueThemeSharing {
+    static let appGroup = "group.com.archintera.FlowCue"
+    private static let key = "FlowCue.sharedThemeID"
+
+    static func publish(_ id: String) {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return }
+        defaults.set(id, forKey: key)
+        defaults.synchronize()
+    }
+
+    static func currentID() -> String {
+        guard let defaults = UserDefaults(suiteName: appGroup) else { return "airy" }
+        defaults.synchronize()
+        if let id = defaults.string(forKey: key),
+           FlowCueThemeCatalog.all.contains(where: { $0.id == id }) {
+            return id
+        }
+        return "airy"
+    }
+
+    static func currentSpec() -> FlowCueThemeSpec {
+        FlowCueThemeCatalog.spec(for: currentID())
     }
 }
