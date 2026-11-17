@@ -40,7 +40,9 @@ site/
 
 上线地址：`https://flowcue.altn.vision`（自定义域指向本目录）。
 
-连接仓库，构建目录设成 `site`，无构建命令。Cloudflare Pages 用 `_headers`；Vercel 用同目录的 `vercel.json`，响应头等价。`_headers` 已配好：
+连接仓库，构建目录设成 `site`，无构建命令；响应头由 `_headers` 生效。
+命令行部署：`npx wrangler pages deploy site --project-name flowcue`。
+后续支付接口放 Pages Functions（`functions/`），静态站本身不受影响。`_headers` 已配好：
 
 - `/downloads/*` → `application/octet-stream` + 一年 immutable 缓存
 - `/mac` → 10 分钟缓存
