@@ -3037,6 +3037,48 @@ private struct AgentsView: View {
 
 // MARK: - Pairing
 
+private struct FlowCueMacPairingCard: View {
+    private var isMandarin: Bool { L10n.language == .mandarin }
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(isMandarin ? "还没有配对的 Mac？" : "No Mac paired yet?")
+                .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+
+            FlowCueMacQRCode(url: FlowCueMacDownload.pairingURL)
+                .padding(.top, 2)
+
+            Text(isMandarin ? "扫码在 Mac 上打开" : "Scan to open on your Mac")
+                .flowCueFont(11, relativeTo: .caption2)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+
+            Button {
+                UIApplication.shared.open(FlowCueMacDownload.pairingURL)
+            } label: {
+                Text(isMandarin ? "在浏览器打开 flowcue.app/mac" : "Open flowcue.app/mac in a browser")
+                    .flowCueFont(11.5, relativeTo: .caption)
+                    .foregroundStyle(FlowCueTheme.accent)
+                    .padding(.top, 2)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(isMandarin ? "打开 Mac 版下载页" : "Opens the Mac download page")
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+        .padding(.horizontal, 16)
+        .background(
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
+                .fill(FlowCueTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
+                .strokeBorder(FlowCueTheme.hairline)
+        )
+    }
+}
+
+
 private struct PairMacSheet: View {
     @Bindable var controller: LANRemoteController
     @Environment(\.dismiss) private var dismiss
@@ -3099,6 +3141,8 @@ private struct PairMacSheet: View {
                 codeSection
                 nearbySection
                 manualSection
+                FlowCueMacPairingCard()
+                    .padding(.top, 22)
             }
             .padding(.horizontal, AgentsLayout.margin)
             .padding(.top, 12)
@@ -4434,6 +4478,7 @@ private struct ChatScreen: View {
     @State private var showingDevice = false
     @State private var showingDisconnect = false
     @State private var showingApprovals = false
+    @State private var isAtBottom = true
     @State private var live = FlowCueLiveActivityController.shared
 
     private var target: ChatTarget { switchedTarget ?? initialTarget }
@@ -4674,6 +4719,8 @@ private struct ChatScreen: View {
                     Color.clear
                         .frame(height: 1)
                         .id("chat-bottom")
+                        .onAppear { isAtBottom = true }
+                        .onDisappear { isAtBottom = false }
                 }
                 .padding(.horizontal, 18)
                 .padding(.top, 20)
@@ -4682,6 +4729,24 @@ private struct ChatScreen: View {
             .scrollDismissesKeyboard(.interactively)
             .defaultScrollAnchor(.bottom)
             .onAppear { scrollToBottom(proxy) }
+            .overlay(alignment: .bottomTrailing) {
+                if !isAtBottom {
+                    Button {
+                        scrollToBottom(proxy)
+                    } label: {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(FlowCueTheme.textPrimary)
+                            .frame(width: 36, height: 36)
+                            .background(Circle().fill(FlowCueTheme.surface))
+                            .overlay(Circle().strokeBorder(FlowCueTheme.hairline))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.trailing, 14)
+                    .padding(.bottom, 10)
+                    .accessibilityLabel("Scroll to latest")
+                }
+            }
             .onChange(of: displayMessages.last?.id) { _, _ in
                 scrollToBottom(proxy)
             }
@@ -6165,6 +6230,32 @@ private struct SettingsView: View {
                     syncNowRow
                     divider
                     SettingsValueRow(title: "iCloud account", value: iCloudStatus)
+                }
+
+                section("MAC") {
+                    Button {
+                        UIApplication.shared.open(FlowCueMacDownload.settingsURL)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(L10n.language == .mandarin ? "Mac 版" : "Mac app")
+                                .flowCueFont(13, relativeTo: .subheadline)
+                                .foregroundStyle(FlowCueTheme.textPrimary)
+                            Spacer(minLength: 8)
+                            Text("flowcue.app/mac")
+                                .flowCueFont(10, relativeTo: .caption2)
+                                .foregroundStyle(FlowCueTheme.textSecondary)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                        }
+                        .padding(.vertical, 13)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Text(L10n.language == .mandarin ? "在 Mac 上安装，配对后可以继续编辑" : "Install on Mac, pair, then keep editing.")
+                        .flowCueFont(10, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.textTertiary)
+                        .padding(.top, 6)
                 }
 
                 section("APPEARANCE") {
