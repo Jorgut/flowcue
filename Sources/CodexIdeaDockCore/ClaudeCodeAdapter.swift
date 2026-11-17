@@ -59,7 +59,8 @@ public struct ClaudeCodeAdapter: AgentAdapter {
                 .filter { ($0["type"] as? String) == "text" }
                 .compactMap { $0["text"] as? String }
                 .joined(separator: "\n")
-            guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            guard !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !Self.isSystemPrompt(body) else { continue }
 
             out.append(AgentMessage(
                 id: obj["uuid"] as? String ?? UUID().uuidString,
@@ -72,10 +73,41 @@ public struct ClaudeCodeAdapter: AgentAdapter {
     }
 
     public func send(_ text: String, to session: AgentSession) async throws {
-        throw AgentAdapterError.unsupported
+        // `claude -p --resume <session-id> <text>`：非交互续写一轮
+        let executable = "/Users/\(NSUserName())/.local/bin/claude"
+        guard FileManager.default.isExecutableFile(atPath: executable) else {
+            throw AgentAdapterError.notFound
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = ["-p", "--resume", session.locator, text]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+
+        try process.run()
+        let deadline = Date().addingTimeInterval(600)
+        while process.isRunning, Date() < deadline {
+            try await Task.sleep(nanoseconds: 200_000_000)
+        }
+        if process.isRunning {
+            process.terminate()
+            throw AgentAdapterError.malformed("Claude 没有在 10 分钟内结束")
+        }
+        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        if process.terminationStatus != 0 {
+            throw AgentAdapterError.malformed(output.isEmpty ? "Claude 执行失败" : String(output.prefix(200)))
+        }
     }
 
     // MARK: helpers
+
+    /// 有些工具会把系统提示词写成一条 user 消息，这里过滤掉。
+    static func isSystemPrompt(_ text: String) -> Bool {
+        let head = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return head.hasPrefix("<") || head.hasPrefix("Caveat:")
+            || head.hasPrefix("SYSTEM:") || head.hasPrefix("You are ")
+    }
 
     private static func parseDate(_ string: String) -> Date? {
         let withFraction = ISO8601DateFormatter()
@@ -114,7 +146,7 @@ public struct ClaudeCodeAdapter: AgentAdapter {
             }
             body = body.trimmingCharacters(in: .whitespacesAndNewlines)
             // 系统注入的提醒 / 工具输出不作为标题
-            guard !body.isEmpty, !body.hasPrefix("<"), !body.hasPrefix("Caveat:") else { continue }
+            guard !body.isEmpty, !Self.isSystemPrompt(body) else { continue }
             return String(body.prefix(60))
         }
         return "未命名会话"

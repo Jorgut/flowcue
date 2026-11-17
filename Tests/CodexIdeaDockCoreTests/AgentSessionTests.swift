@@ -19,16 +19,15 @@ final class AgentSessionTests: XCTestCase {
         }
     }
 
-    func testSendIsUnsupportedForNow() async throws {
-        let adapter = ClaudeCodeAdapter()
-        guard let session = try await adapter.listSessions(limit: 1).first else {
-            throw XCTSkip("无会话")
-        }
+    func testDSHMessagesStayUnsupported() async throws {
+        let adapter = DSHAgentAdapter()
+        let session = AgentSession(id: "s", agentID: "dsh", title: "t", updatedAt: Date(),
+                                   projectPath: nil, messageCount: nil, locator: "s")
         do {
-            try await adapter.send("test", to: session)
-            XCTFail("发送应抛 unsupported")
+            _ = try await adapter.messages(in: session, limit: 5)
+            XCTFail("DSH 对话应抛 unsupported")
         } catch AgentAdapterError.unsupported {
-            // 预期
+            // 预期：桥只提供待审与发消息
         }
     }
 }

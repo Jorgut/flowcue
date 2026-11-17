@@ -379,5 +379,8 @@ public enum L10n {
         "包含": "Includes",
         "在 iPhone 上订阅后，这台 Mac 自动解锁。": "Subscribe on iPhone and this Mac unlocks automatically.",
         "刷新状态": "Refresh status",
+        "发一条消息…": "Send a message…",
+        "已送达": "Delivered",
+        "发送失败": "Send failed",
     ]
 }

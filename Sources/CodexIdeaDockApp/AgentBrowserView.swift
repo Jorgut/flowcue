@@ -115,6 +115,10 @@ struct AgentBrowserView: View {
         }
     }
 
+    @State private var draft = ""
+    @State private var sending = false
+    @State private var sendNote: String?
+
     private var messageColumn: some View {
         VStack(spacing: 0) {
             if let session = selectedSession {
@@ -129,6 +133,34 @@ struct AgentBrowserView: View {
                     }
                     .padding(14)
                 }
+
+                Divider()
+
+                HStack(spacing: 8) {
+                    TextField("", text: $draft, prompt: Text(L10n.text("发一条消息…")), axis: .vertical)
+                        .textFieldStyle(.plain)
+                        .lineLimit(1...4)
+                        .font(.callout)
+                    if let sendNote {
+                        Text(sendNote)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Button {
+                        Task { await send(to: session) }
+                    } label: {
+                        Image(systemName: "arrow.up")
+                            .font(.caption.weight(.semibold))
+                            .frame(width: 22, height: 22)
+                            .background(Circle().fill(Color(hex: FlowCueTokens.airyDark.accent)))
+                            .foregroundStyle(Color(hex: "#0A0A12"))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(sending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .accessibilityLabel(L10n.text("发送"))
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             } else {
                 VStack {
                     Spacer()
@@ -190,6 +222,25 @@ struct AgentBrowserView: View {
                 note = L10n.text("读取失败")
             }
         }
+    }
+
+    private func send(to session: AgentSession) async {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !sending else { return }
+        sending = true
+        sendNote = nil
+        do {
+            try await service.send(text, to: session)
+            draft = ""
+            sendNote = L10n.text("已送达")
+            await reloadSessions()
+            if let current = selectedSession {
+                messages = (try? await service.messages(current, limit: 80)) ?? messages
+            }
+        } catch {
+            sendNote = L10n.text("发送失败")
+        }
+        sending = false
     }
 
     private func select(_ session: AgentSession) {

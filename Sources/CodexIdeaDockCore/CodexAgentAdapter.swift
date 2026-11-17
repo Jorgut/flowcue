@@ -87,7 +87,14 @@ public struct CodexAgentAdapter: AgentAdapter {
     }
 
     public func send(_ text: String, to session: AgentSession) async throws {
-        throw AgentAdapterError.unsupported
+        // 复用已有队列通道：`codex queue --thread <id> --message <text>`
+        let outcome = await CodexBridge().queue(message: text, to: session.locator)
+        switch outcome {
+        case .queued:
+            return
+        case .failed(_, let message), .unknown(let message):
+            throw AgentAdapterError.malformed(message)
+        }
     }
 
     // MARK: JSON-RPC over stdio
