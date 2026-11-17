@@ -7,6 +7,8 @@
 - `Sources/CodexIdeaDockApp`：窗口、输入、菜单栏、快捷键与前台宿主策略。
 - `Sources/CodexIdeaDockProcessLauncher`：独立进程组 helper；缺失时必须失败关闭。
 - `Tests/CodexIdeaDockCoreTests`：存储、桥接、宿主策略、图标回归。
+- 提交纪律：**只 `git add` 本次真正改动的具体路径**，禁止 `git add -A` / `git add .` / `git add Sources`。
+  本工作区同时跑 macOS 与 iOS 两条线，宽泛暂存会把另一条线的半成品卷进提交。
 - 验证：`swift test`。打包：`zsh Scripts/build-app.sh`。环境问题先参考 `PROJECT_STATE.md`。
 - 不更改兼容标识：Bundle ID、SwiftData 配置名、窗口恢复键、App Server client name，详见 README。
 - 原始想法、草稿、正式数据库及 UserDefaults 不用于写入测试数据。
