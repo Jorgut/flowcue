@@ -6,10 +6,11 @@ import QuartzCore
 import SwiftUI
 
 @MainActor
-final class CapturePanelController: NSWindowController {
+final class CapturePanelController: NSWindowController, NSWindowDelegate {
     private static let panelSize = NSSize(width: 520, height: 280)
     private let store: IdeaDockStore
     private var presentationGeneration = 0
+    private var globalClickMonitor: Any?
 
     var isVisible: Bool {
         window?.isVisible == true
@@ -72,9 +73,27 @@ final class CapturePanelController: NSWindowController {
         nil
     }
 
+    private func installDismissMonitor() {
+        guard globalClickMonitor == nil else { return }
+        // 只监听「别的应用/桌面」的点击；面板内部的点击是本地事件，不会触发这里
+        globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] _ in
+            DispatchQueue.main.async { self?.hide() }
+        }
+    }
+
+    private func removeDismissMonitor() {
+        if let monitor = globalClickMonitor {
+            NSEvent.removeMonitor(monitor)
+            globalClickMonitor = nil
+        }
+    }
+
     func show() {
         guard let window else { return }
         presentationGeneration &+= 1
+        installDismissMonitor()
 
         if window.isVisible {
             window.alphaValue = 1
@@ -116,6 +135,7 @@ final class CapturePanelController: NSWindowController {
     }
 
     func hide() {
+        removeDismissMonitor()
         store.flushDraft()
         guard let window, window.isVisible else { return }
         presentationGeneration &+= 1

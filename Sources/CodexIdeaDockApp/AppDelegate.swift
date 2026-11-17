@@ -293,10 +293,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         button.image = image
         button.imagePosition = .imageLeading
         let pendingCount = store?.pendingCount ?? 0
-        button.title = pendingCount > 0 ? " \(pendingCount)" : ""
+        button.title = ""
+        button.imageScaling = .scaleProportionallyDown
         button.toolTip = hotKeyRegistrationFailed
             ? L10n.text("FlowCue（全局快捷键注册失败）")
-            : "FlowCue · ⌃⌥Space"
+            : (pendingCount > 0 ? "FlowCue · \(pendingCount) " + L10n.text("待处理") + " · ⌃⌥Space"
+                                : "FlowCue · ⌃⌥Space")
         button.setAccessibilityLabel("FlowCue")
         button.setAccessibilityValue("\(pendingCount) " + (L10n.language == .mandarin ? "条待处理想法" : "pending ideas"))
     }

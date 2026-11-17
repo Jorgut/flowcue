@@ -301,6 +301,11 @@ private func drawMenuIcon(size: Int) throws -> Data {
     context.setAllowsAntialiasing(true)
     context.setShouldAntialias(true)
     context.scaleBy(x: CGFloat(size) / 18, y: CGFloat(size) / 18)
+    // 放大到接近满格：系统菜单栏图标通常占 16pt 中的 14pt 左右，
+    // 原来的图形只占 61%，看起来比邻居细一圈。
+    context.translateBy(x: 9, y: 9)
+    context.scaleBy(x: 1.28, y: 1.28)
+    context.translateBy(x: -9, y: -9)
     context.setStrokeColor(color(0x000000))
     context.setFillColor(color(0x000000))
     context.setLineCap(.round)
