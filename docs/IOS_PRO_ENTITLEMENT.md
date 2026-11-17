@@ -17,6 +17,12 @@ ProEntitlement.publish(expiry:)  // 写入 iCloud KV + 本地兜底
 
 设置 → Pro 页会显示「已解锁 / 未订阅」和续订日期，并可手动刷新。
 
+> **前提（发布版尚未满足）**：`NSUbiquitousKeyValueStore` 需要 iCloud entitlement 和带该
+> entitlement 的 provisioning profile。当前 Developer ID 发布包两者都没有，所以 iOS 写入的
+> 值到不了 Mac。要真正解锁，二选一：
+> 1. 给 Mac 加 `com.apple.developer.ubiquity-kvstore-identifier` + iCloud profile 并重新签名公证；
+> 2. 改走局域网：Mac 的 LAN server 已有配对码，加一个 `POST /v1/pro/expiry`，iOS 连上时推送到期时间。
+
 ## iOS 侧要做的（唯一改动点）
 
 `Sources/RerouteMobileApp/RerouteMobileApp.swift` 里的 `SubscriptionManager.refresh()`。
