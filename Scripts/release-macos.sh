@@ -81,6 +81,24 @@ fi
     shasum -a 256 "$(basename "$dmg_path")" > "$(basename "$dmg_path").sha256"
 )
 
+# 同步官网下载页：拷贝 DMG 并更新版本/体积
+site_downloads="$project_directory/site/downloads"
+site_page="$project_directory/site/mac/index.html"
+mkdir -p "$site_downloads"
+cp "$dmg_path" "$site_downloads/"
+dmg_name="$(basename "$dmg_path")"
+dmg_size="$(python3 -c "import os,sys; print(f\"{os.path.getsize(sys.argv[1])/1_000_000:.1f} MB\")" "$dmg_path")"
+if [[ -f "$site_page" ]]; then
+    python3 - "$site_page" "$dmg_name" "$version" "$dmg_size" <<'PYEOF'
+import re, sys
+page, name, version, size = sys.argv[1:5]
+html = open(page, encoding='utf-8').read()
+html = re.sub(r'href="/downloads/[^"]+"', f'href="/downloads/{name}"', html)
+html = re.sub(r'Version [\d.]+ · [\d.]+ MB', f'Version {version} · {size}', html)
+open(page, 'w', encoding='utf-8').write(html)
+PYEOF
+fi
+
 printf '%s\n' "$release_archive"
 printf '%s\n' "$dmg_path"
 printf '%s\n' "$checksum_file"
