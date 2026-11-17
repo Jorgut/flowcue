@@ -7,9 +7,14 @@
 ```
 site/
 ├── mac/index.html        → /mac 下载页
-├── assets/icon-512.png   → 页面用的图标
+├── privacy/index.html    → /privacy 隐私政策
+├── changelog/index.html  → /changelog 更新日志
+├── assets/               → 图标 + 共享样式 page.css
+├── _headers              → 响应头（Cloudflare Pages / Netlify）
 └── downloads/            → 发布脚本放 DMG 在这里（不入库）
 ```
+
+三个页面都内置 EN / 中文切换，共用 `assets/page.css`。
 
 ## 下载页怎么更新
 
@@ -50,7 +55,6 @@ site/
 
 | 项 | 说明 |
 |---|---|
-| 隐私政策页 | 页面底部已链接 `/privacy`，还没内容 |
-| Changelog | 同上 |
-| App Store 链接 | 现在是占位 `id0000000000` |
-| 中文版 | 目前仅英文，可加语言切换 |
+| App Store 链接 | 三处占位 `id0000000000`，上架后替换 |
+| 更新日志维护 | 每次发版在 `changelog/index.html` 顶部加一条，中英各写一遍 |
+| 隐私政策法律审阅 | 当前版本按实现事实撰写，正式上线前建议过一遍法律 |
