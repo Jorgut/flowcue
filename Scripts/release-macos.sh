@@ -109,7 +109,7 @@ if [[ "${FLOWCUE_SKIP_SITE_COMMIT:-0}" != "1" ]] && git -C "$project_directory" 
     if [[ -n "$(git -C "$project_directory" status --porcelain -- "${site_paths[@]}")" ]]; then
         git -C "$project_directory" add -- "${site_paths[@]}"
         git -C "$project_directory" commit -m "release(site): FlowCue $version" -- "${site_paths[@]}"
-        if ! git -C "$project_directory" push; then
+        if ! git -C "$project_directory" push origin HEAD; then
             printf '%s\n' "warning: 站点改动已提交但推送失败，请手动 push 后合并到 main 触发部署。" >&2
         fi
     fi
