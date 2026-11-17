@@ -457,16 +457,23 @@ Reduce Motion：只保留 120ms 淡入。macOS 菜单栏图标不参与动效。
 
 ## 10. macOS 方向稿（2026-11）
 
+> **实现状态见 `docs/MACOS_IMPLEMENTATION.md`**：界面清单、与设计稿的实测差异、
+> 每处状态的数据来源、验证命令。设计稿仍是视觉基准，实现有出入时以那份文档为准。
+
 ### 10.1 界面清单
 
 | 界面 | 尺寸 | 职责 |
 |---|---|---|
 | 菜单栏图标 | 18 / 36 | 左键开面板，右键出菜单 |
 | 捕获面板 | 520 × 280 | ⌃⌥Space 唤起，浮在任何 App 上 |
-| 收件箱主框架 | 980 × 640 | 捕获条 + 列表 + 详情 |
-| 设置 | 900 × 544 | 侧栏 12 页 |
-| Usage 面板 | 1180 × 610 | KPI + 热力图 + 分布 |
+| 收件箱主框架 | **1040 × 680**（最小 460 × 520） | 捕获条 + 列表 + 详情 |
+| 设置 | 900 × 544 | 侧栏 11 页 + 左下角版本号 |
+| 本机 Agent 浏览器 | 900 × 620 | agent → 会话 → 对话（实现新增，无设计稿） |
+| 首启引导 | 680 × 400 | 欢迎 / 配对 / 默认 agent |
 | 刘海 / 胶囊状态 | 系统层 | agent 后台进度 |
+
+尺寸按参考软件校准：Cursor / Ollama / OpenCode 都在 1070×680 附近，Claude / Grok 在 860×640；
+收件箱是「列表 + 详情」，取 1040×680 居中。
 
 **没有独立主窗口之外的第三个窗口**：主框架是唯一常驻窗口，面板是它的快捷形态。
 
@@ -487,13 +494,32 @@ Reduce Motion：只保留 120ms 淡入。macOS 菜单栏图标不参与动效。
 | **侧栏** | 来源栏 + 列表 + 详情 | 已排队 / 已发送 / 归档成为分类之后 |
 | ~~单列卡片~~ | — | **弃用**：一句话的条目用卡片浪费纵向空间 |
 
-切换入口：**设置 → General → 收件箱布局**（分段控件），立即生效，记住选择。
+切换入口：**设置 → General → 收件箱布局**（分段控件），立即生效，记住选择；收件箱右上角也有同样的三个图标。
+
+实现细节：
+
+- 列表列固定 320，侧栏模式为 200 + 300
+- 窗口窄于 780pt 自动单栏：列表 ↔ 详情（带返回）
+- 窗口窄于 620pt 头部收成极简条
+- 收件箱头部高度约 56pt，捕获条在**左栏顶部**（不是通栏）
 
 ### 10.3 设置
 
-侧栏 11 项：General · Panel · Agents · Integrations · Remote · Sync · Usage · Pro · Updates · Lab · Feedback；**About 不放列表**，放在左下角版本号旁（点它进 About）。
+侧栏 11 项：General · Panel · Agents · Integrations · Remote · Sync · Usage · Pro · Updates · Lab · Feedback；**About 不放列表**，放在左下角版本号旁。
 
-**Integrations 是唯一带安装动作的页**：DSH 桥（`127.0.0.1:47823`、token 在 `~/.flowcue/dsh-bridge.json`）、Codex hooks、Claude Code。
+11 页全部可用，但性质不同：
+
+| 页 | 性质 |
+|---|---|
+| General / Panel / Remote | 可写设置（语言、布局、配对码） |
+| Agents / Integrations | **只读检测**：本机 agent、桥端口、hooks、三个 adapter |
+| Usage | 只读：Codex `rateLimits` 真实额度 |
+| Pro | 只读：权益清单 + App Store 说明 |
+| Updates | 动作：检查 GitHub 最新 release |
+| Lab | 可写：四个实验开关 |
+| Feedback | 动作：复制 / 邮件 |
+
+**Integrations 是唯一显示连接状态的页**：DSH 桥（`127.0.0.1:47823` 的 TCP 探测与 bind 占用检测）、Codex hooks（`~/.codex/hooks.json`）、Claude Code（`~/.claude/projects`）。
 
 ### 10.4 状态常驻与降级
 
@@ -512,14 +538,16 @@ Reduce Motion：只保留 120ms 淡入。macOS 菜单栏图标不参与动效。
 
 | 场景 | 处理 |
 |---|---|
-| 桥未连接 | 重启桥接 |
-| 端口被占 | 换端口重启 |
-| hooks 未装 | 一键安装 |
-| 队列失败 | 行内标红 + 重试 |
+| 桥未连接 | 重启桥接（**实现只给说明 + 重新检查**，不代跑 DSH） |
+| 端口被占 | 换端口重启（**实现只提示**，不自动改端口） |
+| hooks 未装 | 一键安装（**实现给安装指引**，不代写配置） |
+| 队列失败 | 行内标红 + 重试（**已实现**） |
+
+「不代跑、不代写」是刻意的：改用户的 DSH 配置或 Codex 配置属于越权，宁可多一步引导。
 
 ### 10.6 首次启动与空状态
 
-三步：欢迎（快捷键 + 通知）→ 配对（8 位码 `4F2A8C1D`）→ 默认 agent。
+三步：欢迎（快捷键 + 通知）→ 配对（**6 位数字码**，与 iPhone 端一致，不是设计稿里的 8 位字母）→ 默认 agent（真实扫描结果）。
 三个空状态都必须带动作：收件箱空（⌃⌥Space）、无 agent（安装指引）、桥未连接（重启）。
 
 ### 10.7 token 对齐
@@ -533,7 +561,22 @@ Reduce Motion：只保留 120ms 淡入。macOS 菜单栏图标不参与动效。
 
 生成器 `Design/UIExplorations/gen_mac_*.py`，成品图在 `shots/`。
 
-已发布到 `docs/design/mac/` 的 12 张：全貌、主框架、可选布局、面板+收件箱改动稿、Usage、刘海/胶囊降级、Integrations、设置侧栏、设置 1/2、设置 2/2、首启与空状态、命令面板/目的地/通知/更新。
+已发布到 `docs/design/mac/` 的 12 张设计稿：全貌、主框架、可选布局、面板+收件箱改动稿、Usage、刘海/胶囊降级、Integrations、设置侧栏、设置 1/2、设置 2/2、首启与空状态、命令面板/目的地/通知/更新。
+
+实现快照与对比：
+
+| 目录 | 内容 |
+|---|---|
+| `docs/design/mac/impl/` | 16 张实现截图（收件箱、11 页设置、三步首启、Agent 浏览器、面板） |
+| `docs/design/mac/compare/` | 设计稿 vs 实现并排图 |
+
+重新抓取：
+
+```bash
+zsh Scripts/build-app.sh
+swift Scripts/shot-window.swift FlowCue /tmp/shot.png
+swift Scripts/compare-design.swift docs/design/mac/mac-main.jpg /tmp/shot.png /tmp/cmp.png
+```
 
 ## 11. Lab 与 Feedback
 
