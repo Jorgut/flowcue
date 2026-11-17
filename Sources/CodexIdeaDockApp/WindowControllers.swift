@@ -28,6 +28,7 @@ final class CapturePanelController: NSWindowController {
         panel.controller = self
         panel.level = .normal
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        panel.appearance = NSAppearance(named: .darkAqua)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -177,6 +178,7 @@ final class InboxWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: window)
 
         window.title = "FlowCue"
+        window.appearance = NSAppearance(named: .darkAqua)
         window.titlebarAppearsTransparent = true
         window.toolbarStyle = .unified
         window.minSize = NSSize(width: 460, height: 520)
@@ -223,6 +225,7 @@ final class AgentWindowController: NSWindowController, NSWindowDelegate {
         )
         super.init(window: window)
         window.title = L10n.text("本机 Agent")
+        window.appearance = NSAppearance(named: .darkAqua)
         window.isOpaque = true
         window.backgroundColor = .windowBackgroundColor
         window.titlebarAppearsTransparent = true
@@ -255,6 +258,7 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         )
         super.init(window: window)
         window.title = L10n.text("设置")
+        window.appearance = NSAppearance(named: .darkAqua)
         window.titlebarAppearsTransparent = true
         window.minSize = NSSize(width: 760, height: 520)
         window.isReleasedWhenClosed = false
@@ -288,6 +292,7 @@ final class FirstRunWindowController: NSWindowController, NSWindowDelegate {
         )
         super.init(window: window)
         window.title = L10n.text("欢迎使用 FlowCue")
+        window.appearance = NSAppearance(named: .darkAqua)
         window.titlebarAppearsTransparent = true
         window.titleVisibility = .hidden
         window.isReleasedWhenClosed = false

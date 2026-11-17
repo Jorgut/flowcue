@@ -291,6 +291,7 @@ struct InboxView: View {
         case .three:
             HStack(spacing: 0) {
                 listPane.frame(width: 320)
+                .frame(maxHeight: .infinity, alignment: .top)
                 Divider()
                 detailPane.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -298,6 +299,7 @@ struct InboxView: View {
             VStack(spacing: 0) {
                 HStack(spacing: 0) {
                     listPane.frame(width: 320)
+                .frame(maxHeight: .infinity, alignment: .top)
                     Divider()
                     detailPane.frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
@@ -307,8 +309,10 @@ struct InboxView: View {
         case .sidebar:
             HStack(spacing: 0) {
                 sidebarPane.frame(width: 200)
+                .frame(maxHeight: .infinity, alignment: .top)
                 Divider()
                 listPane.frame(width: 300)
+                .frame(maxHeight: .infinity, alignment: .top)
                 Divider()
                 detailPane.frame(maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -327,7 +331,9 @@ struct InboxView: View {
                 onRestore: restoreCapture,
                 onCopyAndOpenCodex: copyAndOpenCodex
             )
+            Spacer(minLength: 0)
         }
+        .frame(maxHeight: .infinity, alignment: .top)
     }
 
     private var compactFilterMenu: some View {
