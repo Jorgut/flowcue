@@ -17,26 +17,72 @@ ProEntitlement.publish(expiry:)  // 写入 iCloud KV + 本地兜底
 
 设置 → Pro 页会显示「已解锁 / 未订阅」和续订日期，并可手动刷新。
 
-## iOS 侧要做的（3 行）
+## iOS 侧要做的（唯一改动点）
 
-在 `SubscriptionManager` 里，订阅状态变化时同步一次：
+`Sources/RerouteMobileApp/RerouteMobileApp.swift` 里的 `SubscriptionManager.refresh()`。
+
+现在的写法（约 174 行）：
 
 ```swift
-// 订阅有效时
-ProEntitlement.publish(expiry: subscriptionExpiryDate)
-// 无订阅 / 退款 / 过期
-ProEntitlement.publish(expiry: nil)
+var entitled = false
+for await result in Transaction.currentEntitlements {
+    guard case .verified(let transaction) = result,
+          FlowCueProduct.all.contains(transaction.productID) else { continue }
+    if transaction.revocationDate == nil,
+       (transaction.expirationDate ?? .distantFuture) > .now {
+        entitled = true
+    }
+}
+isPro = entitled || isTestFlightBuild
 ```
 
-调用时机：
+改成（只加三处，其余不动）：
 
-| 时机 | 说明 |
+```swift
+var entitled = false
+var latestExpiry: Date?                       // ① 新增
+for await result in Transaction.currentEntitlements {
+    guard case .verified(let transaction) = result,
+          FlowCueProduct.all.contains(transaction.productID) else { continue }
+    if transaction.revocationDate == nil,
+       (transaction.expirationDate ?? .distantFuture) > .now {
+        entitled = true
+        if let expiry = transaction.expirationDate {   // ② 记录到期时间
+            latestExpiry = max(latestExpiry ?? expiry, expiry)
+        }
+    }
+}
+isPro = entitled || isTestFlightBuild
+ProEntitlement.publish(expiry: entitled ? latestExpiry : nil)   // ③ 同步给 Mac
+```
+
+### 为什么放在 `refresh()`
+
+`refresh()` 已经覆盖了所有状态变化：
+
+| 调用来源 | 场景 |
 |---|---|
-| App 启动、拿到 `Transaction.currentEntitlements` 之后 | 冷启动也能对齐 |
-| 购买成功 / 恢复购买之后 | 立即生效 |
-| 收到 Transaction 更新（续订、退款、过期） | 保持同步 |
+| App 启动 | 冷启动对齐 |
+| `purchase()` 成功 | 购买后立即生效 |
+| `Transaction.updates` | 续订、退款、过期 |
 
-到期时间取 StoreKit 的 `expirationDate`；若是自动续订，StoreKit 已给下一期日期。
+不需要在别处再调。
+
+### 一个刻意的决定
+
+**TestFlight 构建会给 `isPro = true`，但不要 publish。**
+测试者没有真实订阅，若把 `entitled` 一起写出去，Mac 会被永久解锁。
+
+所以第 ③ 行用的是 `entitled ? latestExpiry : nil`，不是 `isPro ? ... : nil`。
+
+## 验证
+
+1. iOS 上用一个**没有订阅**的账号：设置 → Pro 显示未订阅
+2. Mac 打开 设置 → Pro：应显示 `Not subscribed`
+3. iOS 完成一次沙盒购买后，Mac 点「Refresh status」：应变成 `Unlocked` 并显示续订日期
+4. 退款/过期后重跑：Mac 应回到 `Not subscribed`（宽限期 7 天内仍解锁）
+
+Mac 侧的读取链路已用单测与手写 KV 验证过（`ProEntitlementTests`）。
 
 ## 约束
 

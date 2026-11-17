@@ -136,6 +136,11 @@ swift Scripts/compare-design.swift docs/design/ios/<设计稿>.jpg /tmp/ios.png 
 
 ---
 
+## 9.5 必做任务：Pro 解锁同步
+
+iOS 的订阅状态要同步给 Mac，否则 Mac 的付费功能永远锁着。
+具体改动只有三行，见 `docs/IOS_PRO_ENTITLEMENT.md`（含精确位置与验证步骤）。
+
 ## 10. 建议的第一屏
 
 `docs/design/ios/` 里优先做**主页（Ideas）**：
