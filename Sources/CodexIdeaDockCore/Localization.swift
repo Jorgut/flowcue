@@ -394,5 +394,9 @@ public enum L10n {
         "收藏与搜索是 Pro 功能": "Stars and search are Pro features",
         "需要 FlowCue Pro": "FlowCue Pro required",
         "在 iPhone 上订阅后，这台 Mac 会自动解锁。": "Subscribe on iPhone and this Mac unlocks automatically.",
+        "给 agent 发消息": "Send messages to agents",
+        "多 agent 并行分发": "Multi-agent dispatch",
+        "跨 agent 收藏与搜索": "Star and search across agents",
+        "之后新增的 Pro 能力": "Future Pro features",
     ]
 }

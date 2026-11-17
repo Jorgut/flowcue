@@ -314,6 +314,7 @@ struct AgentBrowserView: View {
     }
 
     private func searchAllAgentsIfNeeded() async {
+        guard requirePro(L10n.text("收藏与搜索是 Pro 功能")) else { return }
         guard !search.isEmpty, !searchingAll else { return }
         searchingAll = true
         defer { searchingAll = false }

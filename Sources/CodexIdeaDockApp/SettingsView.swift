@@ -621,10 +621,10 @@ private struct ProSettingsPage: View {
 
             SettingsGroup(title: L10n.text("包含")) {
                 ForEach(Array([
-                    L10n.text("全部 13 套主题"),
-                    L10n.text("iCloud 同步"),
-                    L10n.text("iPhone 远程续写"),
-                    L10n.text("优先支持")
+                    L10n.text("给 agent 发消息"),
+                    L10n.text("多 agent 并行分发"),
+                    L10n.text("跨 agent 收藏与搜索"),
+                    L10n.text("之后新增的 Pro 能力")
                 ].enumerated()), id: \.offset) { _, line in
                     HStack(spacing: 8) {
                         Image(systemName: "checkmark")
@@ -638,7 +638,7 @@ private struct ProSettingsPage: View {
             }
             HStack(spacing: 10) {
                 Button(L10n.text("了解更多")) {
-                    if let url = URL(string: "https://flowcue.app/pro") { NSWorkspace.shared.open(url) }
+                    if let url = URL(string: "https://altn.vision") { NSWorkspace.shared.open(url) }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
