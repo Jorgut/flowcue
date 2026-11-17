@@ -175,12 +175,16 @@ final class SubscriptionManager {
         isLoading = true
         await loadProducts()
         var entitled = false
+        var latestExpiry: Date?
         for await result in Transaction.currentEntitlements {
             guard case .verified(let transaction) = result,
                   FlowCueProduct.all.contains(transaction.productID) else { continue }
             if transaction.revocationDate == nil,
                (transaction.expirationDate ?? .distantFuture) > .now {
                 entitled = true
+                if let expiry = transaction.expirationDate {
+                    latestExpiry = max(latestExpiry ?? expiry, expiry)
+                }
             }
         }
         #if DEBUG
@@ -188,6 +192,8 @@ final class SubscriptionManager {
         #else
         isPro = entitled || isTestFlightBuild
         #endif
+        // 只同步真实订阅：TestFlight 的临时解锁不写出去，否则 Mac 会被永久解锁。
+        ProEntitlement.publish(expiry: entitled ? latestExpiry : nil)
         isLoading = false
     }
 

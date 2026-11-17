@@ -461,26 +461,31 @@ struct InboxView: View {
     }
 
     private var layoutPicker: some View {
-        HStack(spacing: 4) {
+        Menu {
             ForEach(InboxLayout.allCases, id: \.rawValue) { mode in
                 Button {
                     layoutRaw = mode.rawValue
                 } label: {
-                    Image(systemName: mode.symbol)
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 26, height: 22)
-                        .background(layout == mode ? .white.opacity(0.22) : .clear,
-                                    in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                        .foregroundStyle(.white.opacity(layout == mode ? 0.95 : 0.55))
+                    if layout == mode {
+                        Label(mode.title, systemImage: "checkmark")
+                    } else {
+                        Text(mode.title)
+                    }
                 }
-                .buttonStyle(.plain)
-                .help(mode.title)
-                .accessibilityLabel(mode.title)
-                .accessibilityAddTraits(layout == mode ? .isSelected : [])
             }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: layout.symbol)
+                    .font(.system(size: 11))
+                Text(layout.title)
+                    .font(.system(size: 11))
+            }
+            .foregroundStyle(.secondary)
         }
-        .padding(3)
-        .background(.white.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help(L10n.text("收件箱布局"))
+        .accessibilityLabel(L10n.text("收件箱布局") + " · " + layout.title)
     }
 
     private var composerPane: some View {
