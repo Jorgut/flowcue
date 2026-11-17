@@ -36,3 +36,6 @@ AuthKey_*.p8
 
 # 发布产物，不入库
 site/downloads/
+
+# wrangler 本地状态
+.wrangler/
