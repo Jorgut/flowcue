@@ -21,14 +21,30 @@ site/
 
 所以**不要手改**下载链接和版本号，跑一次发布脚本即可。
 
-## 部署
+## 多语言
 
-任意静态托管（Vercel / Cloudflare Pages / GitHub Pages）：
+页面内置 EN / 中文 切换：
 
-- 根目录指向 `site/`
-- `/mac` → `site/mac/index.html`
-- `/downloads/*.dmg` 需要允许大文件（当前 4.7 MB）
-- 建议给 DMG 配 `Content-Type: application/octet-stream`
+- 语言来源优先级：`?lang=zh` → localStorage → `navigator.language`
+- 文案在 `index.html` 底部的 `I18N` 字典里，键名对应 `data-i18n`
+- 新增语言：加一个字典分支 + 一个切换按钮
+- iOS 里的链接可用 `?lang=zh` 强制中文
+
+## 部署（推荐 Cloudflare Pages）
+
+连接仓库，构建目录设成 `site`，无构建命令。`_headers` 已配好：
+
+- `/downloads/*` → `application/octet-stream` + 一年 immutable 缓存
+- `/mac` → 10 分钟缓存
+- 全站 `nosniff` / `Referrer-Policy`
+
+其它候选：
+
+| 平台 | 说明 |
+|---|---|
+| **Cloudflare Pages** | 免费、不限流量、亚洲节点快，`_headers` 原生支持 |
+| Vercel | 免费 100GB/月，配置简单；已用 Vercel 的话可少一个账号 |
+| GitHub Pages | 免费，但不支持自定义响应头，大文件走 LFS 不便 |
 
 ## 待补
 

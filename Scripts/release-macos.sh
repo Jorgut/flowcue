@@ -94,7 +94,8 @@ import re, sys
 page, name, version, size = sys.argv[1:5]
 html = open(page, encoding='utf-8').read()
 html = re.sub(r'href="/downloads/[^"]+"', f'href="/downloads/{name}"', html)
-html = re.sub(r'Version [\d.]+ · [\d.]+ MB', f'Version {version} · {size}', html)
+html = re.sub(r'<span id="ver">[^<]*</span>', f'<span id="ver">{version}</span>', html)
+html = re.sub(r'<span id="size">[^<]*</span>', f'<span id="size">{size}</span>', html)
 open(page, 'w', encoding='utf-8').write(html)
 PYEOF
 fi
