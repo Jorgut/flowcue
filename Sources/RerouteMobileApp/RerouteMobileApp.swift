@@ -5713,6 +5713,7 @@ private struct MeView: View {
     @State private var showingFeedback = MePreview.state == "feedback"
     @State private var showingWidgets = MePreview.state == "widgets"
     @State private var showingLiveActivity = MePreview.state == "liveactivity"
+    @State private var showingSettings = MePreview.state == "settings"
 
     var body: some View {
         NavigationStack {
@@ -5798,16 +5799,40 @@ private struct MeView: View {
             .navigationDestination(isPresented: $showingLiveActivity) {
                 LiveActivityGalleryView()
             }
+            .navigationDestination(isPresented: $showingSettings) {
+                SettingsView(
+                    syncController: syncController,
+                    remoteController: remoteController,
+                    showOnboarding: showOnboarding
+                )
+            }
         }
     }
 
     private var meHeader: some View {
-        Text("Me")
-            .flowCueFont(17, relativeTo: .headline, weight: .semibold)
-            .foregroundStyle(FlowCueTheme.textPrimary)
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: 44)
-            .padding(.top, 10)
+        ZStack {
+            Text("Me")
+                .flowCueFont(17, relativeTo: .headline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+
+            HStack {
+                Spacer()
+                Button {
+                    showingSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 44)
+        .padding(.top, 10)
     }
 
     private var profile: some View {
@@ -6076,6 +6101,389 @@ private struct MeRowLabel: View {
         }
         .padding(.vertical, 13)
         .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Settings
+
+private struct SettingsView: View {
+    @Bindable var syncController: IdeaSyncController
+    @Bindable var remoteController: LANRemoteController
+    let showOnboarding: () -> Void
+
+    @Environment(SubscriptionManager.self) private var subscription
+    @AppStorage(FlowCueThemeSelection.key) private var themeID = FlowCueThemeSelection.defaultID
+    @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
+
+    @State private var showingPaywall = false
+    @State private var showingAppearance = false
+    @State private var showingLanguage = false
+    @State private var showingAbout = false
+    @State private var showingFeedback = false
+    @State private var showingClearCache = false
+    @State private var diagnosticsCopied = false
+    @State private var syncNowWorking = false
+    @State private var dataSize = "—"
+    @State private var cacheSize = "—"
+
+    private var versionString: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
+        let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
+        return "\(version) (\(build))"
+    }
+
+    private var themeName: String {
+        FlowCueThemeCatalog.spec(for: themeID).name
+    }
+
+    private var languageName: String {
+        AppLanguage(rawValue: language)?.displayName ?? language
+    }
+
+    private var iCloudStatus: String {
+        FileManager.default.ubiquityIdentityToken == nil ? "Not signed in" : "Signed in"
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 22) {
+                section("ACCOUNT") {
+                    syncRow
+                    syncStatus
+                    divider
+                    syncNowRow
+                    divider
+                    SettingsValueRow(title: "iCloud account", value: iCloudStatus)
+                }
+
+                section("APPEARANCE") {
+                    Button {
+                        showingAppearance = true
+                    } label: {
+                        MeRowLabel(title: "Theme", value: themeName)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                section("LANGUAGE") {
+                    Button {
+                        showingLanguage = true
+                    } label: {
+                        MeRowLabel(title: "Language", value: languageName)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                section("STORAGE") {
+                    SettingsValueRow(title: "Local data", value: dataSize)
+                    divider
+                    Button {
+                        showingClearCache = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text("Clear cache")
+                                .flowCueFont(13, relativeTo: .subheadline)
+                                .foregroundStyle(FlowCueTheme.textPrimary)
+                            Spacer(minLength: 8)
+                            Text(cacheSize)
+                                .flowCueFont(10, relativeTo: .caption2)
+                                .foregroundStyle(FlowCueTheme.textSecondary)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                        }
+                        .padding(.vertical, 13)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                section("DEVICE") {
+                    SettingsValueRow(title: "Device name", value: UIDevice.current.name)
+                }
+
+                section("DIAGNOSTICS") {
+                    Button {
+                        copyDiagnostics()
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text("Copy diagnostics")
+                                .flowCueFont(13, relativeTo: .subheadline)
+                                .foregroundStyle(FlowCueTheme.textPrimary)
+                            Spacer(minLength: 8)
+                            Text("Local only")
+                                .flowCueFont(10, relativeTo: .caption2)
+                                .foregroundStyle(FlowCueTheme.textSecondary)
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                        }
+                        .padding(.vertical, 13)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Text("No account needed. Nothing is uploaded automatically.")
+                        .flowCueFont(10, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.textTertiary)
+                        .padding(.top, 6)
+                }
+
+                section("ABOUT") {
+                    SettingsValueRow(title: "Version", value: versionString)
+                    divider
+                    SettingsLinkRow(title: "Privacy Policy", destination: FlowCueProduct.privacyURL)
+                    divider
+                    SettingsLinkRow(title: "Terms of Use", destination: FlowCueProduct.termsURL)
+                    divider
+                    Button {
+                        showingFeedback = true
+                    } label: {
+                        MeRowLabel(title: "Send feedback")
+                    }
+                    .buttonStyle(.plain)
+                    divider
+                    Button {
+                        showingAbout = true
+                    } label: {
+                        MeRowLabel(title: "About FlowCue")
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 10)
+            .padding(.bottom, 28)
+        }
+        .background { FlowCueScreenBackground() }
+        .navigationTitle("Settings")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .fullScreenCover(isPresented: $showingPaywall) {
+            PaywallView()
+        }
+        .sheet(isPresented: $showingLanguage) {
+            LanguageSheet(language: $language)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
+        .navigationDestination(isPresented: $showingAppearance) {
+            AppearanceView(showsDone: false)
+        }
+        .navigationDestination(isPresented: $showingAbout) {
+            AboutView(showOnboarding: showOnboarding)
+        }
+        .navigationDestination(isPresented: $showingFeedback) {
+            FeedbackView()
+        }
+        .confirmationDialog(
+            "Clear cache?",
+            isPresented: $showingClearCache,
+            titleVisibility: .visible
+        ) {
+            Button("Clear cache", role: .destructive) { clearCache() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Cached images and temporary files will be removed. Your ideas stay.")
+        }
+        .alert("Diagnostics copied", isPresented: $diagnosticsCopied) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("No chat content was included.")
+        }
+        .task { refreshStorage() }
+    }
+
+    private func section<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title)
+                .flowCueFont(10, relativeTo: .caption2, weight: .medium)
+                .tracking(1.0)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .padding(.bottom, 8)
+            VStack(spacing: 0) {
+                content()
+            }
+        }
+    }
+
+    private var divider: some View {
+        Rectangle()
+            .fill(FlowCueTheme.hairline)
+            .frame(height: 1)
+            .accessibilityHidden(true)
+    }
+
+    private var syncRow: some View {
+        HStack(spacing: 8) {
+            Text("Sync to iCloud")
+                .flowCueFont(13, relativeTo: .subheadline)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            Spacer(minLength: 8)
+            Toggle("", isOn: syncBinding)
+                .labelsHidden()
+                .tint(FlowCueTheme.accent)
+                .disabled(!syncController.isAvailable)
+                .accessibilityLabel("Sync to iCloud")
+        }
+        .frame(minHeight: 44)
+        .padding(.vertical, 2)
+    }
+
+    private var syncStatus: some View {
+        Text(L10n.text(syncController.statusMessage))
+            .flowCueFont(10.5, relativeTo: .caption2)
+            .foregroundStyle(FlowCueTheme.textSecondary)
+            .padding(.bottom, 10)
+    }
+
+    private var syncNowRow: some View {
+        Button {
+            syncNow()
+        } label: {
+            HStack(spacing: 8) {
+                Text("Sync now")
+                    .flowCueFont(13, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                Spacer(minLength: 8)
+                if syncNowWorking || syncController.isSyncing {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(FlowCueTheme.textSecondary)
+                } else {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                }
+            }
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!subscription.isPro || !syncController.isEnabled || syncController.isSyncing)
+        .opacity(subscription.isPro && syncController.isEnabled ? 1 : 0.45)
+    }
+
+    private var syncBinding: Binding<Bool> {
+        Binding(
+            get: { syncController.isEnabled },
+            set: { enabled in
+                if enabled && !subscription.isPro {
+                    showingPaywall = true
+                } else {
+                    syncController.setEnabled(enabled)
+                    if enabled {
+                        Task { await syncController.synchronizeNow() }
+                    }
+                }
+            }
+        )
+    }
+
+    private func syncNow() {
+        guard !syncNowWorking else { return }
+        syncNowWorking = true
+        Task {
+            await syncController.synchronizeNow()
+            syncNowWorking = false
+        }
+    }
+
+    private func refreshStorage() {
+        let fm = FileManager.default
+        let support = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+        let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first
+        dataSize = support.map { byteString(directorySize($0)) } ?? "—"
+        cacheSize = caches.map { byteString(directorySize($0)) } ?? "—"
+    }
+
+    private func clearCache() {
+        URLCache.shared.removeAllCachedResponses()
+        let fm = FileManager.default
+        if let caches = fm.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            let contents = (try? fm.contentsOfDirectory(at: caches, includingPropertiesForKeys: nil)) ?? []
+            for url in contents {
+                try? fm.removeItem(at: url)
+            }
+        }
+        refreshStorage()
+    }
+
+    private func directorySize(_ url: URL) -> Int64 {
+        guard let files = FileManager.default.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+        var total: Int64 = 0
+        for case let file as URL in files {
+            if let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize {
+                total += Int64(size)
+            }
+        }
+        return total
+    }
+
+    private func byteString(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+    }
+
+    private func copyDiagnostics() {
+        let diagnostics = """
+        App: FlowCue \(versionString)
+        Device: \(UIDevice.current.name) · \(UIDevice.current.model) · iOS \(UIDevice.current.systemVersion)
+        Theme: \(themeName)
+        Language: \(languageName)
+        Pro: \(subscription.isPro ? "yes" : "no")
+        Mac: \(remoteController.isConnected ? "connected" : "not connected")
+        iCloud sync: \(syncController.isEnabled ? "on" : "off") · \(L10n.text(syncController.statusMessage))
+        """
+        UIPasteboard.general.string = diagnostics
+        diagnosticsCopied = true
+    }
+}
+
+private struct SettingsValueRow: View {
+    let title: String
+    let value: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(title)
+                .flowCueFont(13, relativeTo: .subheadline)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            Spacer(minLength: 8)
+            Text(value)
+                .flowCueFont(10, relativeTo: .caption2)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .lineLimit(1)
+        }
+        .padding(.vertical, 13)
+    }
+}
+
+private struct SettingsLinkRow: View {
+    let title: String
+    let destination: URL
+
+    var body: some View {
+        Link(destination: destination) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .flowCueFont(13, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.textPrimary)
+                Spacer(minLength: 8)
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+            }
+            .padding(.vertical, 13)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
