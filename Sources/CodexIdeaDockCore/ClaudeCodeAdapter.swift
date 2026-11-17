@@ -27,7 +27,9 @@ public struct ClaudeCodeAdapter: AgentAdapter {
                 sessions.append(AgentSession(
                     id: id,
                     agentID: agentID,
-                    title: title(of: file),
+                    title: title(of: file) == L10n.text("未命名会话")
+                        ? (decodeProjectPath(dir.lastPathComponent)?.split(separator: "/").last.map(String.init) ?? L10n.text("未命名会话"))
+                        : title(of: file),
                     updatedAt: updated,
                     projectPath: decodeProjectPath(dir.lastPathComponent),
                     messageCount: nil,
@@ -125,10 +127,10 @@ public struct ClaudeCodeAdapter: AgentAdapter {
     private func title(of file: URL) -> String {
         let size = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int) ?? 0
         let readLimit = min(max(size, 64 * 1024), 4 * 1024 * 1024)
-        guard let handle = try? FileHandle(forReadingFrom: file) else { return "未命名会话" }
+        guard let handle = try? FileHandle(forReadingFrom: file) else { return L10n.text("未命名会话") }
         defer { try? handle.close() }
         let chunk = handle.readData(ofLength: readLimit)
-        guard let text = String(data: chunk, encoding: .utf8) else { return "未命名会话" }
+        guard let text = String(data: chunk, encoding: .utf8) else { return L10n.text("未命名会话") }
 
         for line in text.split(separator: "\n") {
             guard let data = line.data(using: .utf8),
@@ -149,6 +151,6 @@ public struct ClaudeCodeAdapter: AgentAdapter {
             guard !body.isEmpty, !Self.isSystemPrompt(body) else { continue }
             return String(body.prefix(60))
         }
-        return "未命名会话"
+        return L10n.text("未命名会话")
     }
 }

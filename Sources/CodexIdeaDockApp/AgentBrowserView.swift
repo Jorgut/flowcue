@@ -118,10 +118,32 @@ struct AgentBrowserView: View {
     @State private var draft = ""
     @State private var sending = false
     @State private var sendNote: String?
+    @State private var broadcasting = false
+    @State private var broadcastResults: [(String, Bool)] = []
+    @State private var showBroadcastResults = false
 
     private var messageColumn: some View {
         VStack(spacing: 0) {
             if let session = selectedSession {
+                if !dispatchResults.isEmpty {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(dispatchResults) { result in
+                            HStack(spacing: 6) {
+                                Circle()
+                                    .fill(result.ok ? Color(hex: FlowCueTokens.airyDark.success)
+                                                    : Color(hex: FlowCueTokens.airyDark.warning))
+                                    .frame(width: 5, height: 5)
+                                Text(result.agent).font(.caption2)
+                                Text(result.note).font(.caption2).foregroundStyle(.secondary)
+                                Spacer()
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 6)
+                    .background(Color(hex: FlowCueTokens.airyDark.surface))
+                    Divider()
+                }
                 Text(session.title)
                     .font(.headline).lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -146,6 +168,18 @@ struct AgentBrowserView: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                     }
+                    Button {
+                        Task { await broadcast() }
+                    } label: {
+                        Image(systemName: "square.stack.3d.up")
+                            .font(.system(size: 11))
+                            .frame(width: 22, height: 22)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(broadcasting || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .help(L10n.text("同时发给所有可对话 agent 的最近会话"))
+                    .accessibilityLabel(L10n.text("并行分发"))
+
                     Button {
                         Task { await send(to: session) }
                     } label: {
@@ -222,6 +256,50 @@ struct AgentBrowserView: View {
                 note = L10n.text("读取失败")
             }
         }
+    }
+
+    private struct DispatchResult: Identifiable {
+        let id = UUID()
+        let agent: String
+        let ok: Bool
+        let note: String
+    }
+
+    @State private var dispatchResults: [DispatchResult] = []
+
+    private func broadcast() async {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !broadcasting else { return }
+        broadcasting = true
+        sendNote = nil
+        dispatchResults = []
+
+        let targets = agents.filter { $0.capabilities.contains(.chat) }
+        var results: [DispatchResult] = []
+
+        await withTaskGroup(of: DispatchResult.self) { group in
+            for agent in targets {
+                group.addTask {
+                    do {
+                        let sessions = try await service.sessions(for: agent.id, limit: 1)
+                        guard let latest = sessions.first else {
+                            return DispatchResult(agent: agent.displayName, ok: false, note: L10n.text("没有会话"))
+                        }
+                        try await service.send(text, to: latest)
+                        return DispatchResult(agent: agent.displayName, ok: true, note: L10n.text("已送达"))
+                    } catch {
+                        return DispatchResult(agent: agent.displayName, ok: false, note: L10n.text("发送失败"))
+                    }
+                }
+            }
+            for await result in group {
+                results.append(result)
+            }
+        }
+
+        dispatchResults = results.sorted { $0.agent < $1.agent }
+        broadcasting = false
+        if results.allSatisfy({ $0.ok }) { draft = "" }
     }
 
     private func send(to session: AgentSession) async {

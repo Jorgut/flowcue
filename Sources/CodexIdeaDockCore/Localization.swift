@@ -382,5 +382,8 @@ public enum L10n {
         "发一条消息…": "Send a message…",
         "已送达": "Delivered",
         "发送失败": "Send failed",
+        "并行分发": "Broadcast",
+        "同时发给所有可对话 agent 的最近会话": "Send to the latest session of every chat-capable agent",
+        "未命名会话": "Untitled session",
     ]
 }
