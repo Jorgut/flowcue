@@ -4433,6 +4433,7 @@ private struct ChatScreen: View {
     @State private var showingSwitcher = false
     @State private var showingDevice = false
     @State private var showingDisconnect = false
+    @State private var showingApprovals = false
     @State private var live = FlowCueLiveActivityController.shared
 
     private var target: ChatTarget { switchedTarget ?? initialTarget }
@@ -4514,6 +4515,15 @@ private struct ChatScreen: View {
         .onChange(of: displayMessages.last?.id) { _, _ in updateLiveActivity() }
         .onChange(of: isWorking) { _, _ in updateLiveActivity() }
         .onChange(of: pending?.state == .failed) { _, _ in updateLiveActivity() }
+        .onChange(of: controller.dshApprovals.count) { _, count in
+            if count > 0 { showingApprovals = true }
+        }
+        .onAppear {
+            if !controller.dshApprovals.isEmpty { showingApprovals = true }
+        }
+        .sheet(isPresented: $showingApprovals) {
+            DSHApprovalsSheet(controller: controller)
+        }
         .sheet(isPresented: $showingSwitcher) {
             ChatSwitcherSheet(
                 controller: controller,
@@ -4670,6 +4680,8 @@ private struct ChatScreen: View {
                 .padding(.bottom, 10)
             }
             .scrollDismissesKeyboard(.interactively)
+            .defaultScrollAnchor(.bottom)
+            .onAppear { scrollToBottom(proxy) }
             .onChange(of: displayMessages.last?.id) { _, _ in
                 scrollToBottom(proxy)
             }
@@ -4763,9 +4775,7 @@ private struct ChatScreen: View {
     }
 
     private func refreshApprovalsIfNeeded() async {
-        if target.kind == .dsh {
-            await controller.refreshApprovals()
-        }
+        await controller.refreshApprovals()
     }
 
     private func refreshSubagentsIfNeeded() async {
