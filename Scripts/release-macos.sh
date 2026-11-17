@@ -105,9 +105,9 @@ fi
 
 # 提交并推送站点改动，让 Pages 自动部署；FLOWCUE_SKIP_SITE_COMMIT=1 可关闭
 if [[ "${FLOWCUE_SKIP_SITE_COMMIT:-0}" != "1" ]] && git -C "$project_directory" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    site_paths=("site/mac/index.html" "site/downloads/$dmg_name" "site/downloads/$dmg_name.sha256")
+    site_paths=("site/mac/index.html" "site/downloads")
     if [[ -n "$(git -C "$project_directory" status --porcelain -- "${site_paths[@]}")" ]]; then
-        git -C "$project_directory" add -- "${site_paths[@]}"
+        git -C "$project_directory" add -A -- "${site_paths[@]}"
         git -C "$project_directory" commit -m "release(site): FlowCue $version" -- "${site_paths[@]}"
         if ! git -C "$project_directory" push origin HEAD; then
             printf '%s\n' "warning: 站点改动已提交但推送失败，请手动 push 后合并到 main 触发部署。" >&2
