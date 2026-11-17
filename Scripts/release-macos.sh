@@ -81,12 +81,15 @@ fi
     shasum -a 256 "$(basename "$dmg_path")" > "$(basename "$dmg_path").sha256"
 )
 
-# 同步官网下载页：拷贝 DMG 并更新版本/体积
+# 同步官网下载页：只保留当前版本的 DMG / SHA-256，并更新版本与体积
 site_downloads="$project_directory/site/downloads"
 site_page="$project_directory/site/mac/index.html"
 mkdir -p "$site_downloads"
-cp "$dmg_path" "$site_downloads/"
 dmg_name="$(basename "$dmg_path")"
+find "$site_downloads" -maxdepth 1 -type f -name '*.dmg' ! -name "$dmg_name" -delete
+find "$site_downloads" -maxdepth 1 -type f -name '*.dmg.sha256' ! -name "$dmg_name.sha256" -delete
+cp "$dmg_path" "$site_downloads/"
+cp "$dmg_path.sha256" "$site_downloads/"
 dmg_size="$(python3 -c "import os,sys; print(f\"{os.path.getsize(sys.argv[1])/1_000_000:.1f} MB\")" "$dmg_path")"
 if [[ -f "$site_page" ]]; then
     python3 - "$site_page" "$dmg_name" "$version" "$dmg_size" <<'PYEOF'
@@ -98,6 +101,21 @@ html = re.sub(r'<span id="ver">[^<]*</span>', f'<span id="ver">{version}</span>'
 html = re.sub(r'<span id="size">[^<]*</span>', f'<span id="size">{size}</span>', html)
 open(page, 'w', encoding='utf-8').write(html)
 PYEOF
+fi
+
+# 提交并推送站点改动，让 Pages 自动部署；FLOWCUE_SKIP_SITE_COMMIT=1 可关闭
+if [[ "${FLOWCUE_SKIP_SITE_COMMIT:-0}" != "1" ]] && git -C "$project_directory" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    site_paths=("site/mac/index.html" "site/downloads/$dmg_name" "site/downloads/$dmg_name.sha256")
+    if [[ -n "$(git -C "$project_directory" status --porcelain -- "${site_paths[@]}")" ]]; then
+        git -C "$project_directory" add -- "${site_paths[@]}"
+        git -C "$project_directory" commit -m "release(site): FlowCue $version" -- "${site_paths[@]}"
+        if ! git -C "$project_directory" push; then
+            printf '%s\n' "warning: 站点改动已提交但推送失败，请手动 push 后合并到 main 触发部署。" >&2
+        fi
+    fi
+    if [[ "$(git -C "$project_directory" rev-parse --abbrev-ref HEAD)" != "main" ]]; then
+        printf '%s\n' "note: 当前分支不是 main，站点改动需合并到 main 后才会自动部署。" >&2
+    fi
 fi
 
 printf '%s\n' "$release_archive"

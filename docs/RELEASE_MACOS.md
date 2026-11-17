@@ -40,6 +40,10 @@ FLOWCUE_CODE_SIGN_IDENTITY="Developer ID Application: ..." FLOWCUE_SKIP_NOTARIZE
 
 ## 产物
 
+发布脚本会同步 `site/downloads/`（只保留当前版本）和 `site/mac/index.html`，
+并自动提交、推送站点改动；当前分支不是 `main` 时，需合并到 `main` 才会触发 Pages 部署。
+设置 `FLOWCUE_SKIP_SITE_COMMIT=1` 可跳过自动提交。
+
 ```
 dist/releases/
 ├── FlowCue-0.1.0-macOS-arm64.dmg          ← 给用户下载
