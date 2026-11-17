@@ -6,6 +6,7 @@
 
 ```
 site/
+├── index.html            → / 主页
 ├── mac/index.html        → /mac 下载页
 ├── privacy/index.html    → /privacy 隐私政策
 ├── changelog/index.html  → /changelog 更新日志

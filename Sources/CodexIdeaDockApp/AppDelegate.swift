@@ -108,6 +108,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             }
         }
+        if ProcessInfo.processInfo.arguments.contains("-cleardraft") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                self?.store?.discardActiveDraft()
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("-inbox") {
             DispatchQueue.main.async { [weak self] in self?.showInbox() }
         }

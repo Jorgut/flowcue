@@ -326,6 +326,14 @@ public final class IdeaDockStore {
         }
     }
 
+    /// 仅用于截图/演示：丢弃当前草稿，不保存也不留痕。
+    public func discardActiveDraft() {
+        guard !isQueueing else { return }
+        clearActiveDraft()
+        draftText = ""
+        notification = nil
+    }
+
     public func newCapture() {
         guard !isQueueing else { return }
         if !draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
