@@ -36,9 +36,11 @@ site/
 - 新增语言：加一个字典分支 + 一个切换按钮
 - iOS 里的链接可用 `?lang=zh` 强制中文
 
-## 部署（推荐 Cloudflare Pages）
+## 部署
 
-连接仓库，构建目录设成 `site`，无构建命令。`_headers` 已配好：
+上线地址：`https://flowcue.altn.vision`（自定义域指向本目录）。
+
+连接仓库，构建目录设成 `site`，无构建命令。Cloudflare Pages 用 `_headers`；Vercel 用同目录的 `vercel.json`，响应头等价。`_headers` 已配好：
 
 - `/downloads/*` → `application/octet-stream` + 一年 immutable 缓存
 - `/mac` → 10 分钟缓存
