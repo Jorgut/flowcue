@@ -74,6 +74,8 @@ final class CapturePanelController: NSWindowController, NSWindowDelegate {
     }
 
     private func installDismissMonitor() {
+        // 截图/调试：-panel 时不自动收起，否则任何一次外部点击都会让窗口消失
+        guard !ProcessInfo.processInfo.arguments.contains("-panel") else { return }
         guard globalClickMonitor == nil else { return }
         // 只监听「别的应用/桌面」的点击；面板内部的点击是本地事件，不会触发这里
         globalClickMonitor = NSEvent.addGlobalMonitorForEvents(
