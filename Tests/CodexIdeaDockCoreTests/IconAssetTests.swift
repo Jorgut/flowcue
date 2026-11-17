@@ -17,6 +17,21 @@ final class IconAssetTests: XCTestCase {
             .deletingLastPathComponent()
     }
 
+    /// 图标资产是构建产物（不入库）。干净 checkout 里先跳过，并提示怎么生成，
+    /// 而不是报 "Could not decode"。
+    private func skipIfAssetsMissing(_ files: [String]) throws {
+        let support = projectDirectory.appendingPathComponent("Support")
+        let missing = files.filter {
+            !FileManager.default.fileExists(atPath: support.appendingPathComponent($0).path)
+        }
+        if !missing.isEmpty {
+            throw XCTSkip(
+                "图标资产尚未生成（缺 \(missing.joined(separator: ", "))）。"
+                + "先运行 `zsh Scripts/build-app.sh` 再跑测试。"
+            )
+        }
+    }
+
     private func raster(at url: URL) throws -> Raster {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
@@ -108,6 +123,7 @@ final class IconAssetTests: XCTestCase {
     }
 
     func testGeneratedAppIconRoundTripsThroughIconutil() throws {
+        try skipIfAssetsMissing(["FlowCue.iconset", "FlowCue.icns"])
         let supportDirectory = projectDirectory.appendingPathComponent("Support")
         let sourceDirectory = supportDirectory.appendingPathComponent("FlowCue.iconset")
         let temporaryDirectory = FileManager.default.temporaryDirectory
@@ -149,6 +165,7 @@ final class IconAssetTests: XCTestCase {
     }
 
     func testMenuBarTemplatesAreMonochromeAtBothScales() throws {
+        try skipIfAssetsMissing(["FlowCueMenuTemplate.png", "FlowCueMenuTemplate@2x.png"])
         let supportDirectory = projectDirectory.appendingPathComponent("Support")
         let templates = [
             ("FlowCueMenuTemplate.png", 18),
