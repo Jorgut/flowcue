@@ -373,5 +373,11 @@ public enum L10n {
         "移除 hooks": "Remove hooks",
         " 跑完了一轮": "",
         "Codex 跑完了一轮": "Codex finished a turn",
+        "已解锁": "Unlocked",
+        "未订阅": "Not subscribed",
+        "续订日期": "Renews on",
+        "包含": "Includes",
+        "在 iPhone 上订阅后，这台 Mac 自动解锁。": "Subscribe on iPhone and this Mac unlocks automatically.",
+        "刷新状态": "Refresh status",
     ]
 }

@@ -589,9 +589,37 @@ private struct UsageSettingsPage: View {
 }
 
 private struct ProSettingsPage: View {
+    @State private var isPro = ProEntitlement.isPro()
+    @State private var expiry: Date? = ProEntitlement.expiry
+
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SettingsGroup(title: L10n.text("Pro")) {
+            SettingsGroup(title: L10n.text("Pro"), footnote: L10n.text("在 iPhone 上订阅后，这台 Mac 自动解锁。")) {
+                SettingsRow(title: L10n.text("状态")) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(isPro ? Color(hex: FlowCueTokens.airyDark.success)
+                                        : Color(hex: FlowCueTokens.airyDark.textTertiary))
+                            .frame(width: 6, height: 6)
+                        Text(isPro ? L10n.text("已解锁") : L10n.text("未订阅"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let expiry, isPro {
+                    SettingsRow(title: L10n.text("续订日期")) {
+                        Text(expiry, format: .dateTime.year().month().day())
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                SettingsRow(title: L10n.text("刷新状态")) {
+                    Button(L10n.text("刷新")) { refresh() }
+                        .controlSize(.small)
+                }
+            }
+
+            SettingsGroup(title: L10n.text("包含")) {
                 ForEach(Array([
                     L10n.text("全部 13 套主题"),
                     L10n.text("iCloud 同步"),
@@ -620,6 +648,12 @@ private struct ProSettingsPage: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .onAppear { refresh() }
+    }
+
+    private func refresh() {
+        expiry = ProEntitlement.expiry
+        isPro = ProEntitlement.isPro()
     }
 }
 
