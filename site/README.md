@@ -40,10 +40,10 @@ site/
 
 上线地址：`https://flowcue.altn.vision`（自定义域指向本目录）。
 
-连接仓库，构建目录设成 `site`，无构建命令；响应头由 `_headers` 生效。
-命令行部署：`npx wrangler pages deploy site --project-name flowcue`；
-当前生产地址 `https://flowcuepro.pages.dev`，自定义域 `flowcue.altn.vision`
-需在 WordPress.com DNS 加 `CNAME flowcue → flowcuepro.pages.dev`。
+Pages 项目 `flowcuepro` 已连接本仓库 `main`，构建目录 `site`、无构建命令：
+**push 到 `main` 就自动部署**；自定义域 `flowcue.altn.vision`，DNS 为
+`CNAME flowcue → flowcuepro.pages.dev`。
+手工兜底：`npx wrangler pages deploy site --project-name flowcuepro`。
 后续支付接口放 Pages Functions（`functions/`），静态站本身不受影响。`_headers` 已配好：
 
 - `/downloads/*` → `application/octet-stream` + 一年 immutable 缓存
