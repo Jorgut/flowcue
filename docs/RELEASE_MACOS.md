@@ -24,8 +24,12 @@ xcrun notarytool store-credentials flowcue \
 ```bash
 export FLOWCUE_CODE_SIGN_IDENTITY="Developer ID Application: hong liang zhu (GB38532D8G)"
 export FLOWCUE_NOTARY_PROFILE="flowcue"
+export FLOWCUE_UNIVERSAL=1          # 同时出 arm64 + x86_64
 zsh Scripts/release-macos.sh
 ```
+
+公证凭据已存放在 Keychain（profile `flowcue`，用 App Store Connect API Key 创建），
+不需要再输入密码。
 
 只验证签名与打包（跳过公证，无需凭据）：
 
@@ -72,10 +76,19 @@ spctl: rejected / source=Unnotarized Developer ID   ← 公证前必然如此
 hdiutil verify: VALID
 ```
 
+## 已完成验证（2026-11-17）
+
+```
+app:  accepted / Notarized Developer ID
+dmg:  accepted / Notarized Developer ID
+arch: x86_64 arm64（主程序与 helper 都是通用二进制）
+dmg:  4.5 MB · zip: 3.9 MB
+```
+
 ## 已知限制
 
 | 项 | 说明 |
 |---|---|
-| 架构 | 当前只出 **arm64**。Intel Mac 需要 universal 构建（`build-app.sh` 增加 `-arch x86_64`） |
+| 包体积 | Universal 4.5 MB（arm64 单架构 2.8 MB） |
 | 自动更新 | 未接；zip + sha256 已备好，接 Sparkle 或自建更新检查时用 |
-| 签名身份 | 用个人 Developer ID（hong liang zhu）；正式发布前确认是否换成团队账号 |
+| 签名身份 | 个人 Developer ID（hong liang zhu）。证书名显示个人姓名，不影响分发；想让用户看到公司名需另注册组织账号 |

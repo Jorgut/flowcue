@@ -25,11 +25,17 @@ sign_bundle() {
     codesign "${sign_arguments[@]}" "$target"
 }
 
+# FLOWCUE_UNIVERSAL=1 时同时构建 arm64 与 x86_64，产出通用二进制。
+universal_arch_flags=()
+if [[ "${FLOWCUE_UNIVERSAL:-0}" == "1" ]]; then
+    universal_arch_flags=(--arch arm64 --arch x86_64)
+fi
+
 run_swift_build() {
     if [[ "${CODEX_IDEA_DOCK_DISABLE_SWIFTPM_SANDBOX:-0}" == "1" ]]; then
-        swift build "$@" --disable-sandbox
+        swift build "$@" "${universal_arch_flags[@]}" --disable-sandbox
     else
-        swift build "$@"
+        swift build "$@" "${universal_arch_flags[@]}"
     fi
 }
 
