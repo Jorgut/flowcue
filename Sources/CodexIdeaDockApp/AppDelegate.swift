@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.setActivationPolicy(.regular)
         #else
         NSApp.setActivationPolicy(.accessory)
+        configureDockIconPolicy()
         #endif
         do {
             #if FLOWCUE_APP_STORE
@@ -131,7 +132,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         _ sender: NSApplication,
         hasVisibleWindows flag: Bool
     ) -> Bool {
-        showCapturePanel()
+        // 点 Dock 图标：先还原最小化的窗口，没有窗口就打开收件箱
+        if let minimized = NSApp.windows.first(where: {
+            $0.isMiniaturized && $0.styleMask.contains(.titled)
+        }) {
+            minimized.deminiaturize(nil)
+            minimized.makeKeyAndOrderFront(nil)
+            return true
+        }
+        if !flag { showInbox() }
         return true
     }
 
@@ -143,6 +152,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         remoteService?.stop()
         FoundationProcessRunner.terminateAllProcesses()
         #endif
+    }
+
+    /// 只在有主窗口时出现 Dock 图标：平时不占 Dock，开着窗口时可用 ⌘Tab 找回。
+    private func configureDockIconPolicy() {
+        let center = NotificationCenter.default
+        for name in [NSWindow.didBecomeKeyNotification,
+                     NSWindow.willCloseNotification,
+                     NSWindow.didMiniaturizeNotification,
+                     NSWindow.didDeminiaturizeNotification] {
+            center.addObserver(self, selector: #selector(windowStackChanged(_:)), name: name, object: nil)
+        }
+    }
+
+    @objc
+    private func windowStackChanged(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.updateDockIconVisibility()
+        }
+    }
+
+    private func updateDockIconVisibility() {
+        let hasMainWindow = NSApp.windows.contains { window in
+            guard window.styleMask.contains(.titled), !(window is NSPanel) else { return false }
+            return window.isVisible || window.isMiniaturized
+        }
+        let target: NSApplication.ActivationPolicy = hasMainWindow ? .regular : .accessory
+        guard NSApp.activationPolicy() != target else { return }
+        NSApp.setActivationPolicy(target)
     }
 
     private func configureWindows() {

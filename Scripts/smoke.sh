@@ -30,11 +30,22 @@ SWIFT
 check() {
   local label=$1; shift
   pkill -f "$BIN" 2>/dev/null
-  for i in {1..10}; do pgrep -f "$BIN" >/dev/null || break; sleep 0.5; done
-  open -a "$APP" --args "$@" >/dev/null 2>&1
-  sleep 7
-  local count
-  count=$(swift /tmp/flowcue-listwin.swift 2>/dev/null | wc -l | tr -d ' ')
+  # 等 LaunchServices 也注销，否则 open 会发给正在退出的旧实例（error -600）
+  for i in {1..20}; do
+    pgrep -f "$BIN" >/dev/null || [[ -z "$(lsappinfo find bundleID=com.archintera.FlowCue.Mac 2>/dev/null)" ]] && break
+    sleep 0.5
+  done
+  if ! open -a "$APP" --args "$@" 2>/dev/null; then
+    sleep 1
+    open -a "$APP" --args "$@"
+  fi
+  # 面板有约 2 秒的延迟显示，轮询到出现为止（最多 15 秒）
+  local count=0
+  for i in {1..15}; do
+    sleep 1
+    count=$(swift /tmp/flowcue-listwin.swift 2>/dev/null | wc -l | tr -d ' ')
+    [[ "$count" -ge 1 ]] && break
+  done
   if [[ "$count" -ge 1 ]]; then
     echo "✅ $label：$count 个可见窗口"
     ((pass++))
