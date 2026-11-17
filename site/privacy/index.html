@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — FlowCue</title>
+<link rel="canonical" href="https://flowcue.altn.vision/privacy/">
+<meta property="og:title" content="Privacy — FlowCue">
+<meta property="og:description" content="How FlowCue handles your ideas, iCloud sync, and feedback.">
+<meta property="og:url" content="https://flowcue.altn.vision/privacy/">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="../assets/page.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="../assets/icon-512.png" alt="FlowCue">
+    <span class="brand"><a href="/mac">FlowCue</a></span>
+    <nav class="nav">
+      <a href="/mac" data-i18n="nav.mac">Mac</a>
+      <a href="/changelog" data-i18n="nav.changelog">Changelog</a>
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+      </div>
+    </nav>
+  </header>
+
+  <h1 data-i18n="title">Privacy</h1>
+  <p class="updated" data-i18n="updated">Last updated 2026-11-17</p>
+
+  <div class="card">
+    <p data-i18n="summary">FlowCue keeps your ideas on your own devices. There is no FlowCue account, no analytics SDK, and no server that stores your text.</p>
+  </div>
+
+  <h2 data-i18n="h.stored">What stays on your Mac</h2>
+  <ul>
+    <li data-i18n="s.1">Ideas, drafts and queue state are stored in a local database.</li>
+    <li data-i18n="s.2">Settings, pairing code and window positions live in your user preferences.</li>
+    <li data-i18n="s.3">Nothing is uploaded unless you turn on iCloud sync yourself.</li>
+  </ul>
+
+  <h2 data-i18n="h.reads">What the app reads locally</h2>
+  <p data-i18n="r.lead">To list the agents installed on your machine and show their sessions, FlowCue reads local files only:</p>
+  <ul>
+    <li><code>~/.claude/projects</code> <span data-i18n="r.1">— Claude Code session transcripts</span></li>
+    <li><code>~/.codex</code> <span data-i18n="r.2">— Codex configuration and hook state</span></li>
+    <li><code>/opt/homebrew/bin</code>, <code>~/.local/bin</code>, <code>/Applications</code> <span data-i18n="r.3">— to detect installed agents</span></li>
+  </ul>
+  <p data-i18n="r.note">These files never leave your Mac. FlowCue only reads them; it does not modify your agent configuration.</p>
+
+  <h2 data-i18n="h.network">Network</h2>
+  <ul>
+    <li data-i18n="n.1">iPhone pairing runs over your local network. There is no relay server.</li>
+    <li data-i18n="n.2">Codex usage numbers come from the CLI you already installed, called on this Mac.</li>
+    <li data-i18n="n.3">The only outbound request FlowCue makes is an optional update check against GitHub releases.</li>
+  </ul>
+
+  <h2 data-i18n="h.icloud">iCloud sync (optional)</h2>
+  <p data-i18n="i.1">If you enable sync, ideas are stored in your own private iCloud database via Apple CloudKit. FlowCue has no access to that data, and Apple handles it under its own terms.</p>
+
+  <h2 data-i18n="h.feedback">Feedback</h2>
+  <p data-i18n="f.1">Sending feedback never happens automatically. The app puts the text on your clipboard and opens your mail client; you decide whether to send it.</p>
+
+  <h2 data-i18n="h.contact">Contact</h2>
+  <p data-i18n="c.1">Questions about this policy: hello@altn.vision</p>
+
+  <footer>
+    <span>© 2026 FlowCue</span>
+    <a href="/mac" data-i18n="nav.mac">Mac</a>
+    <a href="/changelog" data-i18n="nav.changelog">Changelog</a>
+  </footer>
+</div>
+
+<script>
+const I18N = {
+  en: {
+    "nav.mac":"Mac","nav.changelog":"Changelog","title":"Privacy","updated":"Last updated 2026-11-17",
+    "summary":"FlowCue keeps your ideas on your own devices. There is no FlowCue account, no analytics SDK, and no server that stores your text.",
+    "h.stored":"What stays on your Mac",
+    "s.1":"Ideas, drafts and queue state are stored in a local database.",
+    "s.2":"Settings, pairing code and window positions live in your user preferences.",
+    "s.3":"Nothing is uploaded unless you turn on iCloud sync yourself.",
+    "h.reads":"What the app reads locally",
+    "r.lead":"To list the agents installed on your machine and show their sessions, FlowCue reads local files only:",
+    "r.1":"— Claude Code session transcripts","r.2":"— Codex configuration and hook state",
+    "r.3":"— to detect installed agents",
+    "r.note":"These files never leave your Mac. FlowCue only reads them; it does not modify your agent configuration.",
+    "h.network":"Network",
+    "n.1":"iPhone pairing runs over your local network. There is no relay server.",
+    "n.2":"Codex usage numbers come from the CLI you already installed, called on this Mac.",
+    "n.3":"The only outbound request FlowCue makes is an optional update check against GitHub releases.",
+    "h.icloud":"iCloud sync (optional)",
+    "i.1":"If you enable sync, ideas are stored in your own private iCloud database via Apple CloudKit. FlowCue has no access to that data, and Apple handles it under its own terms.",
+    "h.feedback":"Feedback",
+    "f.1":"Sending feedback never happens automatically. The app puts the text on your clipboard and opens your mail client; you decide whether to send it.",
+    "h.contact":"Contact","c.1":"Questions about this policy: hello@altn.vision"
+  },
+  zh: {
+    "nav.mac":"Mac","nav.changelog":"更新日志","title":"隐私","updated":"最后更新：2026-11-17",
+    "summary":"FlowCue 把你的想法留在你自己的设备上。没有 FlowCue 账号，没有统计 SDK，也没有保存你文字的服务器。",
+    "h.stored":"留在本机的东西",
+    "s.1":"想法、草稿与排队状态保存在本地数据库。",
+    "s.2":"设置、配对码与窗口位置保存在你的用户偏好里。",
+    "s.3":"除非你自己打开 iCloud 同步，否则不会上传任何内容。",
+    "h.reads":"App 会在本机读取什么",
+    "r.lead":"为了列出这台机器上装了哪些 agent、并显示它们的会话，FlowCue 只读本地文件：",
+    "r.1":"— Claude Code 的会话记录","r.2":"— Codex 的配置与 hook 状态",
+    "r.3":"— 用于检测已安装的 agent",
+    "r.note":"这些文件不会离开你的 Mac。FlowCue 只读不写，不会修改你的 agent 配置。",
+    "h.network":"网络",
+    "n.1":"iPhone 配对走局域网，没有中转服务器。",
+    "n.2":"Codex 用量数字来自你已安装的 CLI，在本机调用取得。",
+    "n.3":"FlowCue 唯一的对外请求是可选的更新检查（GitHub releases）。",
+    "h.icloud":"iCloud 同步（可选）",
+    "i.1":"如果开启同步，想法会通过 Apple CloudKit 存入你自己的私有 iCloud 数据库。FlowCue 无权访问这些数据，由 Apple 按其条款处理。",
+    "h.feedback":"反馈",
+    "f.1":"反馈永远不会自动发送。App 只把内容放进剪贴板并打开邮件客户端，发不发由你决定。",
+    "h.contact":"联系","c.1":"关于这份政策的问题：hello@altn.vision"
+  }
+};
+function applyLanguage(lang) {
+  const dict = I18N[lang] || I18N.en;
+  document.documentElement.lang = lang === "zh" ? "zh-Hans" : "en";
+  document.querySelectorAll("[data-i18n]").forEach(el => {
+    const v = dict[el.dataset.i18n];
+    if (v) el.textContent = v;
+  });
+  document.querySelectorAll(".lang button").forEach(b =>
+    b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+  try { localStorage.setItem("flowcue.lang", lang); } catch (e) {}
+}
+(function () {
+  const q = new URLSearchParams(location.search).get("lang");
+  let stored = null;
+  try { stored = localStorage.getItem("flowcue.lang"); } catch (e) {}
+  const lang = q || stored || ((navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en");
+  applyLanguage(lang);
+  document.querySelectorAll(".lang button").forEach(b =>
+    b.addEventListener("click", () => applyLanguage(b.dataset.lang)));
+})();
+</script>
+</body>
+</html>

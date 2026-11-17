@@ -1,0 +1,307 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowCue — Ideas first. Agents next.</title>
+<link rel="canonical" href="https://flowcue.altn.vision/">
+<meta property="og:title" content="FlowCue — Ideas first. Agents next.">
+<meta property="og:description" content="Capture ideas in the menu bar, hand them to Codex or Claude Code when you're ready. Free for Mac, pairs with iPhone.">
+<meta property="og:url" content="https://flowcue.altn.vision/">
+<meta property="og:type" content="website">
+<meta name="description" content="Capture ideas in the menu bar, hand them to Codex or Claude Code when you're ready. Free for Mac, pairs with iPhone.">
+<link rel="stylesheet" href="assets/page.css">
+<style>
+  .wrap { max-width: 1040px; }
+  .hero { display: grid; grid-template-columns: 1fr; gap: 40px; padding: 24px 0 8px; }
+  h1.big { font-size: 54px; line-height: 1.05; letter-spacing: -0.035em; margin: 0 0 18px; }
+  h1.big span { color: var(--accent); }
+  .lede { font-size: 19px; max-width: 40em; }
+  .cta { display: flex; gap: 14px; flex-wrap: wrap; align-items: center; margin-top: 8px; }
+  .button {
+    display: inline-flex; align-items: center; gap: 9px; background: var(--accent); color: #0b0b12;
+    font-weight: 600; font-size: 15px; padding: 12px 20px; border-radius: 11px; text-decoration: none;
+    transition: transform .12s ease, filter .12s ease;
+  }
+  .button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .button:hover { transform: translateY(-1px); filter: brightness(1.06); }
+  .fine { font-size: 13px; color: var(--muted); }
+  .nav .button, .nav a.button { color: #0b0b12; }
+  .nav .button:hover { color: #0b0b12; }
+
+  .steps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin: 56px 0 0; }
+  @media (max-width: 860px) { .steps { grid-template-columns: 1fr 1fr; } }
+  .step { border-top: 1px solid var(--border); padding-top: 14px; }
+  .step .n { font-size: 12px; color: var(--accent); font-weight: 600; }
+  .step h3 { font-size: 15px; margin: 4px 0 4px; }
+  .step p { font-size: 13px; margin: 0; }
+
+  .feature { display: grid; grid-template-columns: 1fr 1fr; gap: 44px; align-items: center; margin-top: 88px; }
+  .feature.reverse > .copy { order: 2; }
+  @media (max-width: 860px) { .feature { grid-template-columns: 1fr; gap: 24px; } .feature.reverse > .copy { order: 0; } }
+  .feature h2 { font-size: 26px; letter-spacing: -0.02em; margin: 0 0 10px; }
+  .feature .copy p { font-size: 15px; }
+  .feature ul { margin: 14px 0 0; padding-left: 18px; }
+  .feature li { font-size: 14px; margin-bottom: 5px; }
+  .shot { width: 100%; border-radius: 14px; border: 1px solid var(--border); display: block; }
+
+  .proof { margin-top: 88px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+  @media (max-width: 860px) { .proof { grid-template-columns: 1fr; } }
+  .proof .card h3 { margin: 0 0 6px; font-size: 15px; }
+  .proof .card p { font-size: 13px; margin: 0; }
+
+  .pricing { margin-top: 88px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 860px) { .pricing { grid-template-columns: 1fr; } }
+  .plan { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; }
+  .plan h3 { margin: 0 0 2px; font-size: 18px; }
+  .plan .price { font-size: 26px; font-weight: 650; margin: 8px 0 14px; }
+  .plan .price small { font-size: 13px; font-weight: 400; color: var(--muted); }
+  .plan li { font-size: 13px; }
+  .plan.highlight { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
+
+  .faq { margin-top: 88px; }
+  .faq details { border-bottom: 1px solid var(--border); padding: 14px 0; }
+  .faq summary { cursor: pointer; font-size: 15px; color: var(--text); font-weight: 500; }
+  .faq p { margin: 8px 0 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <img src="assets/icon-512.png" alt="FlowCue">
+    <span class="brand"><a href="/">FlowCue</a></span>
+    <nav class="nav">
+      <a href="#how" data-i18n="nav.how">How it works</a>
+      <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
+      <a href="/privacy" data-i18n="nav.privacy">Privacy</a>
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+      </div>
+      <a class="button" href="/mac" data-i18n="nav.download">Download</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div>
+      <h1 class="big" data-i18n-html="hero.title">Ideas first.<br>Agents <span>next</span>.</h1>
+      <p class="lede" data-i18n="hero.lede">Write the thought before it disappears. FlowCue keeps it in a quiet inbox until you decide which coding agent gets it — Codex, Claude Code, or whatever you install next.</p>
+      <div class="cta">
+        <a class="button" href="/mac" data-i18n="cta.mac">Download for Mac</a>
+        <a class="button secondary" href="https://apps.apple.com/app/id0000000000" data-i18n="cta.ios">iPhone version</a>
+        <span class="fine" data-i18n="cta.fine">Free · macOS 14+ · Universal · Signed and notarized</span>
+      </div>
+    </div>
+    <img class="shot" src="assets/shots/panel-clean.png" alt="FlowCue capture panel">
+  </section>
+
+  <section class="steps" id="how">
+    <div class="step"><div class="n">1</div><h3 data-i18n="s1.t">Capture</h3><p data-i18n="s1.b">⌃⌥Space over any app. One line, then back to work.</p></div>
+    <div class="step"><div class="n">2</div><h3 data-i18n="s2.t">Triage</h3><p data-i18n="s2.b">Every idea lands in one inbox, with a status you can trust.</p></div>
+    <div class="step"><div class="n">3</div><h3 data-i18n="s3.t">Hand off</h3><p data-i18n="s3.b">Queue it to Codex or Claude Code when it's actually ready.</p></div>
+    <div class="step"><div class="n">4</div><h3 data-i18n="s4.t">Continue</h3><p data-i18n="s4.b">Carry the same inbox on your iPhone, paired over your LAN.</p></div>
+  </section>
+
+  <section class="feature">
+    <div class="copy">
+      <h2 data-i18n="f1.t">A panel, not a new tab.</h2>
+      <p data-i18n="f1.b">The floating panel sits above whatever you're doing. Write, save with ⌘↩, and it's gone until you need it.</p>
+      <ul>
+        <li data-i18n="f1.1">Route to a source and target task before saving</li>
+        <li data-i18n="f1.2">Templates for standups, meetings and weekly notes</li>
+        <li data-i18n="f1.3">Draft is kept on this Mac between sessions</li>
+      </ul>
+    </div>
+    <img class="shot" src="assets/shots/panel-clean.png" alt="Capture panel">
+  </section>
+
+  <section class="feature reverse">
+    <div class="copy">
+      <h2 data-i18n="f2.t">An inbox that stays readable.</h2>
+      <p data-i18n="f2.b">Three layouts for three moods: columns when you're sorting, a bottom composer when you're chatting, a sidebar when the list gets long.</p>
+      <ul>
+        <li data-i18n="f2.1">Status you can see without opening anything</li>
+        <li data-i18n="f2.2">Retry a failed queue from the row itself</li>
+        <li data-i18n="f2.3">Works at half-screen width too</li>
+      </ul>
+    </div>
+    <img class="shot" src="assets/shots/inbox-header.png" alt="Inbox capture bar and filters">
+  </section>
+
+  <section class="feature">
+    <div class="copy">
+      <h2 data-i18n="f3.t">The agents you already have.</h2>
+      <p data-i18n="f3.b">FlowCue finds what's installed on this Mac and reads its sessions — Codex and Claude Code today, more as adapters land.</p>
+      <ul>
+        <li data-i18n="f3.1">Codex, Claude Code and DSH are chat-capable</li>
+        <li data-i18n="f3.2">Others are detected, clearly marked as detect-only</li>
+        <li data-i18n="f3.3">It reads your agent configs; it never writes them</li>
+      </ul>
+    </div>
+    <img class="shot" src="assets/shots/settings-agents.png" alt="Local agents">
+  </section>
+
+  <section class="proof">
+    <div class="card"><h3 data-i18n="p1.t">Local by default</h3><p data-i18n="p1.b">No account, no analytics SDK, no server holding your text. Ideas live in a local database.</p></div>
+    <div class="card"><h3 data-i18n="p2.t">Read, never write</h3><p data-i18n="p2.b">It opens <code>~/.claude</code> and <code>~/.codex</code> to show sessions. It does not edit your configuration.</p></div>
+    <div class="card"><h3 data-i18n="p3.t">Small and signed</h3><p data-i18n="p3.b">4.7 MB, runs in the menu bar, signed with Developer ID and notarized by Apple.</p></div>
+  </section>
+
+  <section class="pricing" id="pricing">
+    <div class="plan">
+      <h3>Mac</h3>
+      <div class="price" data-i18n="pr.free">Free</div>
+      <ul>
+        <li data-i18n="pr.1">Menu bar capture and the inbox</li>
+        <li data-i18n="pr.2">Local agent detection</li>
+        <li data-i18n="pr.3">LAN pairing with iPhone</li>
+        <li data-i18n="pr.4">Universal build, signed and notarized</li>
+      </ul>
+    </div>
+    <div class="plan highlight">
+      <h3 data-i18n="pr.ios">iPhone + Pro</h3>
+      <div class="price" data-i18n-html="pr.proprice">Subscription <small>via the App Store</small></div>
+      <ul>
+        <li data-i18n="pr.p1">Everything on Mac, synced</li>
+        <li data-i18n="pr.p2">Remote continuation when you're away</li>
+        <li data-i18n="pr.p3">All 13 themes</li>
+        <li data-i18n="pr.p4">Widgets and Live Activities</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="faq">
+    <h2 style="font-size:22px;margin:0 0 8px" data-i18n="faq.title">Questions</h2>
+
+    <details><summary data-i18n="q1">Which agents does it work with?</summary>
+      <p data-i18n="a1">Codex, Claude Code and DSH can be read and messaged. OpenCode, Hermes, Pi, Grok, Antigravity, Cursor and the Claude desktop app are detected only. Nothing is promised before it's verified.</p></details>
+
+    <details><summary data-i18n="q2">Do I need an account?</summary>
+      <p data-i18n="a2">No. There is no FlowCue sign-in. Everything works offline except the optional update check and iCloud sync.</p></details>
+
+    <details><summary data-i18n="q3">Why isn't it on the Mac App Store?</summary>
+      <p data-i18n="a3">Reading your local agent files requires leaving the sandbox. FlowCue for Mac ships as a notarized DMG instead — the same route other agent tools take.</p></details>
+
+    <details><summary data-i18n="q4">How does the iPhone connect?</summary>
+      <p data-i18n="a4">Over your local network with a pairing code shown on the Mac. No relay server sits in between.</p></details>
+
+    <details><summary data-i18n="q5">What leaves my Mac?</summary>
+      <p data-i18n="a5">Only what you turn on: optional iCloud sync, and the update check. Feedback is copied to your clipboard — you decide whether to send it. See the <a href="/privacy">privacy page</a>.</p></details>
+  </section>
+
+  <footer>
+    <span>© 2026 FlowCue</span>
+    <a href="/mac" data-i18n="nav.download">Download</a>
+    <a href="/privacy" data-i18n="nav.privacy">Privacy</a>
+    <a href="/changelog" data-i18n="nav.changelog">Changelog</a>
+    <a href="https://apps.apple.com/app/id0000000000" data-i18n="nav.iphone">iPhone</a>
+  </footer>
+</div>
+
+<script>
+const I18N = {
+  en: {
+    "nav.how":"How it works","nav.pricing":"Pricing","nav.privacy":"Privacy","nav.download":"Download",
+    "nav.changelog":"Changelog","nav.iphone":"iPhone",
+    "hero.title":"Ideas first.<br>Agents <span>next</span>.",
+    "hero.lede":"Write the thought before it disappears. FlowCue keeps it in a quiet inbox until you decide which coding agent gets it — Codex, Claude Code, or whatever you install next.",
+    "cta.mac":"Download for Mac","cta.ios":"iPhone version",
+    "cta.fine":"Free · macOS 14+ · Universal · Signed and notarized",
+    "s1.t":"Capture","s1.b":"⌃⌥Space over any app. One line, then back to work.",
+    "s2.t":"Triage","s2.b":"Every idea lands in one inbox, with a status you can trust.",
+    "s3.t":"Hand off","s3.b":"Queue it to Codex or Claude Code when it's actually ready.",
+    "s4.t":"Continue","s4.b":"Carry the same inbox on your iPhone, paired over your LAN.",
+    "f1.t":"A panel, not a new tab.",
+    "f1.b":"The floating panel sits above whatever you're doing. Write, save with ⌘↩, and it's gone until you need it.",
+    "f1.1":"Route to a source and target task before saving",
+    "f1.2":"Templates for standups, meetings and weekly notes",
+    "f1.3":"Draft is kept on this Mac between sessions",
+    "f2.t":"An inbox that stays readable.",
+    "f2.b":"Three layouts for three moods: columns when you're sorting, a bottom composer when you're chatting, a sidebar when the list gets long.",
+    "f2.1":"Status you can see without opening anything",
+    "f2.2":"Retry a failed queue from the row itself",
+    "f2.3":"Works at half-screen width too",
+    "f3.t":"The agents you already have.",
+    "f3.b":"FlowCue finds what's installed on this Mac and reads its sessions — Codex and Claude Code today, more as adapters land.",
+    "f3.1":"Codex, Claude Code and DSH are chat-capable",
+    "f3.2":"Others are detected, clearly marked as detect-only",
+    "f3.3":"It reads your agent configs; it never writes them",
+    "p1.t":"Local by default","p1.b":"No account, no analytics SDK, no server holding your text. Ideas live in a local database.",
+    "p2.t":"Read, never write","p2.b":"It opens ~/.claude and ~/.codex to show sessions. It does not edit your configuration.",
+    "p3.t":"Small and signed","p3.b":"4.7 MB, runs in the menu bar, signed with Developer ID and notarized by Apple.",
+    "pr.free":"Free","pr.1":"Menu bar capture and the inbox","pr.2":"Local agent detection",
+    "pr.3":"LAN pairing with iPhone","pr.4":"Universal build, signed and notarized",
+    "pr.ios":"iPhone + Pro","pr.proprice":"Subscription <small>via the App Store</small>",
+    "pr.p1":"Everything on Mac, synced","pr.p2":"Remote continuation when you're away",
+    "pr.p3":"All 13 themes","pr.p4":"Widgets and Live Activities",
+    "faq.title":"Questions",
+    "q1":"Which agents does it work with?",
+    "a1":"Codex, Claude Code and DSH can be read and messaged. OpenCode, Hermes, Pi, Grok, Antigravity, Cursor and the Claude desktop app are detected only. Nothing is promised before it's verified.",
+    "q2":"Do I need an account?","a2":"No. There is no FlowCue sign-in. Everything works offline except the optional update check and iCloud sync.",
+    "q3":"Why isn't it on the Mac App Store?","a3":"Reading your local agent files requires leaving the sandbox. FlowCue for Mac ships as a notarized DMG instead — the same route other agent tools take.",
+    "q4":"How does the iPhone connect?","a4":"Over your local network with a pairing code shown on the Mac. No relay server sits in between.",
+    "q5":"What leaves my Mac?","a5":"Only what you turn on: optional iCloud sync, and the update check. Feedback is copied to your clipboard — you decide whether to send it. See the privacy page."
+  },
+  zh: {
+    "nav.how":"怎么用","nav.pricing":"价格","nav.privacy":"隐私","nav.download":"下载",
+    "nav.changelog":"更新日志","nav.iphone":"iPhone 版",
+    "hero.title":"先记下来，<br>再交给 <span>Agent</span>。",
+    "hero.lede":"趁想法还在，先写下来。FlowCue 把它放进一个安静的收件箱，等你决定交给 Codex、Claude Code，还是以后新装的任何 agent。",
+    "cta.mac":"下载 Mac 版","cta.ios":"iPhone 版",
+    "cta.fine":"免费 · macOS 14+ · 通用二进制 · 已签名公证",
+    "s1.t":"记","s1.b":"任意 App 里按 ⌃⌥Space，写一句就回去干活。",
+    "s2.t":"理","s2.b":"所有想法落进同一个收件箱，状态一眼能看懂。",
+    "s3.t":"交","s3.b":"等你真的想清楚了，再排队给 Codex 或 Claude Code。",
+    "s4.t":"接着用","s4.b":"同一个收件箱也在 iPhone 上，通过局域网配对同步。",
+    "f1.t":"是一个面板，不是又一个标签页。",
+    "f1.b":"浮层盖在你正在做的事上面。写完 ⌘↩ 保存，它立刻消失，需要时再回来。",
+    "f1.1":"保存前就能指定来源任务与目标任务",
+    "f1.2":"内置站会、会议、周报模板",
+    "f1.3":"草稿在这台 Mac 上保留，关掉也不丢",
+    "f2.t":"一个看得下去的收件箱。",
+    "f2.b":"三种布局应对三种状态：整理时用三栏，聊天式输入用底部，内容多了换侧栏。",
+    "f2.1":"不用点开就能看到状态",
+    "f2.2":"排队失败的行内直接重试",
+    "f2.3":"缩到半屏也不会挤坏",
+    "f3.t":"你已经装了的那些 agent。",
+    "f3.b":"FlowCue 找出这台 Mac 上装了什么，并读取它的会话 —— 目前是 Codex 与 Claude Code，之后会接更多。",
+    "f3.1":"Codex、Claude Code、DSH 可以读会话、发消息",
+    "f3.2":"其余只做检测，并明确标注「仅检测」",
+    "f3.3":"只读你的 agent 配置，绝不写入",
+    "p1.t":"默认留在本机","p1.b":"没有账号、没有统计 SDK、没有保存你文字的服务器。想法存在本地数据库。",
+    "p2.t":"只读，不写","p2.b":"它会打开 ~/.claude 与 ~/.codex 来显示会话，但不会修改你的配置。",
+    "p3.t":"小，且已签名","p3.b":"4.7 MB，住在菜单栏，Developer ID 签名并通过 Apple 公证。",
+    "pr.free":"免费","pr.1":"菜单栏捕获与收件箱","pr.2":"本机 agent 检测",
+    "pr.3":"与 iPhone 局域网配对","pr.4":"通用二进制，已签名公证",
+    "pr.ios":"iPhone + Pro","pr.proprice":"订阅制 <small>通过 App Store</small>",
+    "pr.p1":"Mac 上的一切，可同步","pr.p2":"不在电脑前也能继续",
+    "pr.p3":"全部 13 套主题","pr.p4":"小组件与实况活动",
+    "faq.title":"常见问题",
+    "q1":"支持哪些 agent？",
+    "a1":"Codex、Claude Code、DSH 可以读取会话与发消息。OpenCode、Hermes、Pi、Grok、Antigravity、Cursor 和 Claude 桌面端只做检测。没有验证过的，我们不承诺。",
+    "q2":"需要注册账号吗？","a2":"不需要。FlowCue 没有登录。除了可选的更新检查和 iCloud 同步，其余功能离线可用。",
+    "q3":"为什么不在 Mac App Store？","a3":"读取本机 agent 文件必须离开沙盒。所以 Mac 版以公证过的 DMG 分发 —— 同类 agent 工具也走这条路。",
+    "q4":"iPhone 怎么连上 Mac？","a4":"通过局域网，用 Mac 上显示的配对码。中间没有中转服务器。",
+    "q5":"哪些数据会离开我的 Mac？","a5":"只有你自己打开的那部分：可选的 iCloud 同步，以及更新检查。反馈只会放进剪贴板，发不发由你决定。详见隐私页。"
+  }
+};
+function applyLanguage(lang) {
+  const dict = I18N[lang] || I18N.en;
+  document.documentElement.lang = lang === "zh" ? "zh-Hans" : "en";
+  document.querySelectorAll("[data-i18n]").forEach(el => { const v = dict[el.dataset.i18n]; if (v) el.textContent = v; });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => { const v = dict[el.dataset.i18nHtml]; if (v) el.innerHTML = v; });
+  document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+  try { localStorage.setItem("flowcue.lang", lang); } catch (e) {}
+}
+(function () {
+  const q = new URLSearchParams(location.search).get("lang");
+  let stored = null;
+  try { stored = localStorage.getItem("flowcue.lang"); } catch (e) {}
+  const lang = q || stored || ((navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en");
+  applyLanguage(lang);
+  document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => applyLanguage(b.dataset.lang)));
+})();
+</script>
+</body>
+</html>
