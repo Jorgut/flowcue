@@ -389,5 +389,10 @@ public enum L10n {
         "只看收藏": "Starred only",
         "收藏会话": "Star this session",
         "取消收藏": "Remove star",
+        "给 agent 发消息是 Pro 功能": "Sending messages to agents is a Pro feature",
+        "并行分发是 Pro 功能": "Broadcasting is a Pro feature",
+        "收藏与搜索是 Pro 功能": "Stars and search are Pro features",
+        "需要 FlowCue Pro": "FlowCue Pro required",
+        "在 iPhone 上订阅后，这台 Mac 会自动解锁。": "Subscribe on iPhone and this Mac unlocks automatically.",
     ]
 }
