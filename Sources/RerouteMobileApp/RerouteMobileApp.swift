@@ -296,6 +296,31 @@ struct DSHRemoteApprovalsResponse: Codable {
     let pending: [DSHRemoteApproval]
 }
 
+/// `GET /v1/ping` 的响应。旧版 Mac 只返回 name/version，所以全部可选。
+struct MacHandshake: Decodable {
+    let name: String?
+    let appVersion: String?
+    let protocolNumber: Int?
+
+    enum CodingKeys: String, CodingKey {
+        case name, appVersion
+        case protocolNumber = "protocol"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try? container.decode(String.self, forKey: .name)
+        appVersion = try? container.decode(String.self, forKey: .appVersion)
+        if let value = try? container.decode(Int.self, forKey: .protocolNumber) {
+            protocolNumber = value
+        } else if let raw = try? container.decode(String.self, forKey: .protocolNumber) {
+            protocolNumber = Int(raw)
+        } else {
+            protocolNumber = nil
+        }
+    }
+}
+
 struct DiscoveredMac: Identifiable {
     let id: String
     let name: String
@@ -327,6 +352,23 @@ final class LANRemoteController {
     /// 最近一次成功推给 Mac 的 Pro 到期时间；nil 表示本次连接还没推过。
     @ObservationIgnored private var lastPushedProExpiry: String?
     @ObservationIgnored private var didPushPro = false
+    /// 最近一次握手拿到的 Mac 版本；nil 表示还没握手或旧版 Mac 没返回。
+    private(set) var macAppVersion: String?
+    private(set) var macProtocolVersion: Int?
+    private(set) var needsMacUpdate = false
+    private(set) var needsPhoneUpdate = false
+    static let minimumProtocol = 1
+    static let supportedProtocol = 1
+
+    /// 配对页/设备页展示用：iPhone 1.1.0 (52) ↔ Mac 0.1.1 · 协议 1
+    var versionHandshakeText: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        let phone = "iPhone \(version) (\(build))"
+        guard let macAppVersion else { return phone }
+        let protocolText = macProtocolVersion.map { " · 协议 \($0)" } ?? ""
+        return "\(phone) ↔ Mac \(macAppVersion)\(protocolText)"
+    }
 
     init() {
         #if DEBUG
@@ -435,8 +477,33 @@ final class LANRemoteController {
             return
         }
         lastAttempted = DiscoveredMac(id: displayName, name: displayName, endpoint: endpoint)
+        needsMacUpdate = false
+        needsPhoneUpdate = false
         isLoading = true
         defer { isLoading = false }
+
+        // 先握手。ping 失败（旧版 Mac / 网络抖动）不当作版本不匹配，继续走原有连接路径。
+        do {
+            let data = try await LANHTTP.request(endpoint: endpoint, method: "GET", path: "/v1/ping", token: nil, body: nil)
+            let handshake = try JSONDecoder().decode(MacHandshake.self, from: data)
+            macAppVersion = handshake.appVersion
+            macProtocolVersion = handshake.protocolNumber
+            if let macProtocol = handshake.protocolNumber {
+                if macProtocol < Self.minimumProtocol {
+                    needsMacUpdate = true
+                    lastError = "Your Mac's FlowCue is too old for this iPhone app. Update the Mac app to continue."
+                    return
+                }
+                if macProtocol > Self.supportedProtocol {
+                    needsPhoneUpdate = true
+                    lastError = "This Mac expects a newer iPhone app. Update FlowCue on your iPhone."
+                    return
+                }
+            }
+        } catch {
+            // 旧版 Mac 没有 /v1/ping 的握手字段；继续用原有方式连接。
+        }
+
         do {
             let started = CFAbsoluteTimeGetCurrent()
             let data = try await LANHTTP.request(endpoint: endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
@@ -472,6 +539,10 @@ final class LANRemoteController {
         lastError = nil
         didPushPro = false
         lastPushedProExpiry = nil
+        macAppVersion = nil
+        macProtocolVersion = nil
+        needsMacUpdate = false
+        needsPhoneUpdate = false
         startDiscovery()
     }
 
@@ -675,6 +746,8 @@ private final class LANHTTPRunner: @unchecked Sendable {
     init(endpoint: NWEndpoint, method: String, path: String, token: String?, body: Data?, continuation: CheckedContinuation<Data, Error>) {
         self.connection = NWConnection(to: endpoint, using: .tcp)
         var request = "\(method) \(path) HTTP/1.1\r\nHost: flowcue.local\r\nConnection: close\r\n"
+        let clientVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        request += "X-FlowCue-Version: \(clientVersion)\r\n"
         if let token { request += "Authorization: Bearer \(token)\r\n" }
         if let body {
             request += "Content-Type: application/json\r\nContent-Length: \(body.count)\r\n"
@@ -3226,6 +3299,12 @@ private struct PairMacSheet: View {
                 manualSection
                 FlowCueMacPairingCard()
                     .padding(.top, 22)
+
+                Text(controller.versionHandshakeText)
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textTertiary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 14)
             }
             .padding(.horizontal, AgentsLayout.margin)
             .padding(.top, 12)
@@ -3277,6 +3356,19 @@ private struct PairMacSheet: View {
                 .lineSpacing(3)
                 .frame(maxWidth: 280)
                 .padding(.top, 6)
+            Text(controller.versionHandshakeText)
+                .flowCueFont(11, relativeTo: .caption2)
+                .foregroundStyle(FlowCueTheme.textTertiary)
+                .multilineTextAlignment(.center)
+                .padding(.top, 8)
+            if controller.needsMacUpdate {
+                Link(destination: FlowCueMacDownload.settingsURL) {
+                    Text("Update Mac FlowCue")
+                        .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.accent)
+                }
+                .padding(.top, 10)
+            }
             Button {
                 Task { await connect() }
             } label: {
@@ -3670,7 +3762,7 @@ private struct RemoteDeviceView: View {
                     VStack(spacing: 0) {
                         infoRow("Latency", FlowCueLinkFormat.latency(controller.lastLatencyMs) ?? "—")
                         infoRow("Last sync", FlowCueLinkFormat.relative(controller.lastRefreshAt))
-                        infoRow("Version", appVersion, monospaced: true)
+                        infoRow("Version", controller.versionHandshakeText, monospaced: true)
                         infoRow(
                             "Pairing",
                             FlowCueLinkFormat.fingerprint("\(name)|\(controller.pairingCode)"),
