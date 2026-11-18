@@ -60,7 +60,7 @@ struct CapturePanelView: View {
                 isDraftEmpty: isDraftEmpty,
                 isQueueing: store.isQueueing,
                 isTargetAvailable: store.targetContext?.isAvailable == true,
-                notificationMessage: store.notification?.message,
+                notificationMessage: store.notification.map { L10n.text($0.message) },
                 onCopyAndOpenCodex: {
                     let text = store.draftText
                     Task { @MainActor in
@@ -90,10 +90,10 @@ private struct AppStoreCaptureHeader: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Label("记录想法", systemImage: "lightbulb")
+            Label(L10n.text("记录想法"), systemImage: "lightbulb")
                 .font(.headline)
 
-            Text("内容只保存在本机")
+            Text(L10n.text("内容只保存在本机"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -103,15 +103,15 @@ private struct AppStoreCaptureHeader: View {
                 Image(systemName: "tray.full")
             }
             .buttonStyle(.plain)
-            .help("打开收件箱")
-            .accessibilityLabel("打开收件箱")
+            .help(L10n.text("打开收件箱"))
+            .accessibilityLabel(L10n.text("打开收件箱"))
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
             }
             .buttonStyle(.plain)
-            .help("隐藏悬浮窗，保留草稿")
-            .accessibilityLabel("隐藏悬浮窗并保留草稿")
+            .help(L10n.text("隐藏悬浮窗，保留草稿"))
+            .accessibilityLabel(L10n.text("隐藏悬浮窗并保留草稿"))
         }
     }
 }
@@ -132,7 +132,7 @@ private struct CaptureHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             ThreadContextPicker(
-                label: "来源",
+                label: L10n.text("来源"),
                 selectedContext: source,
                 contexts: contexts,
                 isDisabled: isQueueing,
@@ -146,7 +146,7 @@ private struct CaptureHeader: View {
                 .accessibilityHidden(true)
 
             ThreadContextPicker(
-                label: "目标",
+                label: L10n.text("目标"),
                 selectedContext: target,
                 contexts: contexts,
                 isDisabled: isQueueing,
@@ -160,14 +160,14 @@ private struct CaptureHeader: View {
                 if isRefreshing {
                     ProgressView()
                         .controlSize(.small)
-                        .accessibilityLabel("正在刷新 Codex 任务")
+                        .accessibilityLabel(L10n.text("正在刷新 Codex 任务"))
                 } else {
                     Button(action: onRefresh) {
                         Image(systemName: "arrow.clockwise")
                     }
                     .buttonStyle(.plain)
-                    .help("刷新 Codex 任务")
-                    .accessibilityLabel("刷新 Codex 任务")
+                    .help(L10n.text("刷新 Codex 任务"))
+                    .accessibilityLabel(L10n.text("刷新 Codex 任务"))
                 }
             }
             .disabled(isQueueing)
@@ -176,15 +176,15 @@ private struct CaptureHeader: View {
                 Image(systemName: "tray.full")
             }
             .buttonStyle(.plain)
-            .help("打开收件箱")
-            .accessibilityLabel("打开收件箱")
+            .help(L10n.text("打开收件箱"))
+            .accessibilityLabel(L10n.text("打开收件箱"))
 
             Button(action: onClose) {
                 Image(systemName: "xmark")
             }
             .buttonStyle(.plain)
-            .help("隐藏悬浮窗，保留草稿")
-            .accessibilityLabel("隐藏悬浮窗并保留草稿")
+            .help(L10n.text("隐藏悬浮窗，保留草稿"))
+            .accessibilityLabel(L10n.text("隐藏悬浮窗并保留草稿"))
         }
     }
 }
@@ -200,7 +200,7 @@ private struct ThreadContextPicker: View {
     var body: some View {
         Menu {
             if contexts.isEmpty {
-                Button("暂无可用任务") { }
+                Button(L10n.text("暂无可用任务")) { }
                     .disabled(true)
             } else {
                 ForEach(contexts) { context in
@@ -225,13 +225,13 @@ private struct ThreadContextPicker: View {
 
                 Divider()
 
-                Menu("管理置顶") {
+                Menu(L10n.text("管理置顶")) {
                     ForEach(contexts) { context in
                         Button {
                             onTogglePinned(context)
                         } label: {
                             Label(
-                                context.isPinned ? "取消置顶 \(context.menuDisplayTitle)" : "置顶 \(context.menuDisplayTitle)",
+                                (context.isPinned ? L10n.text("取消置顶") : L10n.text("置顶")) + " " + context.menuDisplayTitle,
                                 systemImage: context.isPinned ? "pin.slash" : "pin"
                             )
                         }
@@ -243,7 +243,7 @@ private struct ThreadContextPicker: View {
                 Text(label)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
-                Text(selectedContext?.selectionDisplayTitle ?? "选择 Codex 任务")
+                Text(selectedContext?.selectionDisplayTitle ?? L10n.text("选择 Codex 任务"))
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -258,12 +258,12 @@ private struct ThreadContextPicker: View {
             .contentShape(.rect)
         }
         .menuStyle(.borderlessButton)
-        .help(selectedContext?.projectDirectory ?? "选择\(label)任务")
+        .help(selectedContext?.projectDirectory ?? L10n.text("选择任务") + " · " + label)
         .disabled(isDisabled)
-        .accessibilityLabel("\(label)任务")
+        .accessibilityLabel(label + " · " + L10n.text("任务"))
         .accessibilityValue(
             selectedContext.map { "\($0.selectionDisplayTitle)，\($0.selectionMetadata)" }
-                ?? "未选择"
+                ?? L10n.text("未选择")
         )
     }
 }
@@ -277,33 +277,69 @@ private struct CaptureEditor: View {
     let onCancel: () -> Void
 
     var body: some View {
-        NativeTextEditor(
-            text: $text,
-            isEnabled: isEnabled,
-            accessibilityLabel: "想法内容",
-            onSave: onSave,
-            onQueue: onQueue,
-            onNewCapture: onNewCapture,
-            onCancel: onCancel
-        )
-        .overlay(alignment: .topLeading) {
-            if text.isEmpty {
-                Text("粘贴、输入或使用系统听写记录一闪而过的想法…")
-                    .font(.body)
-                    .foregroundStyle(.tertiary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 11)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+        VStack(spacing: 6) {
+            HStack {
+                Spacer()
+                Menu {
+                    Button(L10n.text("今日待办 / 日程")) {
+                        insertTemplate(
+                            mandarin: "【今日计划】\n今日最重要的三件事：\n1. \n2. \n3. \n时间安排：\n需要跟进 / 等待：",
+                            english: "[Today's plan]\nTop three priorities:\n1. \n2. \n3. \nSchedule:\nFollow-ups / waiting on:"
+                        )
+                    }
+                    Button(L10n.text("会议纪要 → 待办")) {
+                        insertTemplate(
+                            mandarin: "【会议跟进】\n会议 / 主题：\n关键结论：\n待办事项：\n- [ ] 事项｜负责人｜截止时间\n需要同步给：",
+                            english: "[Meeting follow-up]\nMeeting / topic:\nKey decisions:\nAction items:\n- [ ] Item | Owner | Due date\nShare with:"
+                        )
+                    }
+                    Button(L10n.text("日报 / 周报")) {
+                        insertTemplate(
+                            mandarin: "【工作小结】\n已完成：\n结果 / 交付：\n遇到的问题：\n需要协助：\n下一步计划：",
+                            english: "[Work summary]\nCompleted:\nResults / deliverables:\nBlockers:\nHelp needed:\nNext steps:"
+                        )
+                    }
+                } label: {
+                    Label(L10n.text("日常工作"), systemImage: "rectangle.3.group")
+                        .font(.caption)
+                }
+                .menuStyle(.borderlessButton)
+                .help(L10n.text("选择一种日常工作并填入结构"))
             }
+            NativeTextEditor(
+                text: $text,
+                isEnabled: isEnabled,
+                accessibilityLabel: L10n.text("想法内容"),
+                onSave: onSave,
+                onQueue: onQueue,
+                onNewCapture: onNewCapture,
+                onCancel: onCancel
+            )
+            .overlay(alignment: .topLeading) {
+                if text.isEmpty {
+                    Text(L10n.text("粘贴、输入或使用系统听写记录一闪而过的想法…"))
+                        .font(.body)
+                        .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 11)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+            .background(.black.opacity(0.1), in: .rect(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(.white.opacity(0.1), lineWidth: 1)
+            }
+            .compositingGroup()
+            .clipShape(.rect(cornerRadius: 10))
         }
-        .background(.black.opacity(0.1), in: .rect(cornerRadius: 10))
-        .overlay {
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(.white.opacity(0.1), lineWidth: 1)
-        }
-        .compositingGroup()
-        .clipShape(.rect(cornerRadius: 10))
+    }
+
+    private func insertTemplate(mandarin: String, english: String) {
+        let template = L10n.language == .mandarin ? mandarin : english
+        let existing = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        text = existing.isEmpty ? template : text + (text.hasSuffix("\n") ? "" : "\n\n") + template
     }
 }
 
@@ -328,8 +364,8 @@ private struct CaptureFooter: View {
             } else {
                 Text(
                     AppDistribution.supportsDirectQueue
-                        ? "⌘↩ 保存 · ⌥⌘↩ 排队 · ⌘N 新建"
-                        : "⌘↩ 保存 · ⌥⌘↩ 复制并打开 Codex · ⌘N 新建"
+                        ? L10n.text("⌘↩ 保存 · ⌥⌘↩ 排队 · ⌘N 新建")
+                        : L10n.text("⌘↩ 保存 · ⌥⌘↩ 复制并打开 Codex · ⌘N 新建")
                 )
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
@@ -343,14 +379,14 @@ private struct CaptureFooter: View {
                 }
                 .buttonStyle(.plain)
                 .disabled(isDraftEmpty)
-                .help("复制内容并打开 Codex")
-                .accessibilityLabel("复制内容并打开 Codex")
+                .help(L10n.text("复制内容并打开 Codex"))
+                .accessibilityLabel(L10n.text("复制内容并打开 Codex"))
             }
 
-            Button("保存", action: onSave)
+            Button(L10n.text("保存"), action: onSave)
                 .keyboardShortcut(.return, modifiers: [.command])
                 .disabled(isDraftEmpty || isQueueing)
-                .accessibilityLabel("保存想法并关闭")
+                .accessibilityLabel(L10n.text("保存想法并关闭"))
 
             if AppDistribution.supportsDirectQueue {
                 Button {
@@ -361,19 +397,19 @@ private struct CaptureFooter: View {
                             .controlSize(.small)
                             .frame(width: 44)
                     } else {
-                        Text("排到 Codex")
+                        Text(L10n.text("排到 Codex"))
                     }
                 }
                 .keyboardShortcut(.return, modifiers: [.command, .option])
                 .buttonStyle(.borderedProminent)
                 .disabled(isDraftEmpty || isQueueing || !isTargetAvailable)
-                .accessibilityLabel(isQueueing ? "正在排到 Codex" : "排到 Codex")
+                .accessibilityLabel(isQueueing ? L10n.text("正在排到 Codex") : L10n.text("排到 Codex"))
             } else {
-                Button("复制并打开 Codex", action: onQueue)
+                Button(L10n.text("复制并打开 Codex"), action: onQueue)
                     .keyboardShortcut(.return, modifiers: [.command, .option])
                     .buttonStyle(.borderedProminent)
                     .disabled(isDraftEmpty)
-                    .accessibilityLabel("保存想法、复制内容并打开 Codex")
+                    .accessibilityLabel(L10n.text("保存想法、复制内容并打开 Codex"))
             }
         }
         .frame(minHeight: 24)
@@ -385,19 +421,19 @@ extension WorkContextItem {
         let projectLabel = projectDirectory
             .map { URL(fileURLWithPath: $0).lastPathComponent }
             .flatMap { $0.isEmpty ? nil : $0 }
-            ?? "无项目目录"
+            ?? L10n.text("无项目目录")
         return "\(title) — \(projectLabel) · \(id.prefix(8))"
     }
 
     var selectionDisplayTitle: String {
-        isAvailable ? title : "\(title)（已失效）"
+        isAvailable ? title : title + L10n.text(" · 已失效")
     }
 
     var selectionMetadata: String {
         let projectLabel = projectDirectory
             .map { URL(fileURLWithPath: $0).lastPathComponent }
             .flatMap { $0.isEmpty ? nil : $0 }
-            ?? "无项目目录"
+            ?? L10n.text("无项目目录")
         return "\(projectLabel) · \(id.prefix(8))"
     }
 }

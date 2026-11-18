@@ -732,6 +732,19 @@ public struct CodexBridge: CodexBridging, Sendable {
         self.queueTimeout = queueTimeout
     }
 
+    public func readUsage() async throws -> CodexUsageSnapshot {
+        let initialize = ["method": "initialize", "id": 1, "params": ["clientInfo": ["name": "codex_idea_dock", "title": "Reroute", "version": "0.1.0"]]] as [String: Any]
+        let messages: [[String: Any]] = [initialize, ["method": "initialized"], ["method": "account/rateLimits/read", "id": 2]]
+        var input = Data()
+        for message in messages {
+            input.append(try JSONSerialization.data(withJSONObject: message))
+            input.append(0x0A)
+        }
+        let result = try await processRunner.run(executableURL: executableResolver(), arguments: Self.appServerArguments, standardInput: input, timeout: appServerTimeout)
+        guard !result.timedOut, result.exitCode == 0 else { throw CodexBridgeError.invalidResponse }
+        return try CodexUsageSnapshot.parse(result.stdout)
+    }
+
     public func listThreads() async throws -> [WorkContextItem] {
         let executableURL = try executableResolver()
         var cursor: String?
@@ -759,6 +772,39 @@ public struct CodexBridge: CodexBridging, Sendable {
         }
 
         throw CodexBridgeError.tooManyPages
+    }
+
+    public func queue(message: String, to threadID: String, imagePaths: [String]) async -> QueueDeliveryOutcome {
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Image attachment" : message
+        guard !threadID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.emptyTarget.rawValue)
+        }
+        guard UUID(uuidString: threadID) != nil else {
+            return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.invalidTarget.rawValue)
+        }
+        let executableURL: URL
+        do {
+            executableURL = try executableResolver()
+        } catch {
+            return .failed(exitCode: nil, message: CodexBridgeError.executableNotFound.localizedDescription)
+        }
+        do {
+            var arguments = ["queue", "--thread", threadID, "--message", text]
+            for path in imagePaths { arguments += ["--image", path] }
+            let result = try await processRunner.run(
+                executableURL: executableURL,
+                arguments: arguments,
+                standardInput: nil,
+                timeout: queueTimeout
+            )
+            if result.timedOut { return .unknown(message: QueueDeliveryDiagnostic.confirmationTimedOut.rawValue) }
+            if result.terminationReason != .exit { return .unknown(message: QueueDeliveryDiagnostic.resultUnclear.rawValue) }
+            if result.exitCode == 0 { return .queued(exitCode: result.exitCode) }
+            if let diagnostic = Self.classifyQueueFailure(result.stderr) { return .failed(exitCode: result.exitCode, message: diagnostic.rawValue) }
+            return .unknown(message: QueueDeliveryDiagnostic.resultUnclear.rawValue)
+        } catch {
+            return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.launchFailed.rawValue)
+        }
     }
 
     public func queue(message: String, to threadID: String) async -> QueueDeliveryOutcome {

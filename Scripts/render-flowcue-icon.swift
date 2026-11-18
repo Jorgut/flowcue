@@ -271,6 +271,21 @@ private func drawAppIcon(size: Int) throws -> Data {
     return try pngData(from: image)
 }
 
+/// iOS supplies its own icon mask and requires an opaque PNG.
+private func drawMobileAppIcon() throws -> Data {
+    guard let context = CGContext(
+        data: nil, width: 1024, height: 1024, bitsPerComponent: 8,
+        bytesPerRow: 0, space: sRGBColorSpace,
+        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+    ) else { throw NSError(domain: "RerouteIcon", code: 1) }
+    context.setFillColor(color(0x18181D))
+    context.fill(CGRect(x: 0, y: 0, width: 1024, height: 1024))
+    drawTile(in: context, size: 1024)
+    drawReturnGlyph(in: context, size: 1024)
+    guard let image = context.makeImage() else { throw NSError(domain: "RerouteIcon", code: 3) }
+    return try pngData(from: image)
+}
+
 private func drawMenuIcon(size: Int) throws -> Data {
     guard let context = CGContext(
         data: nil,
@@ -524,3 +539,8 @@ try drawMenuIcon(size: 36).write(
 )
 
 print(iconsetDirectory.path)
+
+let mobileIconDirectory = supportDirectory.appendingPathComponent("MobileAssets.xcassets/AppIcon.appiconset", isDirectory: true)
+if FileManager.default.fileExists(atPath: mobileIconDirectory.path) {
+    try drawMobileAppIcon().write(to: mobileIconDirectory.appendingPathComponent("AppIcon.png"), options: .atomic)
+}

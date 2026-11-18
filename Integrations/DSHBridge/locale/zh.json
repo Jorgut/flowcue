@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "FlowCue DSH 审批桥",
+    "description": "把 DeepSeek Harness 待确认的工具请求发送到配对的 FlowCue iPhone，并把决定返回给 DSH。"
+  }
+}

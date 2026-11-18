@@ -9,9 +9,13 @@ code_sign_identity="${FLOWCUE_CODE_SIGN_IDENTITY:--}"
 
 sign_bundle() {
     local target="$1"
+    local entitlement_mode="${2:-none}"
     local -a sign_arguments
 
     sign_arguments=(--force --sign "$code_sign_identity")
+    if [[ "$entitlement_mode" == "entitlements" && -n "${FLOWCUE_MAC_ENTITLEMENTS:-}" ]]; then
+        sign_arguments+=(--entitlements "$FLOWCUE_MAC_ENTITLEMENTS")
+    fi
     if [[ "$code_sign_identity" == "-" ]]; then
         sign_arguments+=(--timestamp=none)
     else
@@ -74,6 +78,12 @@ cp \
     "$binary_directory/CodexIdeaDockProcessLauncher" \
     "$contents_directory/Helpers/CodexIdeaDockProcessLauncher"
 cp "$project_directory/Support/Info.plist" "$contents_directory/Info.plist"
+if [[ -n "${FLOWCUE_MAC_BUNDLE_ID:-}" ]]; then
+    /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $FLOWCUE_MAC_BUNDLE_ID" "$contents_directory/Info.plist"
+fi
+if [[ -n "${FLOWCUE_MAC_PROVISIONING_PROFILE:-}" ]]; then
+    cp "$FLOWCUE_MAC_PROVISIONING_PROFILE" "$contents_directory/embedded.provisionprofile"
+fi
 cp "$project_directory/Support/PrivacyInfo.xcprivacy" "$contents_directory/Resources/PrivacyInfo.xcprivacy"
 cp "$project_directory/Support/FlowCue.icns" "$contents_directory/Resources/FlowCue.icns"
 cp \
@@ -82,9 +92,9 @@ cp \
     "$contents_directory/Resources/"
 plutil -lint "$contents_directory/Info.plist"
 plutil -lint "$contents_directory/Resources/PrivacyInfo.xcprivacy"
-sign_bundle "$contents_directory/Helpers/CodexIdeaDockProcessLauncher"
-sign_bundle "$contents_directory/MacOS/CodexIdeaDock"
-sign_bundle "$staged_app_directory"
+sign_bundle "$contents_directory/Helpers/CodexIdeaDockProcessLauncher" none
+sign_bundle "$contents_directory/MacOS/CodexIdeaDock" entitlements
+sign_bundle "$staged_app_directory" entitlements
 codesign --verify --deep --strict "$staged_app_directory"
 
 if [[ -e "$backup_app_directory" ]]; then
