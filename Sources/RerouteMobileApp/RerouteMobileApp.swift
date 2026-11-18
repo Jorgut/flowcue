@@ -79,7 +79,8 @@ private struct FlowCueFontModifier: ViewModifier {
     private let style: Font.TextStyle
 
     init(size: CGFloat, relativeTo style: Font.TextStyle, weight: Font.Weight) {
-        _size = ScaledMetric(wrappedValue: size, relativeTo: style)
+        // 11pt 是 HIG 的可读下限；比它更小的字在手机上会明显吃力。
+        _size = ScaledMetric(wrappedValue: max(size, 11), relativeTo: style)
         self.weight = weight
         self.style = style
     }
@@ -1054,7 +1055,7 @@ private struct FlowCueTabBar: View {
                 itemButton(item)
             }
         }
-        .frame(height: 44)
+        .frame(minHeight: 44)
         .background(
             RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
                 .fill(FlowCueTheme.surface)
@@ -1076,15 +1077,16 @@ private struct FlowCueTabBar: View {
             VStack(spacing: 3) {
                 FlowCueGlyph(kind: item.glyph, ink: tint, smile: tint)
                     .frame(width: 16, height: 16)
-                if !dynamicTypeSize.isAccessibilitySize {
-                    Text(item.title)
-                        .flowCueFont(9, relativeTo: .caption2, weight: .medium)
-                        .tracking(0.54)
-                        .foregroundStyle(tint)
-                }
+                Text(item.title)
+                    .flowCueFont(9, relativeTo: .caption2, weight: .medium)
+                    .tracking(0.54)
+                    .foregroundStyle(tint)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .allowsTightening(true)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 44)
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1451,8 +1453,9 @@ private struct InboxView: View {
                         .font(.system(size: 15))
                         .foregroundStyle(FlowCueTheme.textSecondary)
                         .accessibilityHidden(true)
-                    Text("Search your ideas")
+                    Text(dynamicTypeSize.isAccessibilitySize ? "Search" : "Search your ideas")
                         .flowCueFont(12.5, relativeTo: .caption)
+                        .lineLimit(1)
                         .foregroundStyle(FlowCueTheme.textSecondary)
                     Spacer(minLength: 8)
                 }
@@ -2268,6 +2271,7 @@ private struct HomeSkeletonList: View {
 private struct HomeCaptureBar: View {
     @Bindable var store: IdeaDockStore
     @FocusState.Binding var focused: Bool
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var dictation = VoiceDictation()
     @State private var baseText = ""
 
@@ -2289,7 +2293,7 @@ private struct HomeCaptureBar: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Capture an idea")
 
-            TextField("Capture an idea", text: $store.draftText, axis: .vertical)
+            TextField(dynamicTypeSize.isAccessibilitySize ? "Idea" : "Capture an idea", text: $store.draftText, axis: .vertical)
                 .lineLimit(1...4)
                 .flowCueFont(13.5, relativeTo: .footnote)
                 .foregroundStyle(FlowCueTheme.textPrimary)
