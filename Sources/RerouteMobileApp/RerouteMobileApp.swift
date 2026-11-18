@@ -31,7 +31,7 @@ private enum FlowCueTheme {
     static var hairline: Color { current.hasBorder ? Color(hex: current.border) : .clear }
     static var textPrimary: Color { Color(hex: current.foreground) }
     static var textSecondary: Color { Color(hex: current.secondary) }
-    static var textTertiary: Color { Color(hex: current.secondary).opacity(0.68) }
+    static var textTertiary: Color { Color(hex: current.secondary).opacity(0.9) }
     static var warning: Color { Color(hex: "#F0B429") }
     static var failure: Color { Color(hex: "#FF6B6B") }
     static var onAccent: Color { Color(hex: "#0A0A12") }
@@ -73,8 +73,21 @@ private enum FlowCueTheme {
     }
 }
 
+private struct FlowCueTextScaleKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 1
+}
+
+extension EnvironmentValues {
+    /// 用户在 外观 里调的字号倍率；叠加在系统 Dynamic Type 之上。
+    var flowCueTextScale: CGFloat {
+        get { self[FlowCueTextScaleKey.self] }
+        set { self[FlowCueTextScaleKey.self] = newValue }
+    }
+}
+
 private struct FlowCueFontModifier: ViewModifier {
     @ScaledMetric private var size: CGFloat
+    @Environment(\.flowCueTextScale) private var textScale
     private let weight: Font.Weight
     private let style: Font.TextStyle
 
@@ -86,7 +99,7 @@ private struct FlowCueFontModifier: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        content.font(.system(size: size, weight: weight, design: FlowCueTheme.fontDesign(for: style)))
+        content.font(.system(size: max(size * textScale, 11), weight: weight, design: FlowCueTheme.fontDesign(for: style)))
     }
 }
 
@@ -754,6 +767,7 @@ struct RerouteMobileApp: App {
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
     @AppStorage(FlowCueThemeSelection.key) private var themeID = FlowCueThemeSelection.defaultID
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
+    @AppStorage("FlowCue.textScale") private var textScale = 1.0
     @State private var previewOnboarding = OnboardingPreview.isActive
 
     init() {
@@ -794,6 +808,7 @@ struct RerouteMobileApp: App {
                 }
             }
             .id("\(themeID)|\(language)")
+            .environment(\.flowCueTextScale, textScale)
             .environment(subscription)
             .environment(\.locale, Locale(identifier: language))
             .preferredColorScheme(theme.group.colorScheme)
@@ -1556,6 +1571,8 @@ private struct InboxView: View {
                 .foregroundStyle(isSelected ? FlowCueTheme.accent : FlowCueTheme.textSecondary)
         }
         .buttonStyle(.plain)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -6657,6 +6674,7 @@ private struct AppearanceView: View {
     @Environment(SubscriptionManager.self) private var subscription
     @Environment(\.dismiss) private var dismiss
     @AppStorage(FlowCueThemeSelection.key) private var themeID = FlowCueThemeSelection.defaultID
+    @AppStorage("FlowCue.textScale") private var textScale = 1.0
     @State private var group: FlowCueThemeGroup?
     @State private var showingPaywall = false
 
@@ -6672,11 +6690,46 @@ private struct AppearanceView: View {
         FlowCueThemeCatalog.themes(in: activeGroup)
     }
 
+    private var textSizeSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("TEXT SIZE")
+                    .flowCueFont(10, relativeTo: .caption2, weight: .medium)
+                    .tracking(1.0)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                Spacer()
+                Button("Reset") { textScale = 1 }
+                    .flowCueFont(11, relativeTo: .caption)
+                    .foregroundStyle(FlowCueTheme.accent)
+                    .opacity(textScale == 1 ? 0 : 1)
+                    .disabled(textScale == 1)
+            }
+            HStack(spacing: 12) {
+                Text("A")
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                Slider(value: $textScale, in: 0.9...1.3, step: 0.05)
+                    .tint(FlowCueTheme.accent)
+                    .accessibilityLabel("Text size")
+                    .accessibilityValue("\(Int((textScale * 100).rounded()))%")
+                Text("A")
+                    .flowCueFont(17, relativeTo: .body)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+            Text("Applies on top of the system text size.")
+                .flowCueFont(11, relativeTo: .caption2)
+                .foregroundStyle(FlowCueTheme.textTertiary)
+        }
+        .padding(.top, 10)
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
+                textSizeSection
+
                 groupPicker
-                    .padding(.top, 10)
+                    .padding(.top, 18)
 
                 Text("\(themes.count) THEMES · \(themes.filter { !$0.isPro }.count) FREE")
                     .flowCueFont(10, relativeTo: .caption2, weight: .medium)
@@ -6771,7 +6824,7 @@ private struct AppearanceView: View {
                     Spacer(minLength: 2)
                     if spec.isPro {
                         Text("PRO")
-                            .font(.system(size: 8, weight: .medium))
+                            .font(.system(size: 9.5, weight: .medium))
                             .tracking(0.8)
                             .foregroundStyle(FlowCueTheme.textSecondary)
                             .padding(.horizontal, 4)
@@ -6782,7 +6835,7 @@ private struct AppearanceView: View {
                             )
                     } else {
                         Text("FREE")
-                            .font(.system(size: 8, weight: .medium))
+                            .font(.system(size: 9.5, weight: .medium))
                             .tracking(0.8)
                             .foregroundStyle(FlowCueTheme.textSecondary)
                     }
