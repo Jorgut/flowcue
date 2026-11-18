@@ -659,13 +659,17 @@ private struct ProSettingsPage: View {
 
 private struct UpdatesSettingsPage: View {
     @State private var checking = false
-    @State private var latest: String?
+    @State private var downloading = false
+    @State private var progress: Double = 0
+    @State private var release: AppUpdater.Release?
+    @State private var status: String?
     @State private var failed = false
 
-    private var current: String {
-        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1"
-        let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
-        return "\(v) (\(b))"
+    private var current: String { AppUpdater.currentVersion }
+
+    private var hasUpdate: Bool {
+        guard let release else { return false }
+        return release.version.compare(current, options: .numeric) == .orderedDescending
     }
 
     var body: some View {
@@ -675,35 +679,72 @@ private struct UpdatesSettingsPage: View {
                     Text(current).font(.system(size: 11).monospaced()).foregroundStyle(.secondary)
                 }
                 SettingsRow(title: L10n.text("最新版本")) {
-                    Text(latest ?? (checking ? L10n.text("检查中…") : (failed ? L10n.text("检查失败") : L10n.text("未检查"))))
+                    Text(release?.version ?? (checking ? L10n.text("检查中…") : (failed ? L10n.text("检查失败") : L10n.text("未检查"))))
                         .font(.system(size: 11).monospaced())
                         .foregroundStyle(.secondary)
                 }
+                if let status {
+                    Text(status).font(.system(size: 10)).foregroundStyle(.secondary)
+                }
             }
+
             HStack(spacing: 10) {
-                Button(L10n.text("检查更新")) { Task { await check() } }
+                if hasUpdate {
+                    Button(downloading ? L10n.text("下载中…") : L10n.text("下载并安装")) {
+                        Task { await download() }
+                    }
+                    .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                    .disabled(checking)
-                Text(L10n.text("更新通过 App Store 或 TestFlight 分发。"))
+                    .tint(Color(hex: FlowCueTokens.airyDark.accent))
+                    .disabled(downloading)
+                } else {
+                    Button(L10n.text("检查更新")) { Task { await check() } }
+                        .controlSize(.small)
+                        .disabled(checking)
+                }
+                Text(L10n.text("直接分发版：下载后把 FlowCue 拖进 Applications 即可替换。"))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
+
+            if downloading {
+                ProgressView(value: progress)
+                    .frame(width: 240)
+            }
         }
+        .onAppear { Task { await check() } }
     }
 
     private func check() async {
-        checking = true; failed = false
+        checking = true; failed = false; status = nil
         defer { checking = false }
-        guard let url = URL(string: "https://api.github.com/repos/Jorgut/flowcue/releases/latest") else { return }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 8
-        request.setValue("FlowCue", forHTTPHeaderField: "User-Agent")
         do {
-            let (data, _) = try await URLSession.shared.data(for: request)
-            struct Release: Decodable { let tag_name: String }
-            latest = try JSONDecoder().decode(Release.self, from: data).tag_name
+            let latest = try await AppUpdater().latestRelease()
+            release = latest
+            status = latest.version.compare(current, options: .numeric) == .orderedDescending
+                ? L10n.text("有新版本可下载")
+                : L10n.text("已是最新版本")
         } catch {
             failed = true
+            release = nil
+        }
+    }
+
+    private func download() async {
+        guard let release else { return }
+        downloading = true; progress = 0; status = nil
+        defer { downloading = false }
+        do {
+            let updater = AppUpdater()
+            let file = try await updater.download(release) { value in
+                Task { @MainActor in progress = value }
+            }
+            status = L10n.text("已下载并校验，正在打开…")
+            NSWorkspace.shared.open(file)
+        } catch AppUpdater.UpdateError.checksumMismatch {
+            status = L10n.text("校验失败，已丢弃该文件")
+        } catch {
+            status = L10n.text("下载失败")
         }
     }
 }

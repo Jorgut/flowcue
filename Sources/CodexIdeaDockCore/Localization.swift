@@ -398,5 +398,13 @@ public enum L10n {
         "多 agent 并行分发": "Multi-agent dispatch",
         "跨 agent 收藏与搜索": "Star and search across agents",
         "之后新增的 Pro 能力": "Future Pro features",
+        "下载并安装": "Download & install",
+        "下载中…": "Downloading…",
+        "直接分发版：下载后把 FlowCue 拖进 Applications 即可替换。": "Direct download: drag FlowCue into Applications to replace the old copy.",
+        "有新版本可下载": "A new version is available",
+        "已是最新版本": "You're up to date",
+        "已下载并校验，正在打开…": "Downloaded and verified — opening…",
+        "校验失败，已丢弃该文件": "Checksum mismatch — the file was discarded",
+        "下载失败": "Download failed",
     ]
 }
