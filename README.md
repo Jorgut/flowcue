@@ -31,7 +31,7 @@ FlowCue 是独立的第三方项目，与 OpenAI 无隶属、合作、认证或�
 
 ## 许可证
 
-源码使用 [MIT License](LICENSE) 发布。
+源码为专有软件，保留所有权利（见 [LICENSE](LICENSE)）；已发布的旧版本仍按当时的 MIT 许可。
 
 隐私处理方式见 [Privacy Policy](PRIVACY.md)，使用问题和错误报告方式见 [Support](SUPPORT.md)。
 
