@@ -127,6 +127,9 @@ export function apply(ctx) {
   server.listen(PORT, HOST);
 
   ctx.effect(function* () {
+    // Prepend: the desktop UI (and the Auto review gate) registers its own
+    // answerer earlier in the waterfall. Without prepend this handler never
+    // runs for desktop-owned sessions, so the phone never sees the request.
     yield ctx.on("approval/request", async (request, next) => {
       if (closed) return next();
       const id = randomBytes(12).toString("hex");
@@ -148,7 +151,7 @@ export function apply(ctx) {
       }, () => "unavailable");
       const first = await Promise.race([bridged, downstream]);
       return first === "unavailable" ? await bridged : first;
-    });
+    }, { prepend: true });
 
     yield async () => {
       closed = true;

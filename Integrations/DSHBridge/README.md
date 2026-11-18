@@ -5,7 +5,9 @@ paired iPhone.
 
 ## How it works
 
-- Registers one `approval/request` answerer inside the DSH host.
+- Registers one `approval/request` answerer with `prepend: true`, so it runs
+  before the desktop UI / Auto review answerer; otherwise desktop-owned
+  sessions never reach the bridge.
 - Holds the request until the FlowCue Mac app sends a decision.
 - Exposes only `127.0.0.1:47823`:
   - `GET /v1/pending`
@@ -29,4 +31,6 @@ profile you are not prepared to restart.
 
 ## Status
 
-Experimental scaffold. The Mac app and iPhone approval UI are not wired yet.
+iPhone 端已在 Chat 之外全局轮询并弹出审批 sheet。改动插件后必须退出并重开
+DeepSeek Harness 才会加载新代码；重开后 `GET /v1/pending` 应能在桌面审批等待期间
+看到同一条请求。

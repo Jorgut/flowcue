@@ -327,6 +327,18 @@ final class LANRemoteController {
         if !manualAddress.isEmpty && pairingCode.count == 6 {
             Task { [weak self] in await self?.connectManually() }
         }
+        if args.contains("--flowcue-approvals-preview") {
+            dshBridgeAvailable = true
+            dshApprovals = [DSHRemoteApproval(
+                id: "preview-approval",
+                sessionId: nil,
+                toolName: "exec_command",
+                callId: nil,
+                reason: "Allow running a shell command?",
+                displayReason: "Auto review denied this call: 上传 build 49 到 TestFlight 属于对外发布",
+                createdAt: nil
+            )]
+        }
         #endif
     }
 
@@ -808,6 +820,7 @@ private struct RootTabView: View {
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
     @Environment(\.scenePhase) private var scenePhase
+    @State private var showingApprovals = false
     @State private var didSeedSharedPreview = false
     @State private var showingSharePreview: Bool = {
         #if DEBUG
@@ -850,6 +863,22 @@ private struct RootTabView: View {
             .toolbar(.hidden, for: .tabBar)
         }
         .tint(FlowCueTheme.accent)
+        .task(id: remoteController.isConnected) {
+            guard remoteController.isConnected else { return }
+            while !Task.isCancelled {
+                await remoteController.refreshApprovals()
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+        .onChange(of: remoteController.dshApprovals.isEmpty) { _, isEmpty in
+            if !isEmpty { showingApprovals = true }
+        }
+        .onAppear {
+            if !remoteController.dshApprovals.isEmpty { showingApprovals = true }
+        }
+        .sheet(isPresented: $showingApprovals) {
+            DSHApprovalsSheet(controller: remoteController)
+        }
         .onChange(of: store.captures) { _, _ in
             writeWidgetSnapshot()
         }
@@ -4597,12 +4626,6 @@ private struct ChatScreen: View {
         .onChange(of: displayMessages.last?.id) { _, _ in updateLiveActivity() }
         .onChange(of: isWorking) { _, _ in updateLiveActivity() }
         .onChange(of: pending?.state == .failed) { _, _ in updateLiveActivity() }
-        .onChange(of: controller.dshApprovals.count) { _, count in
-            if count > 0 { showingApprovals = true }
-        }
-        .onAppear {
-            if !controller.dshApprovals.isEmpty { showingApprovals = true }
-        }
         .sheet(isPresented: $showingApprovals) {
             DSHApprovalsSheet(controller: controller)
         }
