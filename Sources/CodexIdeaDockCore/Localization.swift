@@ -406,5 +406,6 @@ public enum L10n {
         "已下载并校验，正在打开…": "Downloaded and verified — opening…",
         "校验失败，已丢弃该文件": "Checksum mismatch — the file was discarded",
         "下载失败": "Download failed",
+        "iPhone 每次连接都会带版本号，便于发现两端不一致。": "Every iPhone connection reports its version so mismatches are visible.",
     ]
 }

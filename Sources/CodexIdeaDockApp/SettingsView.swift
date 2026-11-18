@@ -484,12 +484,24 @@ private struct RemoteSettingsPage: View {
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
 
-            SettingsGroup(title: L10n.text("已配对设备")) {
-                HStack(spacing: 8) {
-                    Circle().fill(Color(hex: FlowCueTokens.airyDark.textTertiary)).frame(width: 6, height: 6)
-                    Text(L10n.text("暂无设备")).font(.system(size: 11)).foregroundStyle(.secondary)
+            SettingsGroup(title: L10n.text("已配对设备"), footnote: L10n.text("iPhone 每次连接都会带版本号，便于发现两端不一致。")) {
+                if let version = LANRemoteServer.lastClientVersion {
+                    HStack(spacing: 8) {
+                        Circle().fill(Color(hex: FlowCueTokens.airyDark.success)).frame(width: 6, height: 6)
+                        Text("iPhone · " + version).font(.system(size: 11))
+                        Spacer()
+                        Text("protocol " + String(LANRemoteServer.protocolVersion))
+                            .font(.system(size: 10).monospaced())
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(minHeight: 30)
+                } else {
+                    HStack(spacing: 8) {
+                        Circle().fill(Color(hex: FlowCueTokens.airyDark.textTertiary)).frame(width: 6, height: 6)
+                        Text(L10n.text("暂无设备")).font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
+                    .frame(minHeight: 30)
                 }
-                .frame(minHeight: 30)
             }
         }
     }

@@ -92,10 +92,27 @@ public final class LANRemoteServer {
         handler.start()
     }
 
+    /// 协议版本：只在「老客户端会解读错」时才 +1。Mac 作为服务端至少兼容上一版。
+    public static let protocolVersion = 1
+    public static var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+    }
+    /// 最近一次收到请求的客户端版本（nil 表示对方没带）。
+    public private(set) static var lastClientVersion: String?
+
     private func respond(to request: HTTPRequest) async throws -> Data {
         if request.path == "/v1/ping" {
-            let payload = ["name": "FlowCue", "version": "1"]
+            // `version` 保留给旧客户端；`protocol` 与 `appVersion` 给新客户端做版本握手
+            let payload: [String: String] = [
+                "name": "FlowCue",
+                "version": String(Self.protocolVersion),
+                "protocol": String(Self.protocolVersion),
+                "appVersion": Self.appVersion
+            ]
             return Self.response(status: 200, body: try JSONEncoder().encode(payload))
+        }
+        if let clientVersion = request.headers["x-flowcue-version"] {
+            Self.lastClientVersion = clientVersion
         }
         guard request.headers["authorization"] == "Bearer \(pairingCode)" else {
             return Self.response(status: 401, body: Data("{}".utf8))
