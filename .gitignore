@@ -5,6 +5,7 @@
 .swiftpm-config/
 dist/
 /Design/
+/Design
 Support/FlowCue.icns
 Support/FlowCue.iconset/
 Support/FlowCue.xcassets/
