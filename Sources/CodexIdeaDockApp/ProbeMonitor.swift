@@ -59,7 +59,27 @@ final class ProbeMonitor {
         await MainActor.run { self.onApprovalsCount?(ids.count) }
         if !fresh.isEmpty {
             await MainActor.run { NotificationService.shared.postApprovals(count: fresh.count) }
+            await pushApprovals(fresh: fresh, pending: pending)
         }
+    }
+
+    /// 给手机推一条 APNs 通知：锁屏、后台也能看到。
+    /// 没配置密钥或手机没上报 token 时静默跳过，不影响桌面逻辑。
+    private func pushApprovals(fresh: Set<String>, pending: [DSHRemoteApproval]) async {
+        guard let settings = APNsSettings.load(),
+              let deviceToken = UserDefaults.standard.string(forKey: "FlowCue.pushDeviceToken"),
+              !deviceToken.isEmpty,
+              let first = pending.first(where: { fresh.contains($0.id) }) else { return }
+        let environment = UserDefaults.standard.string(forKey: "FlowCue.pushEnvironment")
+        let sender = settings.sender(environmentOverride: environment)
+        guard sender.isConfigured else { return }
+        let title = fresh.count > 1 ? "\(fresh.count) 个 DSH 待审批" : "DSH 待审批"
+        try? await sender.send(
+            deviceToken: deviceToken,
+            title: title,
+            body: first.title,
+            threadID: "dsh-approvals"
+        )
     }
 
     /// DSH 没有可读的对话接口，只能看会话文件的修改时间。

@@ -570,6 +570,7 @@ final class LANRemoteController {
             await refreshDSHApprovals()
             await refreshDSHSessions()
             await syncProToMac(force: true)
+            await uploadPushToken(endpoint: endpoint, code: code)
             statusMessage = threads.isEmpty ? "Connected. No sessions are available yet." : "Connected."
             lastError = nil
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -578,6 +579,25 @@ final class LANRemoteController {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             lastError = "Could not connect. Check the code and that both devices are on the same Wi-Fi."
         }
+    }
+
+    /// 把 APNs device token 交给 Mac。Mac 用它直接给苹果推送服务发请求，
+    /// 不需要自建服务端；token 变了会覆盖。
+    private func uploadPushToken(endpoint: NWEndpoint, code: String) async {
+        guard let token = FlowCuePushRegistration.shared.token else { return }
+        struct Body: Encodable {
+            let token: String
+            let environment: String
+        }
+        #if DEBUG
+        let environment = "development"
+        #else
+        let environment = "production"
+        #endif
+        guard let body = try? JSONEncoder().encode(Body(token: token, environment: environment)) else { return }
+        _ = try? await LANHTTP.request(
+            endpoint: endpoint, method: "POST", path: "/v1/push/token", token: code, body: body
+        )
     }
 
     func disconnect() {
@@ -922,6 +942,7 @@ private final class LANHTTPRunner: @unchecked Sendable {
 
 @main
 struct RerouteMobileApp: App {
+    @UIApplicationDelegateAdaptor(FlowCueAppDelegate.self) private var appDelegate
     @State private var store: IdeaDockStore?
     @State private var syncController: IdeaSyncController?
     @State private var subscription = SubscriptionManager()
@@ -1053,6 +1074,7 @@ private struct RootTabView: View {
         }
         .onAppear {
             if !remoteController.dshApprovals.isEmpty { showingApprovals = true }
+            FlowCuePushRegistration.shared.requestIfNeeded()
         }
         .sheet(isPresented: $showingApprovals) {
             DSHApprovalsSheet(controller: remoteController)
@@ -8716,5 +8738,70 @@ private struct OnboardingPrivacyChip: View {
             .padding(.vertical, 5)
             .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.canvas))
             .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
+    }
+}
+
+// MARK: - 远程推送
+
+/// APNs 注册。推送由 Mac 直接用 .p8 发往 api.push.apple.com，不需要服务端；
+/// 手机这边只负责拿到 device token 并交给 Mac。
+final class FlowCueAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        FlowCuePushRegistration.shared.handleToken(deviceToken)
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        FlowCuePushRegistration.shared.handleFailure(error)
+    }
+
+    // 前台也显示横幅。非 async + nonisolated，避开 Swift 6 的并发检查。
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .list])
+    }
+}
+
+@MainActor
+final class FlowCuePushRegistration {
+    static let shared = FlowCuePushRegistration()
+
+    private let tokenKey = "FlowCue.pushToken"
+    private let askedKey = "FlowCue.pushAsked"
+    private let errorKey = "FlowCue.pushError"
+
+    var token: String? { UserDefaults.standard.string(forKey: tokenKey) }
+    var lastError: String? { UserDefaults.standard.string(forKey: errorKey) }
+
+    /// 只问一次；被拒绝后由系统决定还能不能再问。
+    func requestIfNeeded() {
+        guard !UserDefaults.standard.bool(forKey: askedKey) else { return }
+        UserDefaults.standard.set(true, forKey: askedKey)
+        Task {
+            let granted = (try? await UNUserNotificationCenter.current()
+                .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
+            guard granted else { return }
+            UIApplication.shared.registerForRemoteNotifications()
+        }
+    }
+
+    func handleToken(_ data: Data) {
+        let hex = data.map { String(format: "%02x", $0) }.joined()
+        guard !hex.isEmpty else { return }
+        UserDefaults.standard.set(hex, forKey: tokenKey)
+        UserDefaults.standard.removeObject(forKey: errorKey)
+    }
+
+    func handleFailure(_ error: Error) {
+        // 模拟器或未开推送能力时会到这里；不当作致命错误。
+        UserDefaults.standard.set(error.localizedDescription, forKey: errorKey)
     }
 }

@@ -193,6 +193,21 @@ public final class LANRemoteServer {
                 return Self.response(status: 422, body: Data("{}".utf8))
             }
             return Self.response(status: 200, body: Data("{}".utf8))
+        case ("POST", "/v1/push/token"):
+            // 手机的 APNs device token。Mac 用它直接向苹果推送，不需要服务端。
+            struct PushToken: Decodable {
+                let token: String
+                let environment: String?
+            }
+            guard let report = try? JSONDecoder().decode(PushToken.self, from: request.body),
+                  report.token.count >= 32 else {
+                return Self.response(status: 400, body: Data("{}".utf8))
+            }
+            UserDefaults.standard.set(report.token, forKey: "FlowCue.pushDeviceToken")
+            if let environment = report.environment {
+                UserDefaults.standard.set(environment, forKey: "FlowCue.pushEnvironment")
+            }
+            return Self.response(status: 200, body: Data("{}".utf8))
         case ("POST", "/v1/pro/expiry"):
             struct Report: Decodable { let expiry: String? }
             guard let report = try? JSONDecoder().decode(Report.self, from: request.body) else {
