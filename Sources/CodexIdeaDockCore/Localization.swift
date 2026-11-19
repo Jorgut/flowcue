@@ -419,5 +419,6 @@ public enum L10n {
         "在 ": "in ",
         " 完成一轮": " finished a turn",
         "完成一轮": "finished a turn",
+        "有新回复": "New reply",
     ]
 }
