@@ -21,17 +21,21 @@ paired iPhone.
 - Uninstalling/disabling the plugin leaves DSH's normal approval UI intact:
   requests fall through to `next()` when the bridge is closed.
 
-## Install (after review)
+## Install
 
-Run from the repository:
+**用户**：在 FlowCue 的设置 → 集成 → DSH 里点「安装 DSH 桥」。插件随 app 分发
+（`Contents/Resources/DSHBridge`），安装时会复制到 `~/.flowcue/bridge/<version>`
+再注册进 DSH profile，所以 app 升级或被移动都不会让 profile 里的链接失效。
+装完需要退出并重开 DeepSeek Harness。
+
+**开发机**（直接从仓库装，不需要重新打包 app）：
 
 ```bash
 Scripts/install-dsh-bridge.sh desktop
 ```
 
-This installs the local package into the profile, adds the profile patch entry,
-and asks you to quit and reopen DeepSeek Harness. Do not install this on a
-profile you are not prepared to restart.
+注意它注册的是仓库里的路径：仓库搬家后 profile 里的链接会断，需要重跑一次。
+本机已经踩过一次，见 `PROJECT_STATE.md` 2026-11-19 14:05 条目。
 
 ## Status
 

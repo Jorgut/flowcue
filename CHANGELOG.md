@@ -7,6 +7,11 @@
 - 待审批通知点击后直接打开收件箱的「DSH 待审批」面板，不再只把窗口提到前台。
 - 菜单栏角标改为待审批 + 未读回复合计；tooltip 与无障碍读分段说明。未读只记 agent/session 键与时间，不存回复正文。
 - 点击对应通知或打开 Agent 列表即视为已读；DSH/Claude 无 hook 时由轮询补记。
+- DSH 审批桥改为随 app 分发（`Contents/Resources/DSHBridge`）：设置 → 集成 里可一键安装 / 更新 / 卸载，
+  不再要求用户手工跑脚本。插件先复制到固定目录 `~/.flowcue/bridge/<version>` 再注册进 profile，
+  app 升级、被拖到别处或工作区重排都不会再让 profile 里的链接失效。
+- 未安装 DeepSeek Harness 时，集成页显示「未检测到 DSH」，不再给一个装不上的按钮；
+  DSH 的检测路径也从 `~/.flowcue`（FlowCue 自己的目录）改为 DSH 真正的 CLI 与 `~/.dsh`。
 
 ## 0.1.4 — 2026-11-19（Mac build 9 / iOS 1.1.0 build 56）
 

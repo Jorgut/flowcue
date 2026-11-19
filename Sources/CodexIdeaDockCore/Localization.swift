@@ -423,5 +423,16 @@ public enum L10n {
         "完成一轮": "finished a turn",
         "有新回复": "New reply",
         "已写入配置，但 Codex 还没信任它：在终端跑一次 codex，按提示允许这个 hook。": "Written to config, but Codex hasn't trusted it yet: run codex once and approve the hook.",
+        "未检测到 DSH": "DSH not detected",
+        "未检测到 DSH：先在这台 Mac 上装好 DeepSeek Harness，再回来安装桥。": "DSH not detected: install DeepSeek Harness on this Mac first, then come back to install the bridge.",
+        "安装 DSH 桥": "Install DSH bridge",
+        "更新 DSH 桥": "Update DSH bridge",
+        "卸载": "Uninstall",
+        "可更新": "update available",
+        "待重启": "restart DSH",
+        "这个 app 带了新版本，更新后重启 DSH 生效。": "This app ships a newer version; update and restart DSH.",
+        "已装好，重启 DSH 后生效。": "Installed; restart DSH to activate.",
+        "重启 DSH 后生效": "restart DSH to activate",
+        "已卸载，重启 DSH 后桥接停止。": "Uninstalled; the bridge stops after DSH restarts.",
     ]
 }

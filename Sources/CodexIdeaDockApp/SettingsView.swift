@@ -301,6 +301,8 @@ private struct IntegrationsSettingsPage: View {
     @State private var hooksInstalled = false
     @State private var claudeHooksInstalled = false
     @State private var codexHooksTrusted = false
+    @State private var bridgeStatus: DSHBridgeInstaller.Status = .bridgeMissing
+    @State private var bridgeMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -314,8 +316,7 @@ private struct IntegrationsSettingsPage: View {
                             .fill(bridgeReachable ? Color(hex: FlowCueTokens.airyDark.success)
                                                   : Color(hex: FlowCueTokens.airyDark.warning))
                             .frame(width: 6, height: 6)
-                        Text(bridgeReachable ? L10n.text("已连接")
-                                             : (dshConfigured ? L10n.text("未连接") : L10n.text("未安装")))
+                        Text(bridgeStatusText)
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
@@ -334,19 +335,25 @@ private struct IntegrationsSettingsPage: View {
                     .foregroundStyle(.secondary)
                 }
                 if !bridgeReachable {
-                    Text(dshConfigured
-                         ? L10n.text("桥已配置但没有响应，重启 DSH 后再试。")
-                         : L10n.text("安装 DSH 桥后，iPhone 上的审批才能回到这里。"))
+                    Text(bridgeHint)
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
+                }
+                if let bridgeMessage {
+                    Text(bridgeMessage)
+                        .font(.system(size: 10))
+                        .foregroundStyle(Color(hex: FlowCueTokens.airyDark.textTertiary))
                 }
                 if portOccupied && !bridgeReachable {
                     Text(L10n.text("端口被别的进程占用；关掉它或到 DSH 里改用其他端口。"))
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
                 }
-                Button(L10n.text("重新检查")) { checkBridge() }
-                    .controlSize(.small)
+                HStack(spacing: 8) {
+                    bridgeActions
+                    Button(L10n.text("重新检查")) { checkBridge() }
+                        .controlSize(.small)
+                }
             }
             SettingsGroup(title: "Claude Code hooks") {
                 SettingsRow(title: L10n.text("hooks")) {
@@ -445,10 +452,82 @@ private struct IntegrationsSettingsPage: View {
         }
     }
 
+    private var bridgeStatusText: String {
+        if bridgeReachable { return L10n.text("已连接") }
+        switch bridgeStatus {
+        case .dshNotInstalled:
+            return L10n.text("未检测到 DSH")
+        case .bridgeMissing:
+            return dshConfigured ? L10n.text("未连接") : L10n.text("未安装")
+        case let .installed(version, outdated):
+            return outdated ? "v\(version) · \(L10n.text("可更新"))" : "v\(version) · \(L10n.text("待重启"))"
+        }
+    }
+
+    private var bridgeHint: String {
+        switch bridgeStatus {
+        case .dshNotInstalled:
+            return L10n.text("未检测到 DSH：先在这台 Mac 上装好 DeepSeek Harness，再回来安装桥。")
+        case .bridgeMissing:
+            return dshConfigured
+                ? L10n.text("桥已配置但没有响应，重启 DSH 后再试。")
+                : L10n.text("安装 DSH 桥后，iPhone 上的审批才能回到这里。")
+        case let .installed(version, outdated):
+            let prefix = "v\(version) · "
+            return outdated
+                ? prefix + L10n.text("这个 app 带了新版本，更新后重启 DSH 生效。")
+                : prefix + L10n.text("已装好，重启 DSH 后生效。")
+        }
+    }
+
+    @ViewBuilder
+    private var bridgeActions: some View {
+        switch bridgeStatus {
+        case .dshNotInstalled:
+            EmptyView()
+        case .bridgeMissing:
+            Button(L10n.text("安装 DSH 桥")) { installBridge() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(Color(hex: FlowCueTokens.airyDark.accent))
+        case let .installed(_, outdated):
+            if outdated {
+                Button(L10n.text("更新 DSH 桥")) { installBridge() }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(Color(hex: FlowCueTokens.airyDark.accent))
+            } else if !bridgeReachable {
+                Button(L10n.text("卸载")) { uninstallBridge() }
+                    .controlSize(.small)
+            }
+        }
+    }
+
+    private func installBridge() {
+        do {
+            let installation = try DSHBridgeInstaller.install()
+            bridgeMessage = "\(L10n.text("已安装")) v\(installation.version) · \(L10n.text("重启 DSH 后生效"))"
+        } catch {
+            bridgeMessage = error.localizedDescription
+        }
+        checkBridge()
+    }
+
+    private func uninstallBridge() {
+        do {
+            try DSHBridgeInstaller.uninstall()
+            bridgeMessage = L10n.text("已卸载，重启 DSH 后桥接停止。")
+        } catch {
+            bridgeMessage = error.localizedDescription
+        }
+        checkBridge()
+    }
+
     private func checkBridge() {
         dshConfigured = DSHBridgeClient().isConfigured
         bridgeReachable = PortProbe.isOpen(port: 47823)
         portOccupied = PortProbe.isOccupied(port: 47823)
+        bridgeStatus = DSHBridgeInstaller.status()
         hooksInstalled = CodexHooks.isInstalled()
         claudeHooksInstalled = ClaudeHooks.isInstalled()
         codexHooksTrusted = CodexHooks.isTrusted()

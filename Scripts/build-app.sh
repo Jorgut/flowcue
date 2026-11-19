@@ -96,6 +96,13 @@ cp \
     "$project_directory/Support/FlowCueMenuTemplate.png" \
     "$project_directory/Support/FlowCueMenuTemplate@2x.png" \
     "$contents_directory/Resources/"
+# DSH 审批桥插件随包分发。app 内「安装 DSH 桥」会把它复制到
+# ~/.flowcue/bridge/<version> 再注册进 DSH profile，所以包里的这份必须存在。
+ditto "$project_directory/Integrations/DSHBridge" "$contents_directory/Resources/DSHBridge"
+if [[ ! -f "$contents_directory/Resources/DSHBridge/index.js" ]]; then
+    printf '%s\n' "DSH bridge plugin missing from bundle" >&2
+    exit 1
+fi
 plutil -lint "$contents_directory/Info.plist"
 plutil -lint "$contents_directory/Resources/PrivacyInfo.xcprivacy"
 sign_bundle "$contents_directory/Helpers/CodexIdeaDockProcessLauncher" none

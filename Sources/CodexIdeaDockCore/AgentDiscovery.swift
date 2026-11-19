@@ -51,8 +51,11 @@ public enum AgentDiscovery {
               configDirectories: ["~/.claude"],
               capabilities: [.detect, .session, .chat, .drive]),
         Entry(id: "dsh", displayName: "DSH", kind: .cli,
-              candidates: [],
-              configDirectories: ["~/.flowcue"],
+              // DSH 不自带 PATH 里的命令，只有 app 包内这一份 CLI。
+              // 之前这里留空、拿 ~/.flowcue 当“已装”判据，结果 FlowCue 自己建出
+              // 这个目录后就把 DSH 显示成已安装，用户分不清“DSH 没装”和“桥没装”。
+              candidates: ["/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh"],
+              configDirectories: ["~/.dsh"],
               capabilities: [.detect, .session, .chat, .drive]),
         Entry(id: "opencode", displayName: "OpenCode", kind: .cli,
               candidates: ["/opt/homebrew/bin/opencode", "~/.local/bin/opencode"],
