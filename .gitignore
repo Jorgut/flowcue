@@ -36,3 +36,6 @@ AuthKey_*.p8
 
 # 发布产物，不入库
 site/downloads/
+
+# 本地 worktree（git worktree add 的检出目录）
+worktrees/
