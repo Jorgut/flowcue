@@ -14,6 +14,11 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     /// 点击「待审」通知时回调
     var onOpenApprovals: (() -> Void)?
 
+    /// 未读回复计数（菜单栏角标用）
+    var unreadStore: ReplyUnreadStore?
+    /// 用户正看着 Agent 列表时不再累加未读
+    var suppressUnread: (() -> Bool)?
+
     private let center = UNUserNotificationCenter.current()
     private let enabledKey = "FlowCue.notificationsEnabled"
 
@@ -31,6 +36,9 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func postTurnFinished(agent: String, sessionTitle: String, snippet: String, agentID: String, sessionID: String) {
+        if suppressUnread?() != true {
+            unreadStore?.markUnread(agentID: agentID, sessionID: sessionID)
+        }
         guard isEnabled else { return }
         let content = UNMutableNotificationContent()
         content.title = agent

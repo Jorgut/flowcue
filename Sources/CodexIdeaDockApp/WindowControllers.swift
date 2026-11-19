@@ -223,6 +223,11 @@ final class InboxWindowController: NSWindowController, NSWindowDelegate {
         show()
     }
 
+    func presentApprovals() {
+        presentation.presentApprovals()
+        show()
+    }
+
     func show() {
         guard let window else { return }
         NSApp.activate(ignoringOtherApps: true)

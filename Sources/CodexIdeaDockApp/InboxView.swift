@@ -56,7 +56,10 @@ private struct RouteFilterOption: Identifiable, Hashable {
 final class InboxPresentation {
     var isComposing = true
     var focusGeneration = 0
+    /// 通知点击「待审批」时置位：窗口一出现或已存在，都直接打开审批面板
+    var presentsApprovals = false
     func compose() { isComposing = true; focusGeneration += 1 }
+    func presentApprovals() { presentsApprovals = true }
 }
 
 struct InboxView: View {
@@ -140,7 +143,18 @@ struct InboxView: View {
             selectedCaptureID = nil
             composerFocused = true
         }
-        .onAppear { composerFocused = presentation.isComposing }
+        .onAppear {
+            composerFocused = presentation.isComposing
+            if presentation.presentsApprovals {
+                isRemoteStatusPresented = true
+                presentation.presentsApprovals = false
+            }
+        }
+        .onChange(of: presentation.presentsApprovals) { _, shouldPresent in
+            guard shouldPresent else { return }
+            isRemoteStatusPresented = true
+            presentation.presentsApprovals = false
+        }
         .background(GeometryReader { proxy in
             Color.clear
                 .onAppear { windowWidth = proxy.size.width }

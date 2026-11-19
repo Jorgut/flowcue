@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var globalHotKey: GlobalHotKey?
     private let hookEventMonitor = HookEventMonitor()
     private let probeMonitor = ProbeMonitor()
+    private let unreadReplies = ReplyUnreadStore()
     private var pendingApprovals = 0
     private var hotKeyRegistrationFailed = false
     private var captureHostState = CaptureHostState()
@@ -39,12 +40,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.setActivationPolicy(.accessory)
         configureDockIconPolicy()
         NotificationService.shared.start()
-        NotificationService.shared.onOpenSession = { [weak self] _, _ in
+        NotificationService.shared.onOpenSession = { [weak self] agentID, sessionID in
+            self?.unreadReplies.markRead(agentID: agentID, sessionID: sessionID)
             self?.showAgents()
             NSApp.activate(ignoringOtherApps: true)
         }
+        NotificationService.shared.unreadStore = unreadReplies
+        NotificationService.shared.suppressUnread = { [weak self] in
+            self?.agentWindowIsKey == true
+        }
+        unreadReplies.onChange = { [weak self] in self?.updateStatusItem() }
         NotificationService.shared.onOpenApprovals = { [weak self] in
-            self?.showInbox()
+            // 直接落到收件箱的审批面板，而不是只把窗口提到前台
+            guard let self else { return }
+            if let inbox = self.inboxWindowController {
+                inbox.presentApprovals()
+            } else {
+                self.showInbox()
+            }
             NSApp.activate(ignoringOtherApps: true)
         }
         probeMonitor.onApprovalsCount = { [weak self] count in
@@ -336,9 +349,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         button.image = image
         button.imagePosition = .imageLeading
         let pendingCount = store?.pendingCount ?? 0
-        if pendingApprovals > 0 {
+        let unreadRepliesCount = unreadReplies.count
+        let badgeCount = pendingApprovals + unreadRepliesCount
+        if badgeCount > 0 {
             button.attributedTitle = NSAttributedString(
-                string: " \(pendingApprovals)",
+                string: " \(badgeCount)",
                 attributes: [
                     .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
                     .foregroundColor: NSColor.labelColor
@@ -348,12 +363,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.title = ""
         }
         button.imageScaling = .scaleProportionallyDown
+        let breakdown = [
+            pendingApprovals > 0 ? "\(pendingApprovals) " + L10n.text("待审批") : nil,
+            unreadRepliesCount > 0 ? "\(unreadRepliesCount) " + L10n.text("未读回复") : nil,
+            pendingCount > 0 ? "\(pendingCount) " + L10n.text("待处理") : nil
+        ].compactMap { $0 }
+        let summary = breakdown.isEmpty ? "" : " · " + breakdown.joined(separator: " · ")
         button.toolTip = hotKeyRegistrationFailed
             ? L10n.text("FlowCue（全局快捷键注册失败）")
-            : (pendingCount > 0 ? "FlowCue · \(pendingCount) " + L10n.text("待处理") + " · ⌃⌥Space"
-                                : "FlowCue · ⌃⌥Space")
+            : "FlowCue\(summary) · ⌃⌥Space"
         button.setAccessibilityLabel("FlowCue")
-        button.setAccessibilityValue("\(pendingCount) " + (L10n.language == .mandarin ? "条待处理想法" : "pending ideas"))
+        button.setAccessibilityValue(
+            breakdown.isEmpty
+                ? (L10n.language == .mandarin ? "没有待处理内容" : "nothing pending")
+                : breakdown.joined(separator: L10n.language == .mandarin ? "，" : ", ")
+        )
+    }
+
+    private var agentWindowIsKey: Bool {
+        guard let window = agentWindowController?.window else { return false }
+        return window.isVisible && window.isKeyWindow
     }
 
     @objc
@@ -540,6 +569,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             agentWindowController = AgentWindowController()
         }
         agentWindowController?.show()
+        // 打开 Agent 列表即视为看过：未读回复清零，避免角标一直挂着
+        unreadReplies.clearAll()
     }
 
     #if !FLOWCUE_APP_STORE
