@@ -57,6 +57,8 @@ zsh Scripts/build-app.sh
 open "dist/FlowCue.app"
 ```
 
+日常开发用 `zsh Scripts/dev-run.sh`：构建、退出旧实例、启动 `dist/FlowCue.app` 一条命令完成，改完直接看新构建。本机不再保留 `/Applications` 里的安装副本，`dist` 里的构建就是日常使用的版本；要回退到已发布版，用 `dist/releases/` 里对应版本的公证 DMG。
+
 打包脚本默认生成本地 ad-hoc 签名的 `dist/FlowCue.app`。设置 `FLOWCUE_CODE_SIGN_IDENTITY` 时，会改用指定的 Developer ID Application 身份并启用 Hardened Runtime 与安全时间戳。正式想法、任务缓存与投递记录存放于 `~/Library/Application Support/CodexIdeaDock.store`；正在输入且尚未完成 SwiftData 写入的短期崩溃恢复缓冲存放于该 bundle 的本地 UserDefaults。两者都只在本机使用，不启用 CloudKit。
 
 普通 `build-app.sh` 构建仍以本机验证为目的；不应把它的工作区 `.app` 直接作为下载文件。0.1.0 的正式下载包已经 Developer ID 签名并通过 Apple 公证（该次发布沿用旧品牌产物名，见[发布说明](docs/RELEASE_NOTES_0.1.0.md)）。重新构建前先正常退出正在运行的 FlowCue，完成后从上述明确路径打开，避免旧实例截获快捷键和打开请求。
