@@ -93,16 +93,40 @@ rm -f "$temporary_archive"
 # DMG（用户双击挂载后拖进 Applications）
 dmg_path="$release_directory/FlowCue-$version-macOS-$architecture.dmg"
 staging="$release_directory/.dmg-staging"
-rm -rf "$staging" "$dmg_path"
-mkdir -p "$staging"
-cp -R "$app_path" "$staging/"
-ln -s /Applications "$staging/Applications"
-hdiutil create -quiet -volname "FlowCue" -srcfolder "$staging" -ov -format UDZO "$dmg_path"
-rm -rf "$staging"
-codesign --force --timestamp --sign "$signing_identity" "$dmg_path"
+
+create_dmg() {
+    rm -rf "$staging" "$dmg_path"
+    mkdir -p "$staging"
+    cp -R "$app_path" "$staging/"
+    ln -s /Applications "$staging/Applications"
+    hdiutil create -quiet -volname "FlowCue" -srcfolder "$staging" -ov -format UDZO "$dmg_path"
+    rm -rf "$staging"
+    codesign --force --timestamp --sign "$signing_identity" "$dmg_path"
+}
+
+# 2026-11-19 实测：中途 kill 过 notarytool 会留下 diskimages-helper 锁住 DMG，
+# 之后的提交会卡在 pre-submission checks 或报 “must be a ... UDIF disk image”。
+# 这里给提交加 10 分钟上限，失败就重建 DMG 再试一次。
+clear_dmg_holders() {
+    for pid in $(lsof -t "$dmg_path" 2>/dev/null); do
+        kill -9 "$pid" 2>/dev/null || true
+    done
+}
+
+submit_dmg() {
+    perl -e 'alarm shift; exec @ARGV' 600 \
+        xcrun notarytool submit "$dmg_path" --keychain-profile "$notary_profile" --wait
+}
+
+create_dmg
 
 if [[ "$skip_notarize" != "1" ]]; then
-    xcrun notarytool submit "$dmg_path" --keychain-profile "$notary_profile" --wait
+    if ! submit_dmg; then
+        printf '%s\n' "DMG 公证失败，清理占用后重建再试一次：$dmg_path" >&2
+        clear_dmg_holders
+        create_dmg
+        submit_dmg
+    fi
     xcrun stapler staple "$dmg_path"
     xcrun stapler validate "$dmg_path"
 fi
