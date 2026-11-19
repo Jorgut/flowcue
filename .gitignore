@@ -42,3 +42,6 @@ AuthKey_*.p8
 
 # 本地 worktree（git worktree add 的检出目录）
 worktrees/
+
+# 本地设计素材软链接
+/Design
