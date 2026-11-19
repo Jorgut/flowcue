@@ -42,6 +42,19 @@ Scripts/install-dsh-bridge.sh desktop
 注意它注册的是仓库里的路径：仓库搬家后 profile 里的链接会断，需要重跑一次。
 本机已经踩过一次，见 `PROJECT_STATE.md` 2026-11-19 14:05 条目。
 
+## Test
+
+Branch logic (desktop prompt vs phone) runs without DSH or an iPhone:
+
+```bash
+node --test Integrations/DSHBridge/test/bridge.test.mjs
+```
+
+It drives `apply()` with a minimal cordis context, talks to the real localhost
+endpoints, and uses a stand-in `next()` to record whether the desktop prompt was
+opened. `FLOWCUE_BRIDGE_PHONE_WINDOW_MS` / `FLOWCUE_BRIDGE_PHONE_GRACE_MS` shorten
+the two windows so the suite finishes in seconds.
+
 ## Status
 
 iPhone 端已在 Chat 之外全局轮询并弹出审批 sheet。改动插件后必须退出并重开

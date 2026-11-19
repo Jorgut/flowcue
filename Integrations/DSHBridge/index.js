@@ -19,9 +19,10 @@ const HOST = "127.0.0.1";
 const PORT = Number(process.env.FLOWCUE_DSH_PORT || 47823);
 const HOST_BASE = `http://${HOST}:${PORT}`;
 // 手机在这个窗口内轮询过，就只等手机（不再同时弹桌面卡）。
-const PHONE_WINDOW_MS = 15_000;
+const PHONE_WINDOW_MS = Number(process.env.FLOWCUE_BRIDGE_PHONE_WINDOW_MS || 15_000);
 // 等手机多久；超时回退到桌面审批。手机连上时每 3 秒轮询，15 秒足够。
-const PHONE_GRACE_MS = 15_000;
+// 两个值都可以用环境变量缩短，测试里跑得快一点。
+const PHONE_GRACE_MS = Number(process.env.FLOWCUE_BRIDGE_PHONE_GRACE_MS || 15_000);
 const STATE_DIR = join(homedir(), ".flowcue");
 const STATE_FILE = join(STATE_DIR, "dsh-bridge.json");
 
