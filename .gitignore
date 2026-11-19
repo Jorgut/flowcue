@@ -39,3 +39,6 @@ AuthKey_*.p8
 
 # wrangler 本地状态
 .wrangler/
+
+# 本地 worktree（git worktree add 的检出目录）
+worktrees/
