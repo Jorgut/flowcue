@@ -287,6 +287,24 @@ struct DSHRemoteApproval: Codable, Identifiable, Hashable {
         case id, sessionId, toolName, callId, reason, displayReason, createdAt
     }
 
+    init(
+        id: String,
+        sessionId: String? = nil,
+        toolName: String? = nil,
+        callId: String? = nil,
+        reason: String? = nil,
+        displayReason: String? = nil,
+        createdAt: String? = nil
+    ) {
+        self.id = id
+        self.sessionId = sessionId
+        self.toolName = toolName
+        self.callId = callId
+        self.reason = reason
+        self.displayReason = displayReason
+        self.createdAt = createdAt
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(String.self, forKey: .id)
@@ -1550,7 +1568,7 @@ private struct InboxView: View {
             .background { FlowCueScreenBackground() }
             .toolbar(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showingSearch) {
-                SearchView(store: store, startVoice: startSearchVoice)
+                SearchView(store: store, remoteController: remoteController, startVoice: startSearchVoice)
             }
             .task { network.start() }
             .onChange(of: syncController.isSyncing) { _, isSyncing in
@@ -1830,7 +1848,7 @@ private struct InboxView: View {
             LazyVStack(spacing: 0) {
                 ForEach(visibleIdeas) { idea in
                     NavigationLink {
-                        IdeaDetailView(store: store, capture: idea)
+                        IdeaDetailView(store: store, remoteController: remoteController, capture: idea)
                     } label: {
                         HomeIdeaRow(capture: idea)
                     }
@@ -1936,6 +1954,7 @@ private enum SearchScope {
 
 private struct SearchView: View {
     @Bindable var store: IdeaDockStore
+    @Bindable var remoteController: LANRemoteController
     let startVoice: Bool
     var scope: SearchScope = .all
 
@@ -2143,7 +2162,7 @@ private struct SearchView: View {
 
             ForEach(results) { capture in
                 NavigationLink {
-                    IdeaDetailView(store: store, capture: capture)
+                    IdeaDetailView(store: store, remoteController: remoteController, capture: capture)
                 } label: {
                     SearchResultRow(capture: capture)
                 }
@@ -2523,13 +2542,17 @@ private struct HomeCaptureBar: View {
 
 private struct IdeaDetailView: View {
     @Bindable var store: IdeaDockStore
+    @Bindable var remoteController: LANRemoteController
     let capture: CaptureItem
     @State private var text: String
     @State private var isSaving = false
+    @State private var showingSend = false
+    @State private var sentNote: String?
     @Environment(\.dismiss) private var dismiss
 
-    init(store: IdeaDockStore, capture: CaptureItem) {
+    init(store: IdeaDockStore, remoteController: LANRemoteController, capture: CaptureItem) {
         self.store = store
+        self.remoteController = remoteController
         self.capture = capture
         _text = State(initialValue: capture.text)
     }
@@ -2563,6 +2586,11 @@ private struct IdeaDetailView: View {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                if let sentNote {
+                    Label(sentNote, systemImage: "paperplane.fill")
+                        .font(.caption)
+                        .foregroundStyle(FlowCueTheme.accent)
+                }
             }
             .padding()
         }
@@ -2570,6 +2598,15 @@ private struct IdeaDetailView: View {
         .navigationTitle(capture.text.isEmpty ? "Idea" : "Edit idea")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingSend = true
+                } label: {
+                    Image(systemName: "paperplane")
+                }
+                .disabled(isArchived || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("Send to agent")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 ShareLink(item: text) { Image(systemName: "square.and.arrow.up") }
             }
@@ -2592,6 +2629,12 @@ private struct IdeaDetailView: View {
                 }
             }
         }
+        .sheet(isPresented: $showingSend) {
+            SendIdeaSheet(controller: remoteController, text: text) { target in
+                sentNote = "Sent to \(target)"
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+            }
+        }
         .onDisappear { _ = save(force: false) }
     }
 
@@ -2602,6 +2645,175 @@ private struct IdeaDetailView: View {
         let didSave = store.updateText(captureID: capture.id, text: trimmed)
         if !didSave { text = capture.text }
         return didSave
+    }
+}
+
+
+private struct SendIdeaSheet: View {
+    @Bindable var controller: LANRemoteController
+    let text: String
+    let onSent: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var sendingID: String?
+    @State private var errorMessage: String?
+
+    private var trimmedText: String {
+        text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var hasTargets: Bool {
+        !controller.threads.isEmpty || controller.dshSessions.contains { !$0.isSubagent }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if !controller.isConnected {
+                    placeholder(
+                        icon: "wifi.slash",
+                        title: "No Mac connected",
+                        detail: "Pair your Mac in Agents → your Mac, then try again."
+                    )
+                } else if !hasTargets {
+                    placeholder(
+                        icon: "terminal",
+                        title: "No live sessions",
+                        detail: "Open the target project in FlowCue on your Mac first."
+                    )
+                } else {
+                    targetList
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background { FlowCueScreenBackground() }
+            .navigationTitle("Send to")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                }
+            }
+            .alert("Send failed", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
+                Button("OK", role: .cancel) { errorMessage = nil }
+            } message: {
+                Text(errorMessage ?? "")
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private var targetList: some View {
+        List {
+            if !controller.threads.isEmpty {
+                Section("Codex") {
+                    ForEach(controller.threads) { thread in
+                        row(
+                            id: "codex-\(thread.id)",
+                            title: thread.title.isEmpty ? "Untitled session" : thread.title,
+                            subtitle: thread.projectDirectory ?? ""
+                        ) {
+                            await controller.send(to: thread, text: trimmedText)
+                        } onSuccess: {
+                            onSent("Codex · \(thread.title)")
+                        }
+                    }
+                }
+            }
+
+            let sessions = controller.dshSessions.filter { !$0.isSubagent }
+            if !sessions.isEmpty {
+                Section("DSH") {
+                    ForEach(sessions) { session in
+                        row(
+                            id: "dsh-\(session.id)",
+                            title: session.title.isEmpty ? "Untitled session" : session.title,
+                            subtitle: session.projectDirectory
+                        ) {
+                            await controller.sendDSH(to: session, text: trimmedText)
+                        } onSuccess: {
+                            onSent("DSH · \(session.title)")
+                        }
+                    }
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+        .background(FlowCueTheme.canvas)
+    }
+
+    private func row(
+        id: String,
+        title: String,
+        subtitle: String,
+        action: @escaping () async -> Bool,
+        onSuccess: @escaping () -> Void
+    ) -> some View {
+        Button {
+            guard sendingID == nil else { return }
+            sendingID = id
+            Task {
+                let ok = await action()
+                sendingID = nil
+                if ok {
+                    onSuccess()
+                    dismiss()
+                } else {
+                    errorMessage = controller.lastError ?? "The session did not accept the message."
+                }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title)
+                        .flowCueFont(14, relativeTo: .subheadline)
+                        .foregroundStyle(FlowCueTheme.textPrimary)
+                        .lineLimit(1)
+                    if !subtitle.isEmpty {
+                        Text(subtitle)
+                            .flowCueFont(11, relativeTo: .caption2)
+                            .foregroundStyle(FlowCueTheme.textTertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                }
+                Spacer(minLength: 8)
+                if sendingID == id {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "paperplane")
+                        .foregroundStyle(FlowCueTheme.accent)
+                }
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(sendingID != nil)
+    }
+
+    private func placeholder(icon: String, title: String, detail: String) -> some View {
+        VStack(spacing: 10) {
+            Image(systemName: icon)
+                .font(.system(size: 28, weight: .light))
+                .foregroundStyle(FlowCueTheme.textSecondary)
+            Text(title)
+                .flowCueFont(15, relativeTo: .headline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            Text(detail)
+                .flowCueFont(12, relativeTo: .caption)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: 280)
+        }
+        .padding(24)
     }
 }
 
@@ -3228,12 +3440,12 @@ private struct FlowCueMacPairingCard: View {
                 .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
                 .foregroundStyle(FlowCueTheme.textPrimary)
 
-            FlowCueMacQRCode(url: FlowCueMacDownload.pairingURL)
-                .padding(.top, 2)
-
-            Text(isMandarin ? "扫码在 Mac 上打开" : "Scan to open on your Mac")
+            Text(isMandarin
+                 ? "Mac 上没有 FlowCue？先下载安装，再用它显示的配对码连接。"
+                 : "Install FlowCue on your Mac first, then enter the code it shows.")
                 .flowCueFont(11, relativeTo: .caption2)
                 .foregroundStyle(FlowCueTheme.textSecondary)
+                .multilineTextAlignment(.center)
 
             Button {
                 UIApplication.shared.open(FlowCueMacDownload.pairingURL)
@@ -6056,7 +6268,7 @@ private struct MeView: View {
                 AppearanceView(showsDone: false)
             }
             .navigationDestination(isPresented: $showingArchive) {
-                ArchiveView(store: store)
+                ArchiveView(store: store, remoteController: remoteController)
             }
             .navigationDestination(isPresented: $showingAbout) {
                 AboutView(showOnboarding: showOnboarding)
@@ -6209,7 +6421,7 @@ private struct MeView: View {
             divider
 
             NavigationLink {
-                ArchiveView(store: store)
+                ArchiveView(store: store, remoteController: remoteController)
             } label: {
                 MeRowLabel(title: "Archive")
             }
@@ -7160,6 +7372,7 @@ private struct ProStatusSheet: View {
 
 private struct ArchiveView: View {
     @Bindable var store: IdeaDockStore
+    @Bindable var remoteController: LANRemoteController
     @State private var showingSearch = false
 
     private var archived: [CaptureItem] {
@@ -7206,7 +7419,7 @@ private struct ArchiveView: View {
         .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
         .navigationDestination(isPresented: $showingSearch) {
-            SearchView(store: store, startVoice: false, scope: .archived)
+            SearchView(store: store, remoteController: remoteController, startVoice: false, scope: .archived)
         }
     }
 
