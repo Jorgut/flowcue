@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var globalHotKey: GlobalHotKey?
     private let hookEventMonitor = HookEventMonitor()
     private let probeMonitor = ProbeMonitor()
+    private var pendingApprovals = 0
     private var hotKeyRegistrationFailed = false
     private var captureHostState = CaptureHostState()
 
@@ -45,6 +46,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NotificationService.shared.onOpenApprovals = { [weak self] in
             self?.showInbox()
             NSApp.activate(ignoringOtherApps: true)
+        }
+        probeMonitor.onApprovalsCount = { [weak self] count in
+            self?.pendingApprovals = count
+            self?.updateStatusItem()
         }
         if NotificationService.shared.isEnabled { probeMonitor.start() }
         if ProcessInfo.processInfo.arguments.contains("-testnotify") {
@@ -331,7 +336,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         button.image = image
         button.imagePosition = .imageLeading
         let pendingCount = store?.pendingCount ?? 0
-        button.title = ""
+        if pendingApprovals > 0 {
+            button.attributedTitle = NSAttributedString(
+                string: " \(pendingApprovals)",
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                    .foregroundColor: NSColor.labelColor
+                ]
+            )
+        } else {
+            button.title = ""
+        }
         button.imageScaling = .scaleProportionallyDown
         button.toolTip = hotKeyRegistrationFailed
             ? L10n.text("FlowCue（全局快捷键注册失败）")

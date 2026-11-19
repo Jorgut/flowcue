@@ -412,5 +412,12 @@ public enum L10n {
         "有 1 个待审批求": "1 approval is waiting",
         "有 ": "",
         " 个待审批求": " approvals are waiting",
+        "已接入": "Connected",
+        "未接入": "Not connected",
+        "已接入：Claude Code 每跑完一轮，FlowCue 会收到通知。": "Connected: FlowCue hears from Claude Code after each turn.",
+        "接入后，Claude Code 每跑完一轮，FlowCue 会收到通知。": "Once connected, FlowCue hears from Claude Code after each turn.",
+        "在 ": "in ",
+        " 完成一轮": " finished a turn",
+        "完成一轮": "finished a turn",
     ]
 }

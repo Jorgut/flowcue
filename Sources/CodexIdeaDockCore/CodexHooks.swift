@@ -123,13 +123,15 @@ public enum CodexHooks {
 
     private static let scriptContents = """
     #!/bin/sh
-    # FlowCue · Codex Stop hook
-    # 把事件追加到 ~/.flowcue/hook-events.jsonl，App 监听这个文件。
+    # FlowCue agent hook（Codex / Claude 共用）
+    # 用法：flowcue-hook.sh [codex|claude]
+    # 把事件包成 {"source":..,"received_at":..,"payload":{..}} 追加到 spool 文件。
     mkdir -p "$HOME/.flowcue"
+    source_name="${1:-codex}"
     payload=$(cat)
     stamp=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    printf '%s\\n' "$payload" | /usr/bin/sed 's/}$/,"received_at":"'"$stamp"'"}/' \\
-        >> "$HOME/.flowcue/hook-events.jsonl"
+    printf '{"source":"%s","received_at":"%s","payload":%s}\\n' \
+        "$source_name" "$stamp" "$payload" >> "$HOME/.flowcue/hook-events.jsonl"
     exit 0
     """
 }

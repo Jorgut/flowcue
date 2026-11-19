@@ -299,6 +299,7 @@ private struct IntegrationsSettingsPage: View {
     @State private var bridgeReachable = false
     @State private var portOccupied = false
     @State private var hooksInstalled = false
+    @State private var claudeHooksInstalled = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -346,6 +347,45 @@ private struct IntegrationsSettingsPage: View {
                 Button(L10n.text("重新检查")) { checkBridge() }
                     .controlSize(.small)
             }
+            SettingsGroup(title: "Claude Code hooks") {
+                SettingsRow(title: L10n.text("hooks")) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(claudeHooksInstalled
+                                  ? Color(hex: FlowCueTokens.airyDark.success)
+                                  : Color(hex: FlowCueTokens.airyDark.textTertiary))
+                            .frame(width: 6, height: 6)
+                        Text(claudeHooksInstalled ? L10n.text("已接入") : L10n.text("未接入"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Text(claudeHooksInstalled
+                     ? L10n.text("已接入：Claude Code 每跑完一轮，FlowCue 会收到通知。")
+                     : L10n.text("接入后，Claude Code 每跑完一轮，FlowCue 会收到通知。"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    if claudeHooksInstalled {
+                        Button(L10n.text("移除 hooks")) {
+                            try? ClaudeHooks.uninstall()
+                            NotificationCenter.default.post(name: .flowCueHooksChanged, object: nil)
+                            checkBridge()
+                        }
+                        .controlSize(.small)
+                    } else {
+                        Button(L10n.text("安装 hooks")) {
+                            try? ClaudeHooks.install()
+                            NotificationCenter.default.post(name: .flowCueHooksChanged, object: nil)
+                            checkBridge()
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .tint(Color(hex: FlowCueTokens.airyDark.accent))
+                    }
+                }
+            }
+
             SettingsGroup(title: "Codex hooks") {
                 SettingsRow(title: L10n.text("hooks")) {
                     HStack(spacing: 6) {
@@ -405,6 +445,7 @@ private struct IntegrationsSettingsPage: View {
         bridgeReachable = PortProbe.isOpen(port: 47823)
         portOccupied = PortProbe.isOccupied(port: 47823)
         hooksInstalled = CodexHooks.isInstalled()
+        claudeHooksInstalled = ClaudeHooks.isInstalled()
     }
 
     @ViewBuilder

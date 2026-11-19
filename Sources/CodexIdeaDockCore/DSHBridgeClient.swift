@@ -28,6 +28,32 @@ public struct DSHRemoteApproval: Codable, Identifiable, Hashable, Sendable {
         self.createdAt = createdAt
     }
 
+    private enum CodingKeys: String, CodingKey {
+        case id, sessionId, toolName, callId, reason, displayReason, createdAt
+    }
+
+    /// Auto review 会把原因写成多语言对象；旧版是字符串。两种都要能解。
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        sessionId = try? container.decode(String.self, forKey: .sessionId)
+        toolName = try? container.decode(String.self, forKey: .toolName)
+        callId = try? container.decode(String.self, forKey: .callId)
+        createdAt = try? container.decode(String.self, forKey: .createdAt)
+        reason = Self.text(from: container, forKey: .reason)
+        displayReason = Self.text(from: container, forKey: .displayReason)
+    }
+
+    private static func text(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> String? {
+        if let value = try? container.decode(String.self, forKey: key) {
+            return value
+        }
+        if let localized = try? container.decode([String: String].self, forKey: key) {
+            return localized["zh"] ?? localized["en"] ?? localized.values.first
+        }
+        return nil
+    }
+
     public var title: String {
         displayReason ?? reason ?? toolName ?? "DSH approval"
     }

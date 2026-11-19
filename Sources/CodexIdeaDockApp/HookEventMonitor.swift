@@ -55,21 +55,30 @@ final class HookEventMonitor {
 
     private func notifyIfStop(_ line: String) {
         guard let data = line.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
-        let name = (json["hook_event_name"] as? String) ?? (json["event"] as? String) ?? "Stop"
+              let envelope = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return }
+
+        // 新格式：{source, received_at, payload:{...}}；旧格式是平铺的事件对象
+        let source = envelope["source"] as? String
+        let payload = (envelope["payload"] as? [String: Any]) ?? envelope
+
+        let name = (payload["hook_event_name"] as? String)
+            ?? (payload["event"] as? String)
+            ?? "Stop"
         guard name == "Stop" else { return }
 
-        let project = (json["cwd"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent }
-        let body = project.map { L10n.text("Codex 在 ") + $0 + L10n.text(" 跑完了一轮") }
-            ?? L10n.text("Codex 跑完了一轮")
+        let agent = source == "claude" ? "Claude Code" : "Codex"
+        let agentID = source == "claude" ? "claude" : "codex"
+        let project = (payload["cwd"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent }
+        let sessionID = (payload["session_id"] as? String) ?? UUID().uuidString
+        let snippet = project.map { L10n.text("在 ") + $0 + L10n.text(" 完成一轮") }
+            ?? L10n.text("完成一轮")
 
-        let sessionID = (json["session_id"] as? String) ?? UUID().uuidString
         Task { @MainActor in
             NotificationService.shared.postTurnFinished(
-                agent: "Codex",
+                agent: agent,
                 sessionTitle: project ?? "",
-                snippet: body,
-                agentID: "codex",
+                snippet: snippet,
+                agentID: agentID,
                 sessionID: sessionID
             )
         }

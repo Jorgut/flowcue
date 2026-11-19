@@ -11,6 +11,9 @@ final class ProbeMonitor {
     private var lastAssistantID: [String: String] = [:]
     private var knownApprovals: Set<String> = []
 
+    /// 待审批数量变化（喂给菜单栏角标）
+    var onApprovalsCount: ((Int) -> Void)?
+
     private let service = AgentService.default
     private let bridge = DSHBridgeClient()
 
@@ -41,16 +44,20 @@ final class ProbeMonitor {
         if knownApprovals.isEmpty {
             // 首次只记基线，避免启动瞬间刷一屏通知
             knownApprovals = ids
+            await MainActor.run { self.onApprovalsCount?(ids.count) }
             return
         }
         let fresh = ids.subtracting(knownApprovals)
         knownApprovals = ids
+        await MainActor.run { self.onApprovalsCount?(ids.count) }
         if !fresh.isEmpty {
             await MainActor.run { NotificationService.shared.postApprovals(count: fresh.count) }
         }
     }
 
     private func pollClaude() async {
+        // 装了 Stop hook 就由事件推送，不再轮询
+        guard !ClaudeHooks.isInstalled() else { return }
         guard let adapter = service.adapter(for: "claude"),
               let sessions = try? await service.sessions(for: "claude", limit: 5) else { return }
         for session in sessions {
