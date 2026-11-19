@@ -2056,7 +2056,6 @@ private struct SearchView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
-        .enablesSwipeBack()
         .onAppear(perform: prepare)
         .onDisappear { dictation.stop() }
         .alert(
@@ -4065,7 +4064,6 @@ private struct RemoteDeviceView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
-        .enablesSwipeBack()
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 10) {
                 if isOnline {
@@ -4617,7 +4615,6 @@ private struct CodexAgentView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
-        .enablesSwipeBack()
         .task { network.start() }
         .onDisappear { network.stop() }
         .sheet(isPresented: $showingNewSession) {
@@ -4764,7 +4761,6 @@ private struct DSHAgentView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
-        .enablesSwipeBack()
         .task { network.start() }
         .onDisappear { network.stop() }
         .sheet(isPresented: $showingNewSession) {
@@ -5020,7 +5016,6 @@ private struct ChatScreen: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
-        .enablesSwipeBack()
         .task { network.start() }
         .onDisappear { network.stop() }
         .task(id: target.id) { await runChat() }
@@ -8702,57 +8697,5 @@ private struct OnboardingPrivacyChip: View {
             .padding(.vertical, 5)
             .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.canvas))
             .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
-    }
-}
-
-// MARK: - 右滑返回
-
-/// `.toolbar(.hidden, for: .navigationBar)` 会让 UIKit 关掉交互式返回手势：
-/// 系统默认的 delegate 在导航栏隐藏时返回 false。设计稿要求这些页面隐藏导航栏，
-/// 所以这里把手势重新挂上——只把 `interactivePopGestureRecognizer` 的 delegate
-/// 换成「栈里还有上一页才生效」，视觉不变，也不会在根页左滑把栈卡住。
-private struct SwipeBackEnabler: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> PopGestureController {
-        PopGestureController()
-    }
-
-    func updateUIViewController(_ controller: PopGestureController, context: Context) {
-        controller.enable()
-    }
-}
-
-private final class PopGestureController: UIViewController, UIGestureRecognizerDelegate {
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        enable()
-    }
-
-    func enable() {
-        guard let navigationController,
-              let gesture = navigationController.interactivePopGestureRecognizer else { return }
-        gesture.delegate = self
-        gesture.isEnabled = navigationController.viewControllers.count > 1
-    }
-
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        (navigationController?.viewControllers.count ?? 0) > 1
-    }
-
-    func gestureRecognizer(
-        _ gestureRecognizer: UIGestureRecognizer,
-        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
-    ) -> Bool {
-        false
-    }
-}
-
-private extension View {
-    /// 给隐藏了导航栏的页面恢复「右滑返回」。
-    func enablesSwipeBack() -> some View {
-        background {
-            SwipeBackEnabler()
-                .frame(width: 0, height: 0)
-                .allowsHitTesting(false)
-        }
     }
 }
