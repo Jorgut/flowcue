@@ -27,6 +27,17 @@ public enum CodexHooks {
         return hooksContainFlowCue(hooks)
     }
 
+    /// Codex 只有在 config.toml 里留下 `[hooks.state."…:stop:…"]` 信任记录后才会执行 Stop hook。
+    public static func isTrusted() -> Bool {
+        let config = home.appendingPathComponent(".codex/config.toml")
+        guard let text = try? String(contentsOf: config, encoding: .utf8) else { return false }
+        for line in text.split(separator: "\n") where line.hasPrefix("[hooks.state.") {
+            let key = line.lowercased()
+            if key.contains(":stop:") || key.contains(":stop\"") { return true }
+        }
+        return false
+    }
+
     private static func hooksContainFlowCue(_ hooks: [String: Any]) -> Bool {
         for (_, value) in hooks {
             guard let groups = value as? [[String: Any]] else { continue }

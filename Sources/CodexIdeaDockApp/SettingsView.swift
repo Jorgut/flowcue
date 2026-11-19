@@ -300,6 +300,7 @@ private struct IntegrationsSettingsPage: View {
     @State private var portOccupied = false
     @State private var hooksInstalled = false
     @State private var claudeHooksInstalled = false
+    @State private var codexHooksTrusted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -399,8 +400,12 @@ private struct IntegrationsSettingsPage: View {
                     }
                 }
                 Text(hooksInstalled
-                     ? L10n.text("已接入：Codex 每跑完一轮，FlowCue 会收到通知。")
+                     ? (codexHooksTrusted
+                        ? L10n.text("已接入：Codex 每跑完一轮，FlowCue 会收到通知。")
+                        : L10n.text("已写入配置，但 Codex 还没信任它：在终端跑一次 codex，按提示允许这个 hook。"))
                      : L10n.text("接入后，Codex 每跑完一轮，FlowCue 会收到通知。"))
+                    .font(.system(size: 10))
+                    .foregroundStyle(codexHooksTrusted ? .secondary : Color(hex: FlowCueTokens.airyDark.warning))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
 
@@ -446,6 +451,7 @@ private struct IntegrationsSettingsPage: View {
         portOccupied = PortProbe.isOccupied(port: 47823)
         hooksInstalled = CodexHooks.isInstalled()
         claudeHooksInstalled = ClaudeHooks.isInstalled()
+        codexHooksTrusted = CodexHooks.isTrusted()
     }
 
     @ViewBuilder

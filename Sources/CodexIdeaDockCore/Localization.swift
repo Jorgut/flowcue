@@ -420,5 +420,6 @@ public enum L10n {
         " 完成一轮": " finished a turn",
         "完成一轮": "finished a turn",
         "有新回复": "New reply",
+        "已写入配置，但 Codex 还没信任它：在终端跑一次 codex，按提示允许这个 hook。": "Written to config, but Codex hasn't trusted it yet: run codex once and approve the hook.",
     ]
 }
