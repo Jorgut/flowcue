@@ -24,6 +24,8 @@ process.env.HOME = home;
 process.env.FLOWCUE_DSH_PORT = String(PORT);
 process.env.FLOWCUE_BRIDGE_PHONE_WINDOW_MS = String(PHONE_WINDOW_MS);
 process.env.FLOWCUE_BRIDGE_PHONE_GRACE_MS = String(PHONE_GRACE_MS);
+// 关掉「手机最近出现过」的粘性窗口，单测只验轮询窗口。
+process.env.FLOWCUE_BRIDGE_PHONE_PAIR_MS = "0";
 
 const { apply } = await import("../index.js");
 
@@ -200,8 +202,14 @@ test("桌面自己的轮询不算手机在线", async () => {
 
 test.after(async () => {
   // 跑到第二个 yield 拿到插件注册的清理函数，关掉 HTTP server，否则进程不退。
-  for (const generator of generators) {
-    const { value } = generator.next();
-    if (typeof value === "function") await value();
+  for (const iterator of generators) {
+    // 生成器现在会 yield 多个注册器，必须走到最后一个 yield 才是清理函数。
+    let disposer;
+    let step = iterator.next();
+    while (!step.done) {
+      disposer = step.value;
+      step = iterator.next();
+    }
+    if (typeof disposer === "function") await disposer();
   }
 });

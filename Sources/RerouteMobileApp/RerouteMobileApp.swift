@@ -8748,6 +8748,15 @@ private struct OnboardingPrivacyChip: View {
 final class FlowCueAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(
         _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // 不挂 delegate 的话，App 在前台收到的推送会被系统静默丢弃。
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         FlowCuePushRegistration.shared.handleToken(deviceToken)

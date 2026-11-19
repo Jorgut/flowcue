@@ -20,9 +20,11 @@ const PORT = Number(process.env.FLOWCUE_DSH_PORT || 47823);
 const HOST_BASE = `http://${HOST}:${PORT}`;
 // 手机在这个窗口内轮询过，就只等手机（不再同时弹桌面卡）。
 const PHONE_WINDOW_MS = Number(process.env.FLOWCUE_BRIDGE_PHONE_WINDOW_MS || 15_000);
-// 等手机多久；超时回退到桌面审批。手机连上时每 3 秒轮询，15 秒足够。
-// 两个值都可以用环境变量缩短，测试里跑得快一点。
-const PHONE_GRACE_MS = Number(process.env.FLOWCUE_BRIDGE_PHONE_GRACE_MS || 15_000);
+// 等手机多久；超时回退到桌面审批。手机锁屏时靠推送唤醒，给 45 秒。
+const PHONE_GRACE_MS = Number(process.env.FLOWCUE_BRIDGE_PHONE_GRACE_MS || 45_000);
+// 手机在这个窗口内出现过（轮询或决定），就优先只走手机。
+// 桌面卡一旦弹出，手机再批准时那张卡不会自动消失——所以宁可等手机。
+const PHONE_PAIR_WINDOW_MS = Number(process.env.FLOWCUE_BRIDGE_PHONE_PAIR_MS || 10 * 60_000);
 const STATE_DIR = join(homedir(), ".flowcue");
 const STATE_FILE = join(STATE_DIR, "dsh-bridge.json");
 
@@ -72,6 +74,8 @@ export function apply(ctx) {
   let closed = false;
   /** Last time the paired phone polled or decided; used to skip the desktop prompt. */
   let lastPhoneActivity = 0;
+  /** Last time the phone was seen at all; keeps desktop-only approval from stealing the card. */
+  let lastPhoneSeenAt = 0;
 
   const tokenReady = loadToken();
 
@@ -87,7 +91,10 @@ export function apply(ctx) {
         // 只有真的替手机转发的轮询才算「手机在线」。桌面端自己的轮询
         // （菜单栏角标、待审批面板、会话列表）不能冒充手机，否则每一轮
         // 桌面审批都会被扣住等手机，最后拖到 fallback 才出现。
-        if (url.searchParams.get("source") === "phone") lastPhoneActivity = Date.now();
+        if (url.searchParams.get("source") === "phone") {
+          lastPhoneActivity = Date.now();
+          lastPhoneSeenAt = lastPhoneActivity;
+        }
         return json(res, 200, {
           pending: [...pending.entries()].map(([id, item]) => ({
             id,
@@ -125,8 +132,9 @@ export function apply(ctx) {
         return json(res, 200, { ok: true });
       }
 
-      if (req.method === "POST" && req.url === "/v1/decide") {
+      if (req.method === "POST" && url.pathname === "/v1/decide") {
         lastPhoneActivity = Date.now();
+        lastPhoneSeenAt = lastPhoneActivity;
         const body = await readJSON(req);
         const item = pending.get(body.id);
         if (!item) return json(res, 404, { error: "request is no longer pending" });
@@ -169,7 +177,9 @@ export function apply(ctx) {
       // here would also open the desktop prompt, which stays on screen even
       // after the phone decides because the desktop answerer is still waiting.
       // If the phone goes quiet for PHONE_GRACE_MS, fall back to the desktop prompt.
-      if (Date.now() - lastPhoneActivity < PHONE_WINDOW_MS) {
+      const phonePresent = Date.now() - lastPhoneActivity < PHONE_WINDOW_MS
+        || Date.now() - lastPhoneSeenAt < PHONE_PAIR_WINDOW_MS;
+      if (phonePresent) {
         let timer;
         const timeout = new Promise((resolve) => {
           timer = setTimeout(() => resolve("unavailable"), PHONE_GRACE_MS);

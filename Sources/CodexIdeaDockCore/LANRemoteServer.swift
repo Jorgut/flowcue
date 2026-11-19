@@ -18,6 +18,12 @@ public final class LANRemoteServer {
     private let store: IdeaDockStore?
     private var listener: NWListener?
     private var connections: [UUID: HTTPConnection] = [:]
+    /// Codex 会话列表要拉起 app-server 再逐个读最新回复，一次 3 秒起；
+    /// 手机每隔几秒就问一次，所以缓存一小段时间。
+    private var threadCache: (snapshots: [RemoteThreadSnapshot], at: Date)?
+    private static let threadCacheTTL: TimeInterval = 20
+    /// 固定监听端口，让手机缓存的地址在 Mac 重启后依然有效。
+    public static let preferredPort: UInt16 = 47824
 
     public init(
         executorID: UUID,
@@ -42,7 +48,15 @@ public final class LANRemoteServer {
         guard listener == nil else { return }
         let parameters = NWParameters.tcp
         parameters.allowLocalEndpointReuse = true
-        let listener = try NWListener(using: parameters)
+        // 固定端口：以前用临时端口，Mac 一重启端口就变，手机缓存的地址随之失效，
+        // 表现就是「Mac 好好开着却一直 Connection lost」。端口被占时才退回临时端口。
+        let preferred = NWEndpoint.Port(rawValue: Self.preferredPort)
+        let listener: NWListener
+        if let preferred, let fixed = try? NWListener(using: parameters, on: preferred) {
+            listener = fixed
+        } else {
+            listener = try NWListener(using: parameters)
+        }
         listener.service = NWListener.Service(name: "FlowCue", type: "_flowcue._tcp")
         listener.newConnectionHandler = { [weak self] connection in
             Task { @MainActor [weak self] in
@@ -56,6 +70,8 @@ public final class LANRemoteServer {
                 case .ready:
                     self.isRunning = true
                     self.port = self.listener?.port?.rawValue
+                    // 预热缓存，免得手机第一条请求还要等 Codex 起 app-server。
+                    Task { _ = try? await self.threadSnapshots() }
                 case .failed, .cancelled:
                     self.isRunning = false
                     self.port = nil
@@ -66,6 +82,27 @@ public final class LANRemoteServer {
         }
         listener.start(queue: .main)
         self.listener = listener
+    }
+
+    /// 缓存期内直接返回；过期才真的去问 Codex。
+    private func threadSnapshots() async throws -> [RemoteThreadSnapshot] {
+        if let cache = threadCache,
+           Date().timeIntervalSince(cache.at) < Self.threadCacheTTL {
+            return cache.snapshots
+        }
+        let contexts = try await bridge.listThreads()
+        let snapshots = contexts.map { context in
+            RemoteThreadSnapshot(
+                id: context.id,
+                title: context.title,
+                projectDirectory: context.projectDirectory,
+                lastReply: reader.latestAssistantText(threadID: context.id) ?? "",
+                updatedAt: context.recency,
+                executorID: executorID
+            )
+        }
+        threadCache = (snapshots, Date())
+        return snapshots
     }
 
     public func stop() {
@@ -122,17 +159,7 @@ public final class LANRemoteServer {
         }
         switch (request.method, request.path) {
         case ("GET", "/v1/threads"):
-            let contexts = try await bridge.listThreads()
-            let snapshots = contexts.map { context in
-                RemoteThreadSnapshot(
-                    id: context.id,
-                    title: context.title,
-                    projectDirectory: context.projectDirectory,
-                    lastReply: reader.latestAssistantText(threadID: context.id) ?? "",
-                    updatedAt: context.recency,
-                    executorID: executorID
-                )
-            }
+            let snapshots = try await threadSnapshots()
             return Self.response(status: 200, body: try JSONEncoder().encode(snapshots))
         case ("GET", let path) where path.hasPrefix("/v1/dsh/subagents/"):
             let encoded = String(path.dropFirst("/v1/dsh/subagents/".count))

@@ -16,6 +16,10 @@ final class ProbeMonitor {
     private let dshBundle = "com.deepseek.dsh"
     private let dshReader = DSHSessionReader()
     private var knownApprovals: Set<String> = []
+    /// 只在第一次轮询时建立基线。用 knownApprovals.isEmpty 判断是错的：
+    /// 启动后没有待审批时它一直是空集，于是「启动后的第一条审批」会被
+    /// 当成基线吞掉，既不推手机也不弹桌面通知。
+    private var hasSeededApprovals = false
 
     /// 待审批数量变化（喂给菜单栏角标）
     var onApprovalsCount: ((Int) -> Void)?
@@ -48,8 +52,9 @@ final class ProbeMonitor {
     private func pollApprovals() async {
         guard bridge.isConfigured, let pending = try? await bridge.pending() else { return }
         let ids = Set(pending.map { $0.id })
-        if knownApprovals.isEmpty {
-            // 首次只记基线，避免启动瞬间刷一屏通知
+        if !hasSeededApprovals {
+            // 只在进程启动后的第一次轮询记基线，避免启动瞬间刷一屏通知。
+            hasSeededApprovals = true
             knownApprovals = ids
             await MainActor.run { self.onApprovalsCount?(ids.count) }
             return
