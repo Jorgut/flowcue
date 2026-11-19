@@ -109,8 +109,14 @@ public final class DSHBridgeClient: @unchecked Sendable {
         (try? token()) != nil
     }
 
-    public func pending() async throws -> [DSHRemoteApproval] {
-        let data = try await get(path: "/v1/pending")
+    /// 读待审批列表。
+    ///
+    /// `source` 只有替手机转发时才传 `"phone"`：桥接拿它判断「手机在不在线」，
+    /// 桌面自己的轮询（角标、待审批面板）不能冒充手机，否则每条审批都会被扣住
+    /// 等手机，最后拖到 fallback 才出现在桌面上。
+    public func pending(source: String? = nil) async throws -> [DSHRemoteApproval] {
+        let query = source.map { [URLQueryItem(name: "source", value: $0)] } ?? []
+        let data = try await get(path: "/v1/pending", query: query)
         struct Response: Decodable { let pending: [DSHRemoteApproval] }
         return try JSONDecoder().decode(Response.self, from: data).pending
     }
@@ -132,15 +138,23 @@ public final class DSHBridgeClient: @unchecked Sendable {
         try validate(response)
     }
 
-    private func get(path: String) async throws -> Data {
-        let request = try authorizedRequest(path: path, method: "GET")
+    private func get(path: String, query: [URLQueryItem] = []) async throws -> Data {
+        let request = try authorizedRequest(path: path, method: "GET", query: query)
         let (data, response) = try await configuration.session.data(for: request)
         try validate(response)
         return data
     }
 
-    private func authorizedRequest(path: String, method: String) throws -> URLRequest {
-        var request = URLRequest(url: configuration.baseURL.appendingPathComponent(path))
+    private func authorizedRequest(
+        path: String,
+        method: String,
+        query: [URLQueryItem] = []
+    ) throws -> URLRequest {
+        let base = configuration.baseURL.appendingPathComponent(path)
+        var components = URLComponents(url: base, resolvingAgainstBaseURL: false)
+        if !query.isEmpty { components?.queryItems = query }
+        guard let url = components?.url else { throw DSHBridgeError.invalidResponse }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.timeoutInterval = 8
         request.setValue("Bearer \(try token())", forHTTPHeaderField: "Authorization")

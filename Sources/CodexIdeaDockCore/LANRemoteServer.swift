@@ -159,7 +159,9 @@ public final class LANRemoteServer {
                 return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: false, pending: [])))
             }
             do {
-                let approvals = try await dshBridge.pending()
+                // 这是 iPhone 发起的轮询，只有它能代表「手机在线」；
+                // 桥接靠这个标记决定要不要扣住桌面审批卡。
+                let approvals = try await dshBridge.pending(source: "phone")
                 return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: true, pending: approvals)))
             } catch {
                 return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: true, pending: [])))

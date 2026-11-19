@@ -11,7 +11,12 @@ paired iPhone.
 - When the phone has polled within the last 15s, the bridge lets the phone
   answer alone instead of also opening the desktop prompt (the desktop card
   otherwise stays visible after a phone decision). If the phone stays quiet
-  for 60s, the request falls back to the normal desktop prompt.
+  for 15s, the request falls back to the normal desktop prompt and the stale
+  entry is dropped.
+- Only `GET /v1/pending?source=phone` counts as "the phone is here". The Mac
+  app sets it solely when relaying an iPhone request; its own polls (menu bar
+  badge, approvals panel) must not count, or every desktop approval would be
+  held waiting for a phone that is not connected.
 - Holds the request until the FlowCue Mac app sends a decision.
 - Exposes only `127.0.0.1:47823`:
   - `GET /v1/pending`

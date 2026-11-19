@@ -17,6 +17,11 @@ export const inject = ["approval", "agents", "attachments"];
 
 const HOST = "127.0.0.1";
 const PORT = Number(process.env.FLOWCUE_DSH_PORT || 47823);
+const HOST_BASE = `http://${HOST}:${PORT}`;
+// 手机在这个窗口内轮询过，就只等手机（不再同时弹桌面卡）。
+const PHONE_WINDOW_MS = 15_000;
+// 等手机多久；超时回退到桌面审批。手机连上时每 3 秒轮询，15 秒足够。
+const PHONE_GRACE_MS = 15_000;
 const STATE_DIR = join(homedir(), ".flowcue");
 const STATE_FILE = join(STATE_DIR, "dsh-bridge.json");
 
@@ -72,12 +77,16 @@ export function apply(ctx) {
   const server = createServer(async (req, res) => {
     try {
       if (!req.url?.startsWith("/v1/")) return json(res, 404, { error: "not found" });
+      const url = new URL(req.url, HOST_BASE);
       const token = await tokenReady;
       const auth = req.headers.authorization || "";
       if (auth !== `Bearer ${token}`) return json(res, 401, { error: "unauthorized" });
 
-      if (req.method === "GET" && req.url === "/v1/pending") {
-        lastPhoneActivity = Date.now();
+      if (req.method === "GET" && url.pathname === "/v1/pending") {
+        // 只有真的替手机转发的轮询才算「手机在线」。桌面端自己的轮询
+        // （菜单栏角标、待审批面板、会话列表）不能冒充手机，否则每一轮
+        // 桌面审批都会被扣住等手机，最后拖到 fallback 才出现。
+        if (url.searchParams.get("source") === "phone") lastPhoneActivity = Date.now();
         return json(res, 200, {
           pending: [...pending.entries()].map(([id, item]) => ({
             id,
@@ -158,11 +167,17 @@ export function apply(ctx) {
       // When the phone is actively polling, let it answer alone. Calling next()
       // here would also open the desktop prompt, which stays on screen even
       // after the phone decides because the desktop answerer is still waiting.
-      // If the phone goes quiet for 60s, fall back to the desktop prompt.
-      if (Date.now() - lastPhoneActivity < 15_000) {
-        const timeout = new Promise((resolve) => setTimeout(() => resolve("unavailable"), 60_000));
+      // If the phone goes quiet for PHONE_GRACE_MS, fall back to the desktop prompt.
+      if (Date.now() - lastPhoneActivity < PHONE_WINDOW_MS) {
+        let timer;
+        const timeout = new Promise((resolve) => {
+          timer = setTimeout(() => resolve("unavailable"), PHONE_GRACE_MS);
+        });
         const outcome = await Promise.race([bridged, timeout]);
+        clearTimeout(timer);
         if (outcome !== "unavailable") return outcome;
+        // 手机在宽限期内没响应：撤掉这一条，否则手机上会留一个永远点不动的审批。
+        pending.delete(id);
         return await next();
       }
 
