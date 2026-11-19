@@ -136,6 +136,32 @@ fi
     shasum -a 256 "$(basename "$dmg_path")" > "$(basename "$dmg_path").sha256"
 )
 
+# GitHub Release：app 的内置更新读的是 latest release，必须在官网同步之前建好
+if [[ "${FLOWCUE_SKIP_GITHUB_RELEASE:-0}" != "1" ]]; then
+    if ! command -v gh >/dev/null 2>&1; then
+        printf '%s\n' "未找到 gh（GitHub CLI），无法创建 Release；装好 gh 或用 FLOWCUE_SKIP_GITHUB_RELEASE=1 跳过。" >&2
+        exit 1
+    fi
+    branch="$(git -C "$project_directory" rev-parse --abbrev-ref HEAD)"
+    commit="$(git -C "$project_directory" rev-parse HEAD)"
+    if ! git -C "$project_directory" merge-base --is-ancestor "$commit" "origin/$branch" 2>/dev/null; then
+        printf '%s\n' "当前提交不在 origin/$branch 上，先 push 再发版（Release 的 tag 需要远端有这么提交）。" >&2
+        exit 1
+    fi
+    notes_file="$(mktemp)"
+    awk -v ver="## $version" 'index($0, ver) == 1 {found = 1; next} found && /^## / {exit} found' \
+        "$project_directory/CHANGELOG.md" > "$notes_file"
+    if gh release view "v$version" >/dev/null 2>&1; then
+        gh release upload "v$version" "$release_archive" "$checksum_file" \
+            "$dmg_path" "$dmg_path.sha256" --clobber
+    else
+        gh release create "v$version" --target "$commit" --title "FlowCue $version" \
+            --notes-file "$notes_file" "$release_archive" "$checksum_file" \
+            "$dmg_path" "$dmg_path.sha256"
+    fi
+    rm -f "$notes_file"
+fi
+
 # 同步官网下载页：只保留当前版本的 DMG / SHA-256，并更新版本与体积
 site_downloads="$site_root/site/downloads"
 site_page="$site_root/site/mac/index.html"
