@@ -113,9 +113,39 @@ clear_dmg_holders() {
     done
 }
 
+# 提交后轮询，避免 --wait 长时间挂住；不要在公证过程中 kill notarytool
 submit_dmg() {
-    perl -e 'alarm shift; exec @ARGV' 600 \
-        xcrun notarytool submit "$dmg_path" --keychain-profile "$notary_profile" --wait
+    local submit_output submission_id status
+    local deadline=$((SECONDS + 600))
+
+    submit_output="$(xcrun notarytool submit "$dmg_path" --keychain-profile "$notary_profile" --no-wait 2>&1)" || {
+        printf '%s\n' "$submit_output" >&2
+        return 1
+    }
+    printf '%s\n' "$submit_output"
+    submission_id="$(printf '%s\n' "$submit_output" | awk '/^ *id: /{print $2; exit}')"
+    if [[ -z "$submission_id" ]]; then
+        printf '%s\n' "没有拿到 submission id" >&2
+        return 1
+    fi
+
+    while (( SECONDS < deadline )); do
+        status="$(xcrun notarytool info "$submission_id" --keychain-profile "$notary_profile" 2>/dev/null \
+            | awk -F': *' '/^ *status:/{print $2; exit}')"
+        case "$status" in
+            Accepted)
+                return 0
+                ;;
+            Invalid|Rejected)
+                printf '%s\n' "公证结果 $status（submission $submission_id）" >&2
+                return 1
+                ;;
+        esac
+        sleep 10
+    done
+
+    printf '%s\n' "等待公证超时（submission $submission_id）" >&2
+    return 1
 }
 
 create_dmg

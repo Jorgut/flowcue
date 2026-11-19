@@ -66,6 +66,12 @@ DMG 里是 `FlowCue.app` + 指向 `/Applications` 的快捷方式，用户拖进
   `dist/FlowCue.app` 重新 `hdiutil create` + `codesign`，再提交一次即可（2026-11-19 实测）。
 - 不要在中途 kill `notarytool`：它的子进程 `diskimages-helper` 会残留并锁住 DMG，
   下一次提交就卡在 pre-submission checks。先 `pkill -f notarytool`，再清理 helper。
+- 卡在 `Conducting pre-submission checks` 且 `hdiutil attach <dmg>` 报
+  `Resource temporarily unavailable`：DiskImages 子系统被残留挂载占满。用
+  `hdiutil info` 找出 FlowCue 相关的 `image-path`，对相应 `/dev/diskN` 执行
+  `hdiutil detach -force`（模拟器的 disk 不要动），再重新提交。2026-11-19 实测有效。
+- 脚本现在用 `notarytool submit --no-wait` + `notarytool info` 轮询（10 分钟上限），
+  不再用 `--wait` 长时间挂住；失败会自动重建 DMG 再试一次。
 
 ## 验证清单
 
