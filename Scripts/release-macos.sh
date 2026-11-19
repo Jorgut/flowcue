@@ -24,6 +24,37 @@ if [[ -z "$notary_profile" && "$skip_notarize" != "1" ]]; then
     exit 1
 fi
 
+# 官网自 2026-11-19 起是同一个仓库的 main worktree（push main 触发 Cloudflare 部署）。
+# 发布前先校验目标，避免公证跑完才发现改动落在不会部署的分支上。
+site_root="${FLOWCUE_SITE_DIR:-}"
+if [[ -z "$site_root" ]]; then
+    worktree_site="$project_directory/../FlowCue-Worktrees/site"
+    if [[ -f "$worktree_site/site/mac/index.html" ]]; then
+        site_root="$worktree_site"
+    else
+        site_root="$project_directory"
+    fi
+fi
+if [[ ! -f "$site_root/site/mac/index.html" ]]; then
+    printf '%s\n' "找不到官网页面：$site_root/site/mac/index.html（用 FLOWCUE_SITE_DIR 指定官网 worktree）" >&2
+    exit 1
+fi
+site_root="$(cd "$site_root" && pwd -P)"
+if ! git -C "$site_root" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf '%s\n' "官网目录不是 Git 仓库：$site_root" >&2
+    exit 1
+fi
+site_branch="$(git -C "$site_root" rev-parse --abbrev-ref HEAD)"
+if [[ "$site_branch" != "main" ]]; then
+    printf '%s\n' "官网 worktree 不在 main（当前 $site_branch），push 不会部署：$site_root" >&2
+    exit 1
+fi
+if [[ -n "$(git -C "$site_root" status --porcelain)" ]]; then
+    printf '%s\n' "官网 worktree 有未提交改动，先处理再发版：$site_root" >&2
+    git -C "$site_root" status --short >&2
+    exit 1
+fi
+
 cd "$project_directory"
 FLOWCUE_CODE_SIGN_IDENTITY="$signing_identity" zsh "$script_directory/build-app.sh" release
 
@@ -82,8 +113,8 @@ fi
 )
 
 # 同步官网下载页：只保留当前版本的 DMG / SHA-256，并更新版本与体积
-site_downloads="$project_directory/site/downloads"
-site_page="$project_directory/site/mac/index.html"
+site_downloads="$site_root/site/downloads"
+site_page="$site_root/site/mac/index.html"
 mkdir -p "$site_downloads"
 dmg_name="$(basename "$dmg_path")"
 find "$site_downloads" -maxdepth 1 -type f -name '*.dmg' ! -name "$dmg_name" -delete
@@ -103,19 +134,20 @@ open(page, 'w', encoding='utf-8').write(html)
 PYEOF
 fi
 
-# 提交并推送站点改动，让 Pages 自动部署；FLOWCUE_SKIP_SITE_COMMIT=1 可关闭
-if [[ "${FLOWCUE_SKIP_SITE_COMMIT:-0}" != "1" ]] && git -C "$project_directory" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+# 提交并推送站点改动（在 main worktree 内提交），让 Cloudflare 自动部署；
+# FLOWCUE_SKIP_SITE_COMMIT=1 只更新文件、不提交
+if [[ "${FLOWCUE_SKIP_SITE_COMMIT:-0}" != "1" ]]; then
     site_paths=("site/mac/index.html" "site/downloads")
-    if [[ -n "$(git -C "$project_directory" status --porcelain -- "${site_paths[@]}")" ]]; then
-        git -C "$project_directory" add -A -- "${site_paths[@]}"
-        git -C "$project_directory" commit -m "release(site): FlowCue $version" -- "${site_paths[@]}"
-        if ! git -C "$project_directory" push origin HEAD; then
-            printf '%s\n' "warning: 站点改动已提交但推送失败，请手动 push 后合并到 main 触发部署。" >&2
+    if [[ -n "$(git -C "$site_root" status --porcelain -- "${site_paths[@]}")" ]]; then
+        git -C "$site_root" add -A -- "${site_paths[@]}"
+        git -C "$site_root" commit -m "release(site): FlowCue $version" -- "${site_paths[@]}"
+        if ! git -C "$site_root" push origin HEAD; then
+            printf '%s\n' "warning: 站点改动已提交但推送失败，请在 $site_root 手动 push main。" >&2
+            exit 1
         fi
     fi
-    if [[ "$(git -C "$project_directory" rev-parse --abbrev-ref HEAD)" != "main" ]]; then
-        printf '%s\n' "note: 当前分支不是 main，站点改动需合并到 main 后才会自动部署。" >&2
-    fi
+else
+    printf '%s\n' "note: FLOWCUE_SKIP_SITE_COMMIT=1，官网文件已更新但未提交：$site_root" >&2
 fi
 
 printf '%s\n' "$release_archive"
