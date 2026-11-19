@@ -465,6 +465,43 @@ public final class IdeaDockStore {
         }
     }
 
+    /// iPhone 通过局域网推来的想法：按 id 幂等写入，重复推送不会产生副本。
+    @discardableResult
+    public func upsertRemoteIdea(_ idea: RemoteIdea) -> Bool {
+        let text = idea.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return false }
+
+        if let capture = fetchCapture(id: idea.id) {
+            let effectiveStatus = capture.status == .archived
+                ? capture.statusBeforeArchive ?? .unknown
+                : capture.status
+            guard effectiveStatus != .queued, effectiveStatus != .queueing else { return true }
+            if capture.text != text {
+                capture.text = text
+                capture.updatedAt = max(capture.updatedAt, idea.updatedAt)
+            }
+        } else {
+            let capture = Capture(
+                id: idea.id,
+                text: text,
+                createdAt: idea.createdAt,
+                updatedAt: idea.updatedAt,
+                status: .saved
+            )
+            modelContext.insert(capture)
+        }
+
+        do {
+            try modelContext.save()
+            try reloadCaptures()
+            return true
+        } catch {
+            modelContext.rollback()
+            try? reloadCaptures()
+            return false
+        }
+    }
+
     @discardableResult
     public func updateRoute(
         captureID: UUID,

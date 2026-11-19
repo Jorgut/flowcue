@@ -684,6 +684,40 @@ final class LANRemoteController {
         await syncProToMac()
     }
 
+    /// 把本地想法推给 Mac 的 Inbox；Mac 按 id 幂等写入，重复推送不会产生副本。
+    @discardableResult
+    func pushIdea(_ capture: CaptureItem) async -> Bool {
+        await pushIdea(RemoteIdea(
+            id: capture.id,
+            text: capture.text,
+            createdAt: capture.createdAt,
+            updatedAt: capture.updatedAt
+        ))
+    }
+
+    @discardableResult
+    func pushIdea(_ idea: RemoteIdea) async -> Bool {
+        guard let selected else { return false }
+        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard code.count == 6 else { return false }
+        do {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            let body = try encoder.encode(idea)
+            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/ideas", token: code, body: body)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    func pushAllIdeas(_ captures: [CaptureItem]) async {
+        for capture in captures where capture.status != .archived {
+            guard !capture.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
+            await pushIdea(capture)
+        }
+    }
+
     /// 把 iPhone 上的订阅到期时间推给 Mac，让 Pro 在 Mac 解锁。
     /// 只在首次连接或值变化时发送；失败不打扰用户，下一次轮询自动重试。
     func syncProToMac(force: Bool = false) async {
@@ -997,6 +1031,7 @@ private struct RootTabView: View {
         .tint(FlowCueTheme.accent)
         .task(id: remoteController.isConnected) {
             guard remoteController.isConnected else { return }
+            await remoteController.pushAllIdeas(store.captures)
             while !Task.isCancelled {
                 await remoteController.refreshApprovals()
                 try? await Task.sleep(for: .seconds(3))
@@ -1077,17 +1112,23 @@ private struct RootTabView: View {
         guard !pending.isEmpty else { return }
 
         let previousTarget = store.targetThreadID
+        var savedIDs: [UUID] = []
         for item in pending {
             if item.target == .codex, let context = store.contexts.first {
                 store.setTarget(context.id)
             }
-            if !store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                _ = store.saveCurrent()
+            if !store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               let draftID = store.saveCurrent() {
+                savedIDs.append(draftID)
             }
             store.draftText = item.text
-            _ = store.saveCurrent()
+            if let savedID = store.saveCurrent() {
+                savedIDs.append(savedID)
+            }
         }
         store.setTarget(previousTarget)
+        let imported = store.captures.filter { savedIDs.contains($0.id) }
+        Task { await remoteController.pushAllIdeas(imported) }
         store.notification = DockNotification(
             kind: .success,
             message: "Saved \(pending.count) shared idea\(pending.count == 1 ? "" : "s")."
@@ -1558,7 +1599,7 @@ private struct InboxView: View {
                         if store.notification?.id == note.id { store.notification = nil }
                     }
                 }
-                HomeCaptureBar(store: store, focused: $captureFocused)
+                HomeCaptureBar(store: store, controller: remoteController, focused: $captureFocused)
                 if !captureFocused {
                     FlowCueTabBar(selection: $tab)
                         .transition(.opacity)
@@ -2434,6 +2475,7 @@ private struct HomeSkeletonList: View {
 
 private struct HomeCaptureBar: View {
     @Bindable var store: IdeaDockStore
+    let controller: LANRemoteController
     @FocusState.Binding var focused: Bool
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var dictation = VoiceDictation()
@@ -2533,10 +2575,13 @@ private struct HomeCaptureBar: View {
 
     private func submit() {
         dictation.stop()
-        guard canSubmit, store.saveCurrent() != nil else { return }
+        guard canSubmit, let savedID = store.saveCurrent() else { return }
         store.notification = nil
         focused = false
         UINotificationFeedbackGenerator().notificationOccurred(.success)
+        if let saved = store.captures.first(where: { $0.id == savedID }) {
+            Task { await controller.pushIdea(saved) }
+        }
     }
 }
 
@@ -2643,7 +2688,11 @@ private struct IdeaDetailView: View {
         guard isArchived == false, hasChanges else { return true }
         let trimmed = force ? text : text
         let didSave = store.updateText(captureID: capture.id, text: trimmed)
-        if !didSave { text = capture.text }
+        if !didSave {
+            text = capture.text
+        } else if let updated = store.captures.first(where: { $0.id == capture.id }) {
+            Task { await remoteController.pushIdea(updated) }
+        }
         return didSave
     }
 }

@@ -1,6 +1,21 @@
 import Foundation
 import CryptoKit
 
+/// One idea pushed from the paired iPhone over the LAN.
+public struct RemoteIdea: Codable, Identifiable, Sendable {
+    public let id: UUID
+    public let text: String
+    public let createdAt: Date
+    public let updatedAt: Date
+
+    public init(id: UUID, text: String, createdAt: Date, updatedAt: Date) {
+        self.id = id
+        self.text = text
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
 public struct RemoteDeliveryRequest: Codable, Equatable, Sendable, Identifiable {
     public let id: UUID
     public let phoneID: UUID

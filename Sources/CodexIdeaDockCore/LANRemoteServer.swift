@@ -15,6 +15,7 @@ public final class LANRemoteServer {
     private let reader: CodexSessionReplyReader
     private let dshBridge: DSHBridgeClient
     private let dshSessions: DSHSessionReader
+    private let store: IdeaDockStore?
     private var listener: NWListener?
     private var connections: [UUID: HTTPConnection] = [:]
 
@@ -24,7 +25,8 @@ public final class LANRemoteServer {
         bridge: any CodexBridging,
         ledgerURL: URL,
         sessionsDirectory: URL? = nil,
-        dshBridge: DSHBridgeClient = DSHBridgeClient()
+        dshBridge: DSHBridgeClient = DSHBridgeClient(),
+        store: IdeaDockStore? = nil
     ) throws {
         self.executorID = executorID
         self.pairingCode = pairingCode
@@ -33,6 +35,7 @@ public final class LANRemoteServer {
         self.reader = CodexSessionReplyReader(sessionsDirectory: sessionsDirectory ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex/sessions"))
         self.dshBridge = dshBridge
         self.dshSessions = DSHSessionReader()
+        self.store = store
     }
 
     public func start() throws {
@@ -177,6 +180,17 @@ public final class LANRemoteServer {
             } catch {
                 return Self.response(status: 409, body: Data("{}".utf8))
             }
+        case ("POST", "/v1/ideas"):
+            guard let store else {
+                return Self.response(status: 503, body: Data("{}".utf8))
+            }
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            guard let idea = try? decoder.decode(RemoteIdea.self, from: request.body),
+                  store.upsertRemoteIdea(idea) else {
+                return Self.response(status: 422, body: Data("{}".utf8))
+            }
+            return Self.response(status: 200, body: Data("{}".utf8))
         case ("POST", "/v1/pro/expiry"):
             struct Report: Decodable { let expiry: String? }
             guard let report = try? JSONDecoder().decode(Report.self, from: request.body) else {

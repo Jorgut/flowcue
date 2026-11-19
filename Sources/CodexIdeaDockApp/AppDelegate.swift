@@ -590,7 +590,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 executorID: executorID,
                 pairingCode: pairingCode,
                 bridge: CodexBridge(),
-                ledgerURL: ledgerURL
+                ledgerURL: ledgerURL,
+                store: store
             )
             try server.start()
             remoteService = server
