@@ -32,6 +32,15 @@ async function loadToken() {
   return token;
 }
 
+// Auto review may send displayReason as a localized object; clients expect text.
+function text(value) {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    return value.zh ?? value.en ?? Object.values(value).find((v) => typeof v === "string") ?? null;
+  }
+  return null;
+}
+
 function json(res, status, body) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
@@ -72,8 +81,8 @@ export function apply(ctx) {
             sessionId: item.sessionId ?? null,
             toolName: item.request.toolName ?? null,
             callId: item.request.callId ?? null,
-            reason: item.request.reason ?? null,
-            displayReason: item.request.displayReason ?? null,
+            reason: text(item.request.reason),
+            displayReason: text(item.request.displayReason),
             createdAt: new Date(item.createdAt).toISOString(),
           })),
         });
