@@ -426,7 +426,7 @@ final class LANRemoteController {
         if !manualAddress.isEmpty && pairingCode.count == 6 {
             Task { [weak self] in await self?.connectManually() }
         }
-        if args.contains("--flowcue-approvals-preview") {
+        if args.contains("--flowcue-approvals-preview") || args.contains("--flowcue-approvals-preview=2") {
             dshBridgeAvailable = true
             dshApprovals = [DSHRemoteApproval(
                 id: "preview-approval",
@@ -437,6 +437,17 @@ final class LANRemoteController {
                 displayReason: "Auto review denied this call: 上传 build 49 到 TestFlight 属于对外发布",
                 createdAt: nil
             )]
+            if args.contains("--flowcue-approvals-preview=2") {
+                dshApprovals.append(DSHRemoteApproval(
+                    id: "preview-approval-2",
+                    sessionId: nil,
+                    toolName: "apply_patch",
+                    callId: nil,
+                    reason: "Allow writing outside the workspace?",
+                    displayReason: "Write to ~/Library/Application Support/FlowCueRemote",
+                    createdAt: nil
+                ))
+            }
         }
         #endif
     }
@@ -4565,17 +4576,25 @@ private struct DSHApprovalsSheet: View {
                 .padding(AgentsLayout.margin)
             }
             .background { FlowCueScreenBackground() }
-            .navigationTitle("Approvals")
+            // 多条时把剩余数量放进标题，用户知道还有没有下一条。
+            .navigationTitle(controller.dshApprovals.count > 1
+                             ? "Approvals · \(controller.dshApprovals.count)"
+                             : "Approvals")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .foregroundStyle(FlowCueTheme.accent)
+            // 最后一条决定完就自己关，不必再去点 Done。
+            .onChange(of: controller.dshApprovals.isEmpty) { _, isEmpty in
+                guard isEmpty else { return }
+                Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    dismiss()
                 }
             }
+            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
         }
+        // 半屏卡片：单条审批时不占满整屏，背景还能看见；多条可以上拉看全部。
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
 
