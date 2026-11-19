@@ -957,4 +957,5 @@ private struct SettingsRow<Content: View>: View {
 
 extension Notification.Name {
     static let flowCueHooksChanged = Notification.Name("FlowCue.hooksChanged")
+    static let flowCueNotificationsChanged = Notification.Name("FlowCue.notificationsChanged")
 }

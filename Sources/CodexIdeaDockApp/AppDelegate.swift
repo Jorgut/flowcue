@@ -23,6 +23,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var firstRunWindowController: FirstRunWindowController?
     private var globalHotKey: GlobalHotKey?
     private let hookEventMonitor = HookEventMonitor()
+    private let probeMonitor = ProbeMonitor()
     private var hotKeyRegistrationFailed = false
     private var captureHostState = CaptureHostState()
 
@@ -36,7 +37,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         #else
         NSApp.setActivationPolicy(.accessory)
         configureDockIconPolicy()
+        NotificationService.shared.start()
+        NotificationService.shared.onOpenSession = { [weak self] _, _ in
+            self?.showAgents()
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        NotificationService.shared.onOpenApprovals = { [weak self] in
+            self?.showInbox()
+            NSApp.activate(ignoringOtherApps: true)
+        }
+        if NotificationService.shared.isEnabled { probeMonitor.start() }
+        if ProcessInfo.processInfo.arguments.contains("-testnotify") {
+            Task { @MainActor in
+                NotificationService.shared.postTurnFinished(
+                    agent: "Claude Code",
+                    sessionTitle: "FlowCue · inbox",
+                    snippet: "更新了收件箱布局切换，改成带文字的菜单",
+                    agentID: "claude",
+                    sessionID: "debug"
+                )
+                try? await Task.sleep(for: .seconds(1))
+                NotificationService.shared.postApprovals(count: 2)
+            }
+        }
         if CodexHooks.isInstalled() { hookEventMonitor.start() }
+        NotificationCenter.default.addObserver(
+            forName: .flowCueNotificationsChanged, object: nil, queue: .main
+        ) { [weak self] _ in
+            guard let self else { return }
+            if NotificationService.shared.isEnabled { self.probeMonitor.start() } else { self.probeMonitor.stop() }
+        }
         NotificationCenter.default.addObserver(
             forName: .flowCueHooksChanged, object: nil, queue: .main
         ) { [weak self] _ in

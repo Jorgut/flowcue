@@ -407,5 +407,10 @@ public enum L10n {
         "校验失败，已丢弃该文件": "Checksum mismatch — the file was discarded",
         "下载失败": "Download failed",
         "iPhone 每次连接都会带版本号，便于发现两端不一致。": "Every iPhone connection reports its version so mismatches are visible.",
+        "通知": "Notifications",
+        "新回复、待审批会弹系统通知，点击直接跳到对应窗口。": "New replies and approvals arrive as system notifications; clicking one opens the matching window.",
+        "有 1 个待审批求": "1 approval is waiting",
+        "有 ": "",
+        " 个待审批求": " approvals are waiting",
     ]
 }

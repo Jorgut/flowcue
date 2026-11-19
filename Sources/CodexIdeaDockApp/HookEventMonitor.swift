@@ -63,14 +63,15 @@ final class HookEventMonitor {
         let body = project.map { L10n.text("Codex 在 ") + $0 + L10n.text(" 跑完了一轮") }
             ?? L10n.text("Codex 跑完了一轮")
 
-        let content = UNMutableNotificationContent()
-        content.title = "FlowCue"
-        content.body = body
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil
-        )
-        UNUserNotificationCenter.current().add(request)
+        let sessionID = (json["session_id"] as? String) ?? UUID().uuidString
+        Task { @MainActor in
+            NotificationService.shared.postTurnFinished(
+                agent: "Codex",
+                sessionTitle: project ?? "",
+                snippet: body,
+                agentID: "codex",
+                sessionID: sessionID
+            )
+        }
     }
 }
