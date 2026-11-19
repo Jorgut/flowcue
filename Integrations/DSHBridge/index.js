@@ -64,6 +64,8 @@ export function apply(ctx) {
   /** @type {Map<string, { request: any, resolve: (outcome: string) => void, createdAt: number }>} */
   const pending = new Map();
   let closed = false;
+  /** Last time the paired phone polled or decided; used to skip the desktop prompt. */
+  let lastPhoneActivity = 0;
 
   const tokenReady = loadToken();
 
@@ -75,6 +77,7 @@ export function apply(ctx) {
       if (auth !== `Bearer ${token}`) return json(res, 401, { error: "unauthorized" });
 
       if (req.method === "GET" && req.url === "/v1/pending") {
+        lastPhoneActivity = Date.now();
         return json(res, 200, {
           pending: [...pending.entries()].map(([id, item]) => ({
             id,
@@ -113,6 +116,7 @@ export function apply(ctx) {
       }
 
       if (req.method === "POST" && req.url === "/v1/decide") {
+        lastPhoneActivity = Date.now();
         const body = await readJSON(req);
         const item = pending.get(body.id);
         if (!item) return json(res, 404, { error: "request is no longer pending" });
@@ -151,6 +155,17 @@ export function apply(ctx) {
           resolve("cancelled");
         }, { once: true });
       });
+      // When the phone is actively polling, let it answer alone. Calling next()
+      // here would also open the desktop prompt, which stays on screen even
+      // after the phone decides because the desktop answerer is still waiting.
+      // If the phone goes quiet for 60s, fall back to the desktop prompt.
+      if (Date.now() - lastPhoneActivity < 15_000) {
+        const timeout = new Promise((resolve) => setTimeout(() => resolve("unavailable"), 60_000));
+        const outcome = await Promise.race([bridged, timeout]);
+        if (outcome !== "unavailable") return outcome;
+        return await next();
+      }
+
       // Keep the desktop approval path alive: if the normal DSH answerer
       // resolves first, stop waiting for the phone. If it reports unavailable,
       // wait for the bridge so a phone-only setup still works.

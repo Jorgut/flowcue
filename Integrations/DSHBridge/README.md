@@ -8,6 +8,10 @@ paired iPhone.
 - Registers one `approval/request` answerer with `prepend: true`, so it runs
   before the desktop UI / Auto review answerer; otherwise desktop-owned
   sessions never reach the bridge.
+- When the phone has polled within the last 15s, the bridge lets the phone
+  answer alone instead of also opening the desktop prompt (the desktop card
+  otherwise stays visible after a phone decision). If the phone stays quiet
+  for 60s, the request falls back to the normal desktop prompt.
 - Holds the request until the FlowCue Mac app sends a decision.
 - Exposes only `127.0.0.1:47823`:
   - `GET /v1/pending`
