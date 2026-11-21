@@ -124,6 +124,7 @@ export function apply(ctx) {
           questions: [...pendingQuestions.entries()].map(([id, item]) => ({
             id,
             createdAt: new Date(item.createdAt).toISOString(),
+            sessionId: item.request?.agent?.session?.id ?? item.request?.sessionId ?? null,
             questions: normalizeQuestions(item.request),
           })),
           pending: [...pending.entries()].map(([id, item]) => ({

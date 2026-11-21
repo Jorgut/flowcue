@@ -81,6 +81,8 @@ public struct DSHRemoteQuestionBatch: Codable, Identifiable, Hashable, Sendable 
 
     public let id: String
     public let createdAt: String?
+    /// 这个问题属于哪个 DSH 会话；手机据此把卡片放回对应 chat。
+    public let sessionId: String?
     public let questions: [Question]
 }
 

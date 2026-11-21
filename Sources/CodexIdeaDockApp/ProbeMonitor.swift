@@ -20,6 +20,8 @@ final class ProbeMonitor {
     /// 启动后没有待审批时它一直是空集，于是「启动后的第一条审批」会被
     /// 当成基线吞掉，既不推手机也不弹桌面通知。
     private var hasSeededApprovals = false
+    private var knownQuestions: Set<String> = []
+    private var hasSeededQuestions = false
 
     /// 待审批数量变化（喂给菜单栏角标）
     var onApprovalsCount: ((Int) -> Void)?
@@ -38,6 +40,7 @@ final class ProbeMonitor {
                 // 审批每 3 秒查一次：这是本机回环请求，几乎不花钱，
                 // 但决定了审批推到手机的快慢。其它探测仍保持 15 秒。
                 await self?.pollApprovals()
+                await self?.pollQuestions()
                 if tick % 5 == 0 { await self?.pollClaude() }
                 if tick % 5 == 2 { await self?.pollDSH() }
                 tick += 1
@@ -68,6 +71,33 @@ final class ProbeMonitor {
             await MainActor.run { NotificationService.shared.postApprovals(count: fresh.count) }
             await pushApprovals(fresh: fresh, pending: pending)
         }
+    }
+
+    /// 有人在等你回答问题时推一条（和审批分开，方便区别对待）。
+    private func pollQuestions() async {
+        guard bridge.isConfigured, let batches = try? await bridge.questions() else { return }
+        let ids = Set(batches.map { $0.id })
+        if !hasSeededQuestions {
+            hasSeededQuestions = true
+            knownQuestions = ids
+            return
+        }
+        let fresh = batches.filter { !knownQuestions.contains($0.id) }
+        knownQuestions = ids
+        guard let first = fresh.first,
+              let question = first.questions.first,
+              let settings = APNsSettings.load(),
+              let deviceToken = UserDefaults.standard.string(forKey: "FlowCue.pushDeviceToken"),
+              !deviceToken.isEmpty else { return }
+        let environment = UserDefaults.standard.string(forKey: "FlowCue.pushEnvironment")
+        let sender = settings.sender(environmentOverride: environment)
+        guard sender.isConfigured else { return }
+        try? await sender.send(
+            deviceToken: deviceToken,
+            title: "有任务在等你回答",
+            body: question.title,
+            threadID: "dsh-questions"
+        )
     }
 
     /// 给手机推一条 APNs 通知：锁屏、后台也能看到。

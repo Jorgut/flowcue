@@ -357,6 +357,7 @@ struct DSHRemoteQuestionBatch: Codable, Identifiable, Hashable {
 
     let id: String
     let createdAt: String?
+    let sessionId: String?
     let questions: [Question]
 }
 
@@ -476,6 +477,7 @@ final class LANRemoteController {
                 DSHRemoteQuestionBatch(
                     id: "preview-q1",
                     createdAt: nil,
+                    sessionId: nil,
                     questions: [
                         .init(
                             id: "q1",
@@ -493,6 +495,7 @@ final class LANRemoteController {
                 DSHRemoteQuestionBatch(
                     id: "preview-q2",
                     createdAt: nil,
+                    sessionId: nil,
                     questions: [
                         .init(
                             id: "q2",
@@ -1164,7 +1167,7 @@ private struct RootTabView: View {
     @State private var activeSheet: RootSheet?
     @State private var didSeedSharedPreview = false
     private enum RootSheet: String, Identifiable {
-        case approvals, questions, sharePreview
+        case approvals, sharePreview
         var id: String { rawValue }
     }
 
@@ -1222,11 +1225,9 @@ private struct RootTabView: View {
             if !isEmpty { activeSheet = .approvals }
         }
         .onChange(of: remoteController.dshQuestions.isEmpty) { _, isEmpty in
-            if !isEmpty { activeSheet = .questions }
         }
         .onAppear {
             if !remoteController.dshApprovals.isEmpty { activeSheet = .approvals }
-            else if !remoteController.dshQuestions.isEmpty { activeSheet = .questions }
             if showingSharePreview { activeSheet = .sharePreview }
             FlowCuePushRegistration.shared.requestIfNeeded()
         }
@@ -1234,8 +1235,6 @@ private struct RootTabView: View {
             switch sheet {
             case .approvals:
                 DSHApprovalsSheet(controller: remoteController)
-            case .questions:
-                DSHQuestionsSheet(controller: remoteController)
             case .sharePreview:
                 ShareExtensionView(
                     initialText: "The retry backoff feels too slow on flaky Wi-Fi — should we make it exponential?",
@@ -5334,6 +5333,12 @@ private struct ChatScreen: View {
             && !loading
     }
 
+    /// 属于当前会话的提问卡。提问卡只在对应 chat 里出现，不全局弹。
+    private var sessionQuestions: [DSHRemoteQuestionBatch] {
+        guard case .dsh(let session) = target else { return [] }
+        return controller.dshQuestions.filter { $0.sessionId == session.id }
+    }
+
     /// Mac 上正在执行的动作，来自 DSH 会话日志里的 tool/call 或 turn。
     @State private var activityLabel: String?
     @State private var activitySince: Date?
@@ -5381,6 +5386,19 @@ private struct ChatScreen: View {
                     .padding(.horizontal, 18)
                     .padding(.bottom, 2)
                 }
+            }
+            ForEach(sessionQuestions) { batch in
+                VStack(spacing: 10) {
+                    ForEach(batch.questions) { question in
+                        DSHQuestionCard(question: question) { chosen in
+                            _ = await controller.answerDSH(
+                                batchID: batch.id, questionID: question.id, chosen: chosen
+                            )
+                        }
+                    }
+                }
+                .padding(.horizontal, AgentsLayout.margin)
+                .padding(.bottom, 8)
             }
             ChatComposer(text: $text, sending: sending) { images in
                 send(images)
