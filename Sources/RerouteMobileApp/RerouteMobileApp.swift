@@ -618,6 +618,21 @@ final class LANRemoteController {
         return resized.jpegData(compressionQuality: 0.7)
     }
 
+    /// Mac 当前在跑什么（最近一次工具调用还没结束）。没有就返回 nil。
+    func dshActivity(for session: DSHSessionSnapshot) async -> String? {
+        guard let selected else { return nil }
+        struct Activity: Decodable {
+            let label: String
+            let since: Double?
+        }
+        let encoded = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
+        guard let data = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "GET",
+            path: "/v1/dsh/activity/\(encoded)", token: pairingCode, body: nil
+        ), let activity = try? JSONDecoder().decode(Activity.self, from: data) else { return nil }
+        return activity.label
+    }
+
     func disconnect() {
         selected = nil
         threads = []
@@ -5045,8 +5060,11 @@ private struct ChatScreen: View {
             && !loading
     }
 
+    /// Mac 上正在执行的动作，来自 DSH 会话日志里的 tool/call。
+    @State private var activity: String?
+
     private var isWorking: Bool {
-        isOnline && (sending || displayMessages.last?.role == "user")
+        isOnline && (sending || activity != nil || displayMessages.last?.role == "user")
     }
 
     var body: some View {
@@ -5067,9 +5085,11 @@ private struct ChatScreen: View {
                     ProgressView()
                         .controlSize(.mini)
                         .tint(FlowCueTheme.textSecondary)
-                    Text("\(target.agentName) is working…")
+                    Text(activity ?? "\(target.agentName) is working…")
                         .flowCueFont(11, relativeTo: .caption2)
                         .foregroundStyle(FlowCueTheme.textSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 18)
@@ -5354,6 +5374,10 @@ private struct ChatScreen: View {
             await refreshSubagentsIfNeeded()
             let updated = await fetchMessages(for: target)
             if updated != messages { messages = updated }
+            if case .dsh(let session) = target {
+                let next = await controller.dshActivity(for: session)
+                if next != activity { activity = next }
+            }
         }
     }
 

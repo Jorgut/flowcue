@@ -177,6 +177,25 @@ public final class LANRemoteServer {
             }
             let messages = dshSessions.messages(sessionID: sessionID)
             return Self.response(status: 200, body: try JSONEncoder().encode(messages))
+        case ("GET", let path) where path.hasPrefix("/v1/dsh/activity/"):
+            let encoded = String(path.dropFirst("/v1/dsh/activity/".count))
+            guard let sessionID = encoded.removingPercentEncoding, !sessionID.isEmpty else {
+                return Self.response(status: 400, body: Data("{}".utf8))
+            }
+            struct Activity: Encodable {
+                let label: String
+                let since: Double
+            }
+            let body: Data
+            if let activity = dshSessions.currentActivity(sessionID: sessionID) {
+                body = (try? JSONEncoder().encode(Activity(
+                    label: activity.label,
+                    since: activity.at.timeIntervalSince1970
+                ))) ?? Data("{}".utf8)
+            } else {
+                body = Data("{}".utf8)
+            }
+            return Self.response(status: 200, body: body)
         case ("GET", "/v1/dsh/approvals"):
             struct Response: Encodable {
                 let available: Bool
