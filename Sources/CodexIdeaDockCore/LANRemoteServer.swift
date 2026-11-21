@@ -225,6 +225,7 @@ public final class LANRemoteServer {
             struct PushToken: Decodable {
                 let token: String
                 let environment: String?
+                let diagnostics: [String: Int]?
             }
             guard let report = try? JSONDecoder().decode(PushToken.self, from: request.body),
                   report.token.count >= 32 else {
@@ -233,6 +234,12 @@ public final class LANRemoteServer {
             UserDefaults.standard.set(report.token, forKey: "FlowCue.pushDeviceToken")
             if let environment = report.environment {
                 UserDefaults.standard.set(environment, forKey: "FlowCue.pushEnvironment")
+            }
+            // 手机的实时通知设置：没声音时先看这几项。
+            if let diagnostics = report.diagnostics {
+                for (key, value) in diagnostics {
+                    UserDefaults.standard.set(value, forKey: "FlowCue.pushDiag.\(key)")
+                }
             }
             return Self.response(status: 200, body: Data("{}".utf8))
         case ("POST", "/v1/pro/expiry"):

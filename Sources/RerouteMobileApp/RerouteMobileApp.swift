@@ -588,13 +588,17 @@ final class LANRemoteController {
         struct Body: Encodable {
             let token: String
             let environment: String
+            let diagnostics: [String: Int]
         }
         #if DEBUG
         let environment = "development"
         #else
         let environment = "production"
         #endif
-        guard let body = try? JSONEncoder().encode(Body(token: token, environment: environment)) else { return }
+        let diagnostics = FlowCuePushRegistration.shared.diagnostics.mapValues { ($0 as? Bool) == true ? 1 : 0 }
+        guard let body = try? JSONEncoder().encode(
+            Body(token: token, environment: environment, diagnostics: diagnostics)
+        ) else { return }
         _ = try? await LANHTTP.request(
             endpoint: endpoint, method: "POST", path: "/v1/push/token", token: code, body: body
         )
@@ -5394,7 +5398,19 @@ private struct ChatScreen: View {
         pending = item
         text = ""
         sending = true
+        startWatchdog()
         Task { await deliver(item, to: sessionTarget) }
+    }
+
+    /// 兜底：任何一次发送如果没能回到 deliver 的收尾（连接半死、任务被取消），
+    /// `sending` 会永远为 true，输入框从此锁死。超过 45 秒强制解开。
+    private func startWatchdog() {
+        Task {
+            try? await Task.sleep(for: .seconds(45))
+            guard sending else { return }
+            sending = false
+            if pending?.state == .sending { pending?.state = .failed }
+        }
     }
 
     private func retry() {
@@ -5403,6 +5419,7 @@ private struct ChatScreen: View {
         item.state = .sending
         pending = item
         sending = true
+        startWatchdog()
         Task { await deliver(item, to: sessionTarget) }
     }
 
@@ -8804,16 +8821,47 @@ final class FlowCuePushRegistration {
     var token: String? { UserDefaults.standard.string(forKey: tokenKey) }
     var lastError: String? { UserDefaults.standard.string(forKey: errorKey) }
 
-    /// 只问一次；被拒绝后由系统决定还能不能再问。
+    /// 每次启动都走一遍：
+    /// - 没问过才问授权
+    /// - 只要已授权就重新注册 token（重装/恢复/系统重置后 token 会变，
+    ///   旧逻辑只在第一次启动注册，之后永远不刷新）
+    /// - 顺便把系统返回的通知设置记下来，用来诊断「为什么没声音」
     func requestIfNeeded() {
-        guard !UserDefaults.standard.bool(forKey: askedKey) else { return }
-        UserDefaults.standard.set(true, forKey: askedKey)
         Task {
-            let granted = (try? await UNUserNotificationCenter.current()
-                .requestAuthorization(options: [.alert, .sound, .badge])) ?? false
-            guard granted else { return }
+            let center = UNUserNotificationCenter.current()
+            var settings = await center.notificationSettings()
+            if settings.authorizationStatus == .notDetermined,
+               !UserDefaults.standard.bool(forKey: askedKey) {
+                UserDefaults.standard.set(true, forKey: askedKey)
+                _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+                settings = await center.notificationSettings()
+            }
+            record(settings)
+            guard settings.authorizationStatus == .authorized
+                || settings.authorizationStatus == .provisional else { return }
             UIApplication.shared.registerForRemoteNotifications()
         }
+    }
+
+    /// 系统里这些开关决定推送有没有横幅和声音，出问题时先看它们。
+    private func record(_ settings: UNNotificationSettings) {
+        let defaults = UserDefaults.standard
+        defaults.set(settings.soundSetting == .enabled, forKey: "FlowCue.pushSoundEnabled")
+        defaults.set(settings.alertSetting == .enabled, forKey: "FlowCue.pushAlertEnabled")
+        defaults.set(settings.lockScreenSetting == .enabled, forKey: "FlowCue.pushLockScreenEnabled")
+        defaults.set(settings.notificationCenterSetting == .enabled, forKey: "FlowCue.pushCenterEnabled")
+        defaults.set(settings.authorizationStatus.rawValue, forKey: "FlowCue.pushAuthStatus")
+    }
+
+    /// 上报给 Mac 的诊断字段，和 token 一起发。
+    var diagnostics: [String: Any] {
+        let defaults = UserDefaults.standard
+        return [
+            "sound": defaults.bool(forKey: "FlowCue.pushSoundEnabled"),
+            "alert": defaults.bool(forKey: "FlowCue.pushAlertEnabled"),
+            "lockScreen": defaults.bool(forKey: "FlowCue.pushLockScreenEnabled"),
+            "authorization": defaults.integer(forKey: "FlowCue.pushAuthStatus"),
+        ]
     }
 
     func handleToken(_ data: Data) {
