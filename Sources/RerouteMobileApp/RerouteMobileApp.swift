@@ -682,7 +682,7 @@ final class LANRemoteController {
                 text: trimmed.isEmpty ? "Image attachment" : trimmed,
                 images: encodedImages.isEmpty ? nil : encodedImages
             ))
-            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/send", token: pairingCode, body: body)
+            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/send", token: pairingCode, body: body, timeout: 30)
             statusMessage = "Sent to DSH."
             return true
         } catch {
@@ -851,11 +851,20 @@ final class LANRemoteController {
 }
 
 private enum LANHTTP {
-    static func request(endpoint: NWEndpoint, method: String, path: String, token: String?, body: Data?) async throws -> Data {
+    /// 发送类请求要更长的超时：桥接转发消息前要先唤醒 DSH 的 agent，
+    /// 10 秒经常不够，会让手机把「已送达」误判成失败，用户于是反复重发。
+    static func request(
+        endpoint: NWEndpoint,
+        method: String,
+        path: String,
+        token: String?,
+        body: Data?,
+        timeout: TimeInterval = 10
+    ) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             let runner = LANHTTPRunner(endpoint: endpoint, method: method, path: path, token: token, body: body, continuation: continuation)
             runner.start()
-            DispatchQueue.global().asyncAfter(deadline: .now() + 10) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
                 runner.fail(URLError(.timedOut))
             }
         }
@@ -5442,7 +5451,17 @@ private struct ChatScreen: View {
                 messages = await fetchMessages(for: sessionTarget)
             }
         } else if sessionTarget == target {
-            pending?.state = .failed
+            // 超时 ≠ 没送到：桥接转发前要先唤醒 DSH 的 agent，消息可能已经进队列。
+            // 核对最近几条，命中就当已送达，避免用户反复重发。
+            let refreshed = await fetchMessages(for: sessionTarget)
+            let delivered = !item.text.isEmpty
+                && refreshed.suffix(3).contains { $0.text.contains(item.text) }
+            if delivered {
+                pending = nil
+                messages = refreshed
+            } else {
+                pending?.state = .failed
+            }
         }
         sending = false
     }
