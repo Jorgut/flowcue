@@ -6121,6 +6121,8 @@ private enum MarkdownBlock {
     case numbered([String])
     case quote(String)
     case rule
+    /// Markdown 表格：表头 + 数据行。手机上横向空间有限，按列等宽铺开。
+    case table(header: [String], rows: [[String]])
 }
 
 private enum MarkdownParser {
@@ -6164,6 +6166,29 @@ private enum MarkdownParser {
             if trimmed == "---" || trimmed == "***" {
                 blocks.append(.rule)
                 index += 1
+                continue
+            }
+
+            if trimmed.hasPrefix("|") {
+                var rows: [[String]] = []
+                while index < lines.count {
+                    let value = lines[index].trimmingCharacters(in: .whitespaces)
+                    guard value.hasPrefix("|") else { break }
+                    let cells = value
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "|"))
+                        .components(separatedBy: "|")
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                    let isSeparator = !cells.isEmpty && cells.allSatisfy { cell in
+                        !cell.isEmpty && cell.allSatisfy { $0 == "-" || $0 == ":" }
+                    }
+                    if !isSeparator { rows.append(cells) }
+                    index += 1
+                }
+                if rows.count > 1 {
+                    blocks.append(.table(header: rows[0], rows: Array(rows.dropFirst())))
+                } else if let only = rows.first {
+                    blocks.append(.paragraph(only.joined(separator: " · ")))
+                }
                 continue
             }
 
@@ -6272,6 +6297,29 @@ private struct MarkdownMessageView: View {
                         InlineMarkdownText(text: item)
                             .flowCueFont(13, relativeTo: .subheadline)
                             .lineSpacing(2)
+                    }
+                }
+            }
+        case .table(let header, let rows):
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(Array(header.enumerated()), id: \.offset) { _, cell in
+                        Text(cell)
+                            .flowCueFont(11, relativeTo: .caption2, weight: .semibold)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                Rectangle()
+                    .fill(FlowCueTheme.hairline)
+                    .frame(height: 1)
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    HStack(alignment: .top, spacing: 10) {
+                        ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                            InlineMarkdownText(text: cell)
+                                .flowCueFont(12, relativeTo: .caption)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                 }
             }
