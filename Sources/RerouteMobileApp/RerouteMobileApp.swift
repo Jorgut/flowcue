@@ -470,7 +470,46 @@ final class LANRemoteController {
                 displayReason: "Auto review denied this call: 上传 build 49 到 TestFlight 属于对外发布",
                 createdAt: nil
             )]
-            if args.contains("--flowcue-approvals-preview=2") {
+        }
+        if args.contains("--flowcue-questions-preview") {
+            dshQuestions = [
+                DSHRemoteQuestionBatch(
+                    id: "preview-q1",
+                    createdAt: nil,
+                    questions: [
+                        .init(
+                            id: "q1",
+                            title: "现在修深色对比与无障碍阻塞项吗？",
+                            detail: "QA 报告里还有 21 条对比度失败需要逐条判定。",
+                            multiSelect: false,
+                            options: [
+                                .init(label: "现在修并重跑 QA", detail: "改自适应文字色，重跑无障碍与深色截图"),
+                                .init(label: "先记录，不改", detail: "保留报告，暂不改代码"),
+                                .init(label: "本轮到此为止", detail: "先到这里，下次继续"),
+                            ]
+                        )
+                    ]
+                ),
+                DSHRemoteQuestionBatch(
+                    id: "preview-q2",
+                    createdAt: nil,
+                    questions: [
+                        .init(
+                            id: "q2",
+                            title: "这次发布要带哪些构建目标？",
+                            detail: "可多选。",
+                            multiSelect: true,
+                            options: [
+                                .init(label: "iOS 1.1.0", detail: nil),
+                                .init(label: "macOS 0.1.5", detail: nil),
+                                .init(label: "官网同步", detail: "更新下载页与 changelog"),
+                            ]
+                        )
+                    ]
+                ),
+            ]
+        }
+        if args.contains("--flowcue-approvals-preview=2") {
                 dshApprovals.append(DSHRemoteApproval(
                     id: "preview-approval-2",
                     sessionId: nil,
@@ -480,7 +519,6 @@ final class LANRemoteController {
                     displayReason: "Write to ~/Library/Application Support/FlowCueRemote",
                     createdAt: nil
                 ))
-            }
         }
         #endif
     }
@@ -1122,9 +1160,14 @@ private struct RootTabView: View {
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
     @Environment(\.scenePhase) private var scenePhase
-    @State private var showingApprovals = false
-    @State private var showingQuestions = false
+    /// 同一个视图上只能可靠地存在一个 .sheet，所以这里合并成一个入口。
+    @State private var activeSheet: RootSheet?
     @State private var didSeedSharedPreview = false
+    private enum RootSheet: String, Identifiable {
+        case approvals, questions, sharePreview
+        var id: String { rawValue }
+    }
+
     @State private var showingSharePreview: Bool = {
         #if DEBUG
         ProcessInfo.processInfo.arguments.contains("--flowcue-share-extension-preview")
@@ -1176,20 +1219,30 @@ private struct RootTabView: View {
             }
         }
         .onChange(of: remoteController.dshApprovals.isEmpty) { _, isEmpty in
-            if !isEmpty { showingApprovals = true }
+            if !isEmpty { activeSheet = .approvals }
         }
         .onChange(of: remoteController.dshQuestions.isEmpty) { _, isEmpty in
-            if !isEmpty { showingQuestions = true }
+            if !isEmpty { activeSheet = .questions }
         }
         .onAppear {
-            if !remoteController.dshApprovals.isEmpty { showingApprovals = true }
+            if !remoteController.dshApprovals.isEmpty { activeSheet = .approvals }
+            else if !remoteController.dshQuestions.isEmpty { activeSheet = .questions }
+            if showingSharePreview { activeSheet = .sharePreview }
             FlowCuePushRegistration.shared.requestIfNeeded()
         }
-        .sheet(isPresented: $showingApprovals) {
-            DSHApprovalsSheet(controller: remoteController)
-        }
-        .sheet(isPresented: $showingQuestions) {
-            DSHQuestionsSheet(controller: remoteController)
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .approvals:
+                DSHApprovalsSheet(controller: remoteController)
+            case .questions:
+                DSHQuestionsSheet(controller: remoteController)
+            case .sharePreview:
+                ShareExtensionView(
+                    initialText: "The retry backoff feels too slow on flaky Wi-Fi — should we make it exponential?",
+                    onSave: { _, _ in activeSheet = nil },
+                    onCancel: { activeSheet = nil }
+                )
+            }
         }
         .onChange(of: store.captures) { _, _ in
             writeWidgetSnapshot()
@@ -1197,15 +1250,6 @@ private struct RootTabView: View {
         .onOpenURL { url in
             guard url.scheme == "flowcue" else { return }
             tab = url.host == "chat" ? .agents : .inbox
-        }
-        .sheet(isPresented: $showingSharePreview) {
-            ShareExtensionView(
-                initialText: "The retry backoff feels too slow on flaky Wi-Fi — should we make it exponential?",
-                onSave: { _, _ in showingSharePreview = false },
-                onCancel: { showingSharePreview = false }
-            )
-            .presentationDetents([.height(380)])
-            .presentationDragIndicator(.visible)
         }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
@@ -9171,6 +9215,10 @@ final class FlowCuePushRegistration {
     ///   旧逻辑只在第一次启动注册，之后永远不刷新）
     /// - 顺便把系统返回的通知设置记下来，用来诊断「为什么没声音」
     func requestIfNeeded() {
+        #if DEBUG
+        // 界面预览时可跳过授权弹窗，免得挡住要看的页面。
+        if ProcessInfo.processInfo.arguments.contains("--flowcue-questions-preview") { return }
+        #endif
         Task {
             let center = UNUserNotificationCenter.current()
             var settings = await center.notificationSettings()
