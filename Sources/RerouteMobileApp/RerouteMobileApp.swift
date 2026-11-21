@@ -619,7 +619,7 @@ final class LANRemoteController {
     }
 
     /// Mac 当前在跑什么（最近一次工具调用还没结束）。没有就返回 nil。
-    func dshActivity(for session: DSHSessionSnapshot) async -> String? {
+    func dshActivity(for session: DSHSessionSnapshot) async -> (label: String, since: Date)? {
         guard let selected else { return nil }
         struct Activity: Decodable {
             let label: String
@@ -630,7 +630,8 @@ final class LANRemoteController {
             endpoint: selected.endpoint, method: "GET",
             path: "/v1/dsh/activity/\(encoded)", token: pairingCode, body: nil
         ), let activity = try? JSONDecoder().decode(Activity.self, from: data) else { return nil }
-        return activity.label
+        let since = activity.since.map { Date(timeIntervalSince1970: $0) } ?? Date()
+        return (activity.label, since)
     }
 
     func disconnect() {
@@ -5060,11 +5061,20 @@ private struct ChatScreen: View {
             && !loading
     }
 
-    /// Mac 上正在执行的动作，来自 DSH 会话日志里的 tool/call。
-    @State private var activity: String?
+    /// Mac 上正在执行的动作，来自 DSH 会话日志里的 tool/call 或 turn。
+    @State private var activityLabel: String?
+    @State private var activitySince: Date?
 
     private var isWorking: Bool {
-        isOnline && (sending || activity != nil || displayMessages.last?.role == "user")
+        isOnline && (sending || activityLabel != nil || displayMessages.last?.role == "user")
+    }
+
+    /// 和电脑端一致的写法：动作 · 已耗时
+    private func activityText(at date: Date) -> String {
+        guard let activityLabel else { return "\(target.agentName) is working…" }
+        guard let activitySince else { return activityLabel }
+        let seconds = max(0, Int(date.timeIntervalSince(activitySince)))
+        return "\(activityLabel) · \(seconds)s"
     }
 
     var body: some View {
@@ -5081,19 +5091,23 @@ private struct ChatScreen: View {
             }
             content
             if isWorking {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .tint(FlowCueTheme.textSecondary)
-                    Text(activity ?? "\(target.agentName) is working…")
-                        .flowCueFont(11, relativeTo: .caption2)
-                        .foregroundStyle(FlowCueTheme.textSecondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    Spacer(minLength: 0)
+                // 每秒刷新一次，显示「执行命令 · … · 12s」，和电脑端的
+                // "Deep diving for 12s" 同一个意思。
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .tint(FlowCueTheme.textSecondary)
+                        Text(activityText(at: context.date))
+                            .flowCueFont(11, relativeTo: .caption2)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 2)
                 }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 2)
             }
             ChatComposer(text: $text, sending: sending) { images in
                 send(images)
@@ -5376,7 +5390,10 @@ private struct ChatScreen: View {
             if updated != messages { messages = updated }
             if case .dsh(let session) = target {
                 let next = await controller.dshActivity(for: session)
-                if next != activity { activity = next }
+                if next?.label != activityLabel {
+                    activityLabel = next?.label
+                    activitySince = next?.since
+                }
             }
         }
     }

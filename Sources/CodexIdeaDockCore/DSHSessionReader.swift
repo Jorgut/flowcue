@@ -120,28 +120,37 @@ public struct DSHSessionReader: Sendable {
         return (cwd, title, firstPrompt)
     }
 
-    /// 当前正在跑的动作（最近一次 tool/call 之后还没有 tool/result）。
-    /// 手机靠它显示「正在执行…」，否则处理期间屏幕上什么都没发生。
+    /// 当前在做什么：正在跑的工具，或者「思考中」（turn 已开始还没结束）。
+    /// 手机靠它显示「执行命令 · … · 12s」，否则处理期间界面上什么都没发生。
     public func currentActivity(sessionID: String) -> (label: String, at: Date)? {
         guard let log = logURL(sessionID: sessionID),
               let data = Self.decompress(path: log.path, maxBytes: 80_000_000) else { return nil }
         var running: (label: String, at: Date)?
+        var turnStartedAt: Date?
         for line in data.split(separator: UInt8(ascii: "\n")) {
             guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
                   let type = object["type"] as? String else { continue }
             let at = (object["time"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) } ?? Date()
             switch type {
+            case "turn/start":
+                turnStartedAt = at
+                running = nil
+            case "turn/end":
+                turnStartedAt = nil
+                running = nil
             case "tool/call":
                 guard let payload = object["data"] as? [String: Any] else { continue }
                 let name = payload["name"] as? String ?? "tool"
                 running = (Self.activityLabel(tool: name, arguments: payload["arguments"] as? String), at)
-            case "tool/result", "assistant/message", "turn/end":
+            case "tool/result", "assistant/message":
                 running = nil
             default:
                 break
             }
         }
-        return running
+        if let running { return running }
+        if let turnStartedAt { return ("思考中", turnStartedAt) }
+        return nil
     }
 
     private static func activityLabel(tool name: String, arguments: String?) -> String {
@@ -156,7 +165,7 @@ public struct DSHSessionReader: Sendable {
         case "bash":
             if let command = field("command") {
                 let firstLine = command.split(separator: "\n").first.map(String.init) ?? command
-                return "执行命令 · " + firstLine.prefix(70)
+                return "执行命令 · " + firstLine.prefix(60)
             }
         case "read", "write":
             if let path = field("file_path") {
