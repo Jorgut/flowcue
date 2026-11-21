@@ -6087,11 +6087,18 @@ private struct MessageImageGrid: View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(images) { image in
                 if let data = Data(base64Encoded: image.base64), let uiImage = UIImage(data: data) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: 260, maxHeight: 260)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    // 自带深色底并自己裁剪：外部容器是什么底色都盖得住，
+                    // 也避免透明区域被系统垫成白色。
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(FlowCueTheme.canvas)
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFit()
+                    }
+                    .frame(maxWidth: 240, maxHeight: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
             }
         }
