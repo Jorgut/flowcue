@@ -35,11 +35,13 @@ final class ProbeMonitor {
         task = Task { [weak self] in
             var tick = 0
             while !Task.isCancelled {
+                // 审批每 3 秒查一次：这是本机回环请求，几乎不花钱，
+                // 但决定了审批推到手机的快慢。其它探测仍保持 15 秒。
                 await self?.pollApprovals()
-                if tick % 2 == 0 { await self?.pollClaude() }
-                if tick % 2 == 1 { await self?.pollDSH() }
+                if tick % 5 == 0 { await self?.pollClaude() }
+                if tick % 5 == 2 { await self?.pollDSH() }
                 tick += 1
-                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                do { try await Task.sleep(for: .seconds(3)) } catch { return }
             }
         }
     }
