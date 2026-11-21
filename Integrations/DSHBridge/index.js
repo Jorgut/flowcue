@@ -59,10 +59,11 @@ function json(res, status, body) {
   res.end(payload);
 }
 
-async function readJSON(req) {
+// 默认 16 KB 够审批用；发消息带图片时要大得多，所以按路由给上限。
+async function readJSON(req, limit = 16_384) {
   let body = "";
   for await (const chunk of req) body += chunk;
-  if (body.length > 16_384) throw new Error("payload too large");
+  if (body.length > limit) throw new Error("payload too large");
   return JSON.parse(body || "{}");
 }
 
@@ -109,7 +110,7 @@ export function apply(ctx) {
       }
 
       if (req.method === "POST" && req.url === "/v1/message") {
-        const body = await readJSON(req);
+        const body = await readJSON(req, 24 * 1024 * 1024);
         if (typeof body.sessionId !== "string" || typeof body.text !== "string" || !body.text.trim()) {
           return json(res, 400, { error: "sessionId and text are required" });
         }
