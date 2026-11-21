@@ -600,6 +600,20 @@ final class LANRemoteController {
         )
     }
 
+    /// 发送前压一下：截图原图动辄 3–5 MB，base64 后更大，走局域网没必要传原图。
+    static func compressedImage(_ data: Data) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let maxSide: CGFloat = 1600
+        let longest = max(image.size.width, image.size.height)
+        let scale = longest > maxSide ? maxSide / longest : 1
+        let target = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: target)
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
+        }
+        return resized.jpegData(compressionQuality: 0.7)
+    }
+
     func disconnect() {
         selected = nil
         threads = []
@@ -658,7 +672,7 @@ final class LANRemoteController {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !images.isEmpty else { return false }
         do {
-            let encodedImages = images.map { $0.base64EncodedString() }
+            let encodedImages = images.compactMap(Self.compressedImage).map { $0.base64EncodedString() }
             let body = try JSONEncoder().encode(DSHRemoteMessage(
                 sessionId: session.id,
                 text: trimmed.isEmpty ? "Image attachment" : trimmed,
@@ -808,7 +822,7 @@ final class LANRemoteController {
             phoneID = UUID()
             UserDefaults.standard.set(phoneID.uuidString, forKey: "FlowCue.remotePhoneID")
         }
-        let encodedImages = images.map { $0.base64EncodedString() }
+        let encodedImages = images.compactMap(Self.compressedImage).map { $0.base64EncodedString() }
         let command = RemoteCommand(
             phoneID: phoneID,
             executorID: thread.executorID,
