@@ -196,6 +196,26 @@ public final class LANRemoteServer {
                 body = Data("{}".utf8)
             }
             return Self.response(status: 200, body: body)
+        case ("GET", "/v1/dsh/questions"):
+            guard dshBridge.isConfigured else {
+                return Self.response(status: 200, body: Data("[]".utf8))
+            }
+            let questions = (try? await dshBridge.questions()) ?? []
+            return Self.response(status: 200, body: (try? JSONEncoder().encode(questions)) ?? Data("[]".utf8))
+        case ("POST", "/v1/dsh/answer"):
+            struct Payload: Decodable {
+                let id: String
+                let answers: [DSHQuestionAnswer.Item]
+            }
+            guard let payload = try? JSONDecoder().decode(Payload.self, from: request.body) else {
+                return Self.response(status: 400, body: Data("{}".utf8))
+            }
+            do {
+                try await dshBridge.answer(DSHQuestionAnswer(id: payload.id, answers: payload.answers))
+                return Self.response(status: 200, body: Data("{\"ok\":true}".utf8))
+            } catch {
+                return Self.response(status: 409, body: Data("{}".utf8))
+            }
         case ("GET", "/v1/dsh/approvals"):
             struct Response: Encodable {
                 let available: Bool

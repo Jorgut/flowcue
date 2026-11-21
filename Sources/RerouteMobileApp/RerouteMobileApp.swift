@@ -340,6 +340,37 @@ struct DSHRemoteApprovalsResponse: Codable {
     let pending: [DSHRemoteApproval]
 }
 
+/// 一次提问（可能包含多个问题），对应 DSH 的 user-questions/request。
+struct DSHRemoteQuestionBatch: Codable, Identifiable, Hashable {
+    struct Question: Codable, Hashable, Identifiable {
+        struct Option: Codable, Hashable {
+            let label: String
+            let detail: String?
+        }
+
+        let id: String
+        let title: String
+        let detail: String?
+        let multiSelect: Bool
+        let options: [Option]
+    }
+
+    let id: String
+    let createdAt: String?
+    let questions: [Question]
+}
+
+struct DSHQuestionAnswer: Codable {
+    struct Item: Codable {
+        let id: String
+        let selected: [String]
+        let custom: String?
+    }
+
+    let id: String
+    let answers: [Item]
+}
+
 /// `GET /v1/ping` 的响应。旧版 Mac 只返回 name/version，所以全部可选。
 struct MacHandshake: Decodable {
     let name: String?
@@ -381,6 +412,8 @@ final class LANRemoteController {
     private(set) var dshSessions: [DSHSessionSnapshot] = []
     private(set) var dshSubagents: [DSHSessionSnapshot] = []
     private(set) var dshBridgeAvailable = false
+    /// DSH 在等人回答的问题（提问卡）。
+    private(set) var dshQuestions: [DSHRemoteQuestionBatch] = []
     private(set) var isLoading = false
     private(set) var isScanning = false
     var pairingCode = ""
@@ -618,6 +651,33 @@ final class LANRemoteController {
         return resized.jpegData(compressionQuality: 0.7)
     }
 
+    func refreshDSHQuestions() async {
+        guard let selected else { return }
+        guard let data = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/questions", token: pairingCode, body: nil
+        ), let list = try? JSONDecoder().decode([DSHRemoteQuestionBatch].self, from: data) else { return }
+        if list != dshQuestions { dshQuestions = list }
+    }
+
+    @discardableResult
+    func answerDSH(batchID: String, questionID: String, chosen: [String]) async -> Bool {
+        guard let selected else { return false }
+        let answer = DSHQuestionAnswer(id: batchID, answers: [.init(id: questionID, selected: chosen, custom: nil)])
+        guard let body = try? JSONEncoder().encode(answer) else { return false }
+        do {
+            _ = try await LANHTTP.request(
+                endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/answer",
+                token: pairingCode, body: body, timeout: 20
+            )
+            await refreshDSHQuestions()
+            return true
+        } catch {
+            lastError = "问题已回答或已失效。"
+            await refreshDSHQuestions()
+            return false
+        }
+    }
+
     /// Mac 当前在跑什么（最近一次工具调用还没结束）。没有就返回 nil。
     func dshActivity(for session: DSHSessionSnapshot) async -> (label: String, since: Date)? {
         guard let selected else { return nil }
@@ -638,6 +698,7 @@ final class LANRemoteController {
         selected = nil
         threads = []
         dshApprovals = []
+        dshQuestions = []
         dshSessions = []
         dshSubagents = []
         dshBridgeAvailable = false
@@ -1062,6 +1123,7 @@ private struct RootTabView: View {
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
     @Environment(\.scenePhase) private var scenePhase
     @State private var showingApprovals = false
+    @State private var showingQuestions = false
     @State private var didSeedSharedPreview = false
     @State private var showingSharePreview: Bool = {
         #if DEBUG
@@ -1109,11 +1171,15 @@ private struct RootTabView: View {
             await remoteController.pushAllIdeas(store.captures)
             while !Task.isCancelled {
                 await remoteController.refreshApprovals()
+                await remoteController.refreshDSHQuestions()
                 try? await Task.sleep(for: .seconds(3))
             }
         }
         .onChange(of: remoteController.dshApprovals.isEmpty) { _, isEmpty in
             if !isEmpty { showingApprovals = true }
+        }
+        .onChange(of: remoteController.dshQuestions.isEmpty) { _, isEmpty in
+            if !isEmpty { showingQuestions = true }
         }
         .onAppear {
             if !remoteController.dshApprovals.isEmpty { showingApprovals = true }
@@ -1121,6 +1187,9 @@ private struct RootTabView: View {
         }
         .sheet(isPresented: $showingApprovals) {
             DSHApprovalsSheet(controller: remoteController)
+        }
+        .sheet(isPresented: $showingQuestions) {
+            DSHQuestionsSheet(controller: remoteController)
         }
         .onChange(of: store.captures) { _, _ in
             writeWidgetSnapshot()
@@ -4607,6 +4676,166 @@ private struct NewSessionSheet: View {
                 .padding(.bottom, 10)
                 .background(FlowCueTheme.canvas)
             }
+        }
+    }
+}
+
+private struct DSHQuestionsSheet: View {
+    @Bindable var controller: LANRemoteController
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 12) {
+                    if controller.dshQuestions.isEmpty {
+                        VStack(spacing: 10) {
+                            Image(systemName: "questionmark.bubble.fill")
+                                .font(.system(size: 26))
+                                .foregroundStyle(FlowCueTheme.mint)
+                            Text("没有待回答的问题")
+                                .flowCueFont(14, relativeTo: .subheadline)
+                                .foregroundStyle(FlowCueTheme.textSecondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 40)
+                    } else {
+                        ForEach(controller.dshQuestions) { batch in
+                            ForEach(batch.questions) { question in
+                                DSHQuestionCard(question: question) { chosen in
+                                    _ = await controller.answerDSH(
+                                        batchID: batch.id, questionID: question.id, chosen: chosen
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(AgentsLayout.margin)
+            }
+            .background { FlowCueScreenBackground() }
+            .navigationTitle(controller.dshQuestions.isEmpty ? "Questions" : "问题 · \(controller.dshQuestions.count)")
+            .navigationBarTitleDisplayMode(.inline)
+            .onChange(of: controller.dshQuestions.isEmpty) { _, isEmpty in
+                guard isEmpty else { return }
+                Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    dismiss()
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+}
+
+private struct DSHQuestionCard: View {
+    let question: DSHRemoteQuestionBatch.Question
+    let answer: ([String]) async -> Void
+
+    @State private var selection: Set<String> = []
+    @State private var busy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("QUESTION")
+                .flowCueFont(9.5, relativeTo: .caption2)
+                .tracking(1.3)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+            Text(question.title)
+                .flowCueFont(13, relativeTo: .subheadline)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            if let detail = question.detail, !detail.isEmpty {
+                Text(detail)
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineLimit(6)
+            }
+            VStack(spacing: 8) {
+                ForEach(question.options, id: \.label) { option in
+                    Button {
+                        choose(option.label)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 8) {
+                                Text(option.label)
+                                    .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                                    .foregroundStyle(selection.contains(option.label)
+                                                     ? FlowCueTheme.onAccent
+                                                     : FlowCueTheme.textPrimary)
+                                Spacer(minLength: 0)
+                                if selection.contains(option.label) {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(FlowCueTheme.onAccent)
+                                }
+                            }
+                            if let detail = option.detail, !detail.isEmpty {
+                                Text(detail)
+                                    .flowCueFont(10, relativeTo: .caption2)
+                                    .foregroundStyle(selection.contains(option.label)
+                                                     ? FlowCueTheme.onAccent.opacity(0.8)
+                                                     : FlowCueTheme.textSecondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: FlowCueTheme.radiusInline, style: .continuous)
+                                .fill(selection.contains(option.label)
+                                      ? FlowCueTheme.accent
+                                      : FlowCueTheme.canvas)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busy)
+                }
+            }
+            if question.multiSelect {
+                Button {
+                    submit()
+                } label: {
+                    Text("回答")
+                        .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                        .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusInline, style: .continuous)
+                            .fill(selection.isEmpty ? FlowCueTheme.hairline : FlowCueTheme.accent))
+                }
+                .buttonStyle(.plain)
+                .disabled(busy || selection.isEmpty)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
+                .fill(FlowCueTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
+                .strokeBorder(FlowCueTheme.hairline)
+        )
+    }
+
+    /// 单选：点一下直接提交；多选：切换后按「回答」。
+    private func choose(_ label: String) {
+        guard !question.multiSelect else {
+            if selection.contains(label) { selection.remove(label) } else { selection.insert(label) }
+            return
+        }
+        selection = [label]
+        submit()
+    }
+
+    private func submit() {
+        guard !busy, !selection.isEmpty else { return }
+        busy = true
+        let chosen = question.options.map(\.label).filter { selection.contains($0) }
+        Task {
+            await answer(chosen)
+            busy = false
         }
     }
 }
