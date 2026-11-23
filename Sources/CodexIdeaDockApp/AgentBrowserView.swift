@@ -20,15 +20,21 @@ struct AgentBrowserView: View {
 
     private let service = AgentService.default
 
+    @State private var approvals: [DSHRemoteApproval] = []
+
     var body: some View {
         GeometryReader { geo in
             HStack(spacing: 0) {
-                agentColumn.frame(width: 190).clipped()
-                Divider()
-                sessionColumn.frame(width: 240).clipped()
+                sessionsColumn
+                    .frame(width: 250)
+                    .clipped()
                 Divider()
                 messageColumn
-                    .frame(width: max(200, geo.size.width - 432), height: geo.size.height)
+                    .frame(width: max(320, geo.size.width - 492), height: geo.size.height)
+                    .clipped()
+                Divider()
+                inspectorColumn
+                    .frame(width: 240)
                     .clipped()
             }
         }
@@ -48,134 +54,202 @@ struct AgentBrowserView: View {
         }
         .onAppear {
             if agents.isEmpty { agents = AgentDiscovery.scan() }
-            if selectedAgent == nil { select(agents.first { $0.capabilities.contains(.session) }) }
+            if sessions.isEmpty { Task { await loadAllSessions() } }
+            Task { await refreshApprovals() }
         }
     }
 
     // MARK: 列
 
-    private var agentColumn: some View {
+    private var sessionsColumn: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Text(L10n.text("Agent")).font(.caption).foregroundStyle(.secondary)
+            HStack(spacing: 7) {
+                Circle()
+                    .fill(Color(hex: FlowCueTokens.airyDark.success))
+                    .frame(width: 6, height: 6)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(L10n.text("本机 Mac")).font(.system(size: 12.5, weight: .semibold))
+                    Text(bridgeOnline ? L10n.text("在线") : L10n.text("DSH 未连接"))
+                        .font(.system(size: 10)).foregroundStyle(.secondary)
+                }
                 Spacer()
-                Text(isPro ? "Pro" : "Free")
-                    .font(.system(size: 9, weight: .semibold))
-                    .padding(.horizontal, 5).padding(.vertical, 1)
-                    .background(Capsule().fill(isPro ? Color(hex: FlowCueTokens.airyDark.accent).opacity(0.25)
-                                                     : Color(hex: FlowCueTokens.airyDark.border)))
-                    .foregroundStyle(isPro ? Color(hex: FlowCueTokens.airyDark.accent) : .secondary)
             }
-            .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 6)
-            ScrollView(.vertical) {
-                LazyVStack(spacing: 2) {
-                    ForEach(agents) { agent in
-                        Button { select(agent) } label: {
-                            HStack(spacing: 6) {
-                                Circle()
-                                    .fill(agent.capabilities.contains(.session)
-                                          ? Color(hex: FlowCueTokens.airyDark.success)
-                                          : Color(hex: FlowCueTokens.airyDark.textTertiary))
-                                    .frame(width: 6, height: 6)
-                                Text(agent.displayName).font(.callout).lineLimit(1)
-                                Spacer(minLength: 0)
-                            }
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(selectedAgent?.id == agent.id ? Color.accentColor.opacity(0.15) : .clear,
-                                        in: RoundedRectangle(cornerRadius: 6))
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 6)
+            .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 9)
+
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").font(.system(size: 10)).foregroundStyle(.tertiary)
+                TextField("", text: $search, prompt: Text(L10n.text("搜索会话")).font(.system(size: 11.5)))
+                    .textFieldStyle(.plain).font(.system(size: 11.5))
+            }
+            .padding(.horizontal, 9)
+            .frame(height: 28)
+            .background(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.55)))
+            .padding(.horizontal, 10)
+
+            HStack(spacing: 10) {
+                filterTab(nil, title: L10n.text("全部"))
+                ForEach(agents.filter { $0.capabilities.contains(.session) }) { agent in
+                    filterTab(agent.id, title: agent.displayName)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 12).padding(.vertical, 9)
+
+            ScrollView {
+                LazyVStack(spacing: 1) {
+                    ForEach(visibleSessions) { session in
+                        sessionRow(session)
                     }
                 }
-                .padding(.bottom, 8)
+                .padding(.horizontal, 6).padding(.bottom, 8)
+            }
+
+            if let note {
+                Text(note).font(.system(size: 10)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 12).padding(.bottom, 8)
             }
         }
     }
 
-    private var sessionColumn: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack {
-                Text(selectedAgent?.displayName ?? L10n.text("会话"))
-                    .font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button { starredOnly.toggle() } label: {
-                    Image(systemName: starredOnly ? "star.fill" : "star")
-                        .font(.caption)
-                        .foregroundStyle(starredOnly ? Color(hex: FlowCueTokens.airyDark.warning) : .secondary)
-                }
-                .buttonStyle(.plain)
-                .help(L10n.text("只看收藏"))
-                Button { Task { await reloadSessions() } } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.plain).font(.caption)
-            }
-            .padding(.horizontal, 12).padding(.top, 12).padding(.bottom, 6)
+    private func filterTab(_ agentID: String?, title: String) -> some View {
+        let isOn = selectedAgent?.id == agentID
+        return Button {
+            select(agentID.flatMap { id in agents.first { $0.id == id } })
+        } label: {
+            Text(title)
+                .font(.system(size: 11, weight: isOn ? .semibold : .regular))
+                .foregroundStyle(isOn ? Color(hex: FlowCueTokens.airyDark.accent) : .secondary)
+        }
+        .buttonStyle(.plain)
+    }
 
-            HStack(spacing: 5) {
-                Image(systemName: "magnifyingglass").font(.system(size: 9)).foregroundStyle(.secondary)
-                TextField("", text: $search, prompt: Text(L10n.text("搜索会话")))
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 11))
-                    .onSubmit { Task { await searchAllAgentsIfNeeded() } }
-                if !search.isEmpty {
-                    Button { search = ""; crossAgentResults = [] } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).font(.system(size: 9)).foregroundStyle(.tertiary)
-                }
+    private func sessionRow(_ session: AgentSession) -> some View {
+        Button {
+            selectedSession = session
+            Task {
+                messages = (try? await service.messages(session, limit: 80)) ?? []
+                await refreshApprovals()
             }
-            .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 6))
-            .padding(.horizontal, 12).padding(.bottom, 6)
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill(Color(hex: FlowCueTokens.airyDark.success).opacity(session.agentID == "dsh" ? 0.55 : 1))
+                        .frame(width: 5, height: 5)
+                    Text(session.title).font(.system(size: 12, weight: .medium)).lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text(session.updatedAt, format: .relative(presentation: .named))
+                        .font(.system(size: 9.5)).foregroundStyle(.tertiary)
+                }
+                Text(metaLine(session))
+                    .font(.system(size: 10.5)).foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 8).padding(.vertical, 7)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous)
+                    .fill(selectedSession?.id == session.id
+                          ? Color(nsColor: .selectedContentBackgroundColor).opacity(0.18)
+                          : Color.clear)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 
-            if let note {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(note).font(.caption2).foregroundStyle(.secondary)
-                    if selectedAgent?.id == "dsh" {
-                        Button(L10n.text("重新检查")) { Task { await reloadSessions() } }
-                            .controlSize(.mini)
+    private func metaLine(_ session: AgentSession) -> String {
+        let name = agents.first { $0.id == session.agentID }?.displayName ?? session.agentID
+        let project = session.projectPath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? ""
+        return project.isEmpty ? name : "\(name) · \(project)"
+    }
+
+    private var inspectorColumn: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                inspectorGroup(L10n.text("会话")) {
+                    if let session = selectedSession {
+                        inspectorKV(L10n.text("Agent"), agents.first { $0.id == session.agentID }?.displayName ?? session.agentID)
+                        inspectorKV(L10n.text("节点"), L10n.text("本机 Mac"))
+                        inspectorKV(L10n.text("工作区"), session.projectPath.map { URL(fileURLWithPath: $0).lastPathComponent } ?? "—")
+                        inspectorKV(L10n.text("状态"), L10n.text("可读取"))
+                    } else {
+                        Text(L10n.text("未选择会话")).font(.system(size: 10.5)).foregroundStyle(.secondary)
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-            }
 
-            ScrollView(.vertical) {
-                LazyVStack(spacing: 2) {
-                    ForEach(visibleSessions) { session in
-                        Button { select(session) } label: {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(spacing: 4) {
-                                    if AgentSessionArchive.isStarred(agentID: session.agentID, sessionID: session.id) {
-                                        Image(systemName: "star.fill")
-                                            .font(.system(size: 8))
-                                            .foregroundStyle(Color(hex: FlowCueTokens.airyDark.warning))
-                                    }
-                                    Text(session.title).font(.callout).lineLimit(2)
-                                        .multilineTextAlignment(.leading)
-                                }
-                                Text(session.updatedAt, format: .relative(presentation: .named))
-                                    .font(.caption2).foregroundStyle(.secondary)
+                inspectorGroup(L10n.text("这台机器上的 Agents")) {
+                    ForEach(agents.filter { $0.capabilities.contains(.session) }) { agent in
+                        HStack(spacing: 7) {
+                            Text(String(agent.displayName.prefix(1)))
+                                .font(.system(size: 9.5, weight: .semibold))
+                                .frame(width: 18, height: 18)
+                                .background(RoundedRectangle(cornerRadius: 5).fill(Color(nsColor: .controlBackgroundColor)))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(agent.displayName).font(.system(size: 10.5))
+                                Text(sessions.filter { $0.agentID == agent.id }.count.description + " " + L10n.text("个会话"))
+                                    .font(.system(size: 9)).foregroundStyle(.tertiary)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(selectedSession?.id == session.id ? Color.accentColor.opacity(0.15) : .clear,
-                                        in: RoundedRectangle(cornerRadius: 6))
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 6)
-                        .contextMenu {
-                            Button(AgentSessionArchive.isStarred(agentID: session.agentID, sessionID: session.id)
-                                   ? L10n.text("取消收藏") : L10n.text("收藏会话")) {
-                                guard requirePro(L10n.text("收藏与搜索是 Pro 功能")) else { return }
-                                _ = AgentSessionArchive.toggle(agentID: session.agentID, sessionID: session.id)
-                                reloadToken &+= 1
-                            }
+                            Spacer()
+                            Circle().fill(Color(hex: FlowCueTokens.airyDark.textTertiary)).frame(width: 5, height: 5)
                         }
                     }
                 }
-                .padding(.bottom, 8)
+
+                inspectorGroup(L10n.text("节点")) {
+                    inspectorKV(L10n.text("系统"), ProcessInfo.processInfo.operatingSystemVersionString)
+                    inspectorKV(L10n.text("版本"), appVersion)
+                    inspectorKV(L10n.text("协议"), "v1")
+                }
+
+                inspectorGroup(L10n.text("审批")) {
+                    inspectorKV(L10n.text("待审批"), "\(approvals.count)")
+                    inspectorKV(L10n.text("桥接"), bridgeOnline ? L10n.text("已连接") : L10n.text("未连接"))
+                }
             }
+            .padding(14)
+        }
+    }
+
+    private func inspectorGroup<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(title).font(.system(size: 9.5)).foregroundStyle(.tertiary)
+            content()
+        }
+    }
+
+    private func inspectorKV(_ key: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(key).font(.system(size: 10.5)).foregroundStyle(.secondary)
+            Spacer(minLength: 8)
+            Text(value).font(.system(size: 10.5)).foregroundStyle(.secondary.opacity(0.9)).lineLimit(1)
+        }
+    }
+
+    private var bridgeOnline: Bool { PortProbe.isOpen(port: 47823) }
+
+    private var appVersion: String {
+        (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "—"
+    }
+
+    private func refreshApprovals() async {
+        approvals = (try? await DSHBridgeClient().pending()) ?? []
+    }
+
+    private func loadAllSessions() async {
+        var collected: [AgentSession] = []
+        await withTaskGroup(of: [AgentSession].self) { group in
+            for agent in agents where agent.capabilities.contains(.session) {
+                group.addTask { (try? await service.sessions(for: agent.id, limit: 30)) ?? [] }
+            }
+            for await chunk in group { collected.append(contentsOf: chunk) }
+        }
+        sessions = collected.sorted { $0.updatedAt > $1.updatedAt }
+        note = sessions.isEmpty ? L10n.text("没有会话") : nil
+        if let first = sessions.first {
+            selectedSession = first
+            messages = (try? await service.messages(first, limit: 80)) ?? []
         }
     }
 
@@ -208,16 +282,65 @@ struct AgentBrowserView: View {
                     .background(Color(hex: FlowCueTokens.airyDark.surface))
                     Divider()
                 }
-                Text(session.title)
-                    .font(.headline).lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 14).padding(.vertical, 10)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(session.title).font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                    Text(metaLine(session)).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16).padding(.vertical, 9)
                 Divider()
                 ScrollView {
                     VStack(alignment: .leading, spacing: 10) {
+                        if messages.isEmpty {
+                            Text(session.agentID == "dsh"
+                                 ? L10n.text("在 DSH 里继续这个会话，这里可以发送消息。")
+                                 : L10n.text("没有可读取的消息"))
+                                .font(.system(size: 11)).foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .center)
+                                .padding(.top, 24)
+                        }
                         ForEach(messages) { message in bubble(message) }
                     }
                     .padding(14)
+                }
+
+                if let approval = approvals.first(where: { $0.sessionId == session.id }) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(L10n.text("需要审批")).font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(Color(hex: FlowCueTokens.airyDark.warning))
+                        Text(approval.title).font(.system(size: 12, weight: .semibold))
+                        if let tool = approval.toolName {
+                            Text(tool).font(.system(size: 10.5).monospaced()).foregroundStyle(.secondary)
+                        }
+                        HStack(spacing: 8) {
+                            Button(L10n.text("允许一次")) {
+                                Task {
+                                    try? await DSHBridgeClient().decide(id: approval.id, decision: "allowed-once")
+                                    await refreshApprovals()
+                                }
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .controlSize(.small)
+                            Button(L10n.text("拒绝"), role: .destructive) {
+                                Task {
+                                    try? await DSHBridgeClient().decide(id: approval.id, decision: "rejected")
+                                    await refreshApprovals()
+                                }
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous)
+                            .fill(Color(hex: FlowCueTokens.airyDark.warning).opacity(0.08))
+                    )
+                    .overlay(alignment: .leading) {
+                        Rectangle().fill(Color(hex: FlowCueTokens.airyDark.warning).opacity(0.55)).frame(width: 2)
+                    }
+                    .padding(.horizontal, 14).padding(.vertical, 8)
                 }
 
                 Divider()
@@ -297,7 +420,7 @@ struct AgentBrowserView: View {
         let filtered = starredOnly
             ? base.filter { AgentSessionArchive.isStarred(agentID: $0.agentID, sessionID: $0.id) }
             : base
-        if search.isEmpty { return filtered }
+        if search.isEmpty || selectedAgent == nil { return filtered }
         // 搜索时把其它 agent 的结果接在后面
         let others = crossAgentResults.filter { result in
             result.agentID != selectedAgent?.id && matches(result)
@@ -333,7 +456,9 @@ struct AgentBrowserView: View {
         selectedAgent = agent
         selectedSession = nil
         messages = []
-        Task { await reloadSessions() }
+        Task {
+            if agent == nil { await loadAllSessions() } else { await reloadSessions() }
+        }
     }
 
     private func reloadSessions() async {
