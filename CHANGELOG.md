@@ -4,7 +4,7 @@
 
 ## 未发布
 
-- iPhone 支持删除想法：详情页底部「Delete」（带确认）或列表长按 →「删除」。删除会同步到 Mac（`POST /v1/ideas/delete`），避免只推不删留下副本。
+- iPhone 支持删除想法：列表行**左滑**露出 Archive / Delete（和系统列表手势一致），长按也能删，详情页底部另有 Delete 按钮。删除带确认，并同步到 Mac（`POST /v1/ideas/delete`），避免只推不删留下副本。
 - iPhone 推入页加「左边缘右拖返回」高优先级手势：系统的交互式返回会被 TabView 的翻页手势抢走，导致右滑切了标签页而不是返回。
 - 提问卡改为出现在对应 chat 内（输入框上方），不再全局弹窗挡住别的页面；待回答时会推一条「有任务在等你回答」的通知，锁屏也能看到是哪个任务在等你。
 - 提问卡（DSH 的 user-questions/request）现在能推到 iPhone：插件挂 waterfall、手机用选项按钮回答并回传 `{answers}`，Mac 新增 `/v1/dsh/questions` 与 `/v1/dsh/answer`。60 秒内没人答就落回桌面，绝不吞掉问题。

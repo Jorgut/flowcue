@@ -1770,6 +1770,7 @@ private struct InboxView: View {
     @State private var chipsCollapsed = false
     @State private var lastScrollOffset: CGFloat = 0
     @State private var hasCompletedInitialSync = false
+    @State private var pendingDelete: CaptureItem?
     @FocusState private var captureFocused: Bool
     @ScaledMetric(relativeTo: .caption) private var searchHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .caption) private var chipHeight: CGFloat = 26
@@ -1810,6 +1811,26 @@ private struct InboxView: View {
         .edgeSwipeBack()
             .navigationDestination(isPresented: $showingSearch) {
                 SearchView(store: store, remoteController: remoteController, startVoice: startSearchVoice)
+            }
+            .confirmationDialog(
+                "删除这条想法？",
+                isPresented: Binding(
+                    get: { pendingDelete != nil },
+                    set: { if !$0 { pendingDelete = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingDelete
+            ) { idea in
+                Button("删除", role: .destructive) {
+                    Task {
+                        await remoteController.deleteIdeaOnMac(idea.id)
+                        store.delete(idea.id)
+                    }
+                    pendingDelete = nil
+                }
+                Button("取消", role: .cancel) { pendingDelete = nil }
+            } message: { _ in
+                Text("手机上删掉，Mac 上的同一条也会删掉。这个操作不能撤销。")
             }
             .task { network.start() }
             .onChange(of: syncController.isSyncing) { _, isSyncing in
@@ -2088,20 +2109,16 @@ private struct InboxView: View {
             ScrollViewOffsetReader()
             LazyVStack(spacing: 0) {
                 ForEach(visibleIdeas) { idea in
-                    NavigationLink {
-                        IdeaDetailView(store: store, remoteController: remoteController, capture: idea)
-                    } label: {
-                        HomeIdeaRow(capture: idea)
-                    }
-                    .buttonStyle(.plain)
-                    // 长按也能删，不用先点进详情。
-                    .contextMenu {
-                        Button("删除", role: .destructive) {
-                            Task {
-                                await remoteController.deleteIdeaOnMac(idea.id)
-                                store.delete(idea.id)
-                            }
+                    IdeaSwipeRow(
+                        onArchive: { store.archive(idea.id) },
+                        onDelete: { pendingDelete = idea }
+                    ) {
+                        NavigationLink {
+                            IdeaDetailView(store: store, remoteController: remoteController, capture: idea)
+                        } label: {
+                            HomeIdeaRow(capture: idea)
                         }
+                        .buttonStyle(.plain)
                     }
                     Rectangle()
                         .fill(FlowCueTheme.hairline)
@@ -2523,6 +2540,63 @@ private struct SearchResultRow: View {
     }
 }
 
+
+/// 左滑露出 Archive / Delete 两个操作。用自定义手势而不是 List 的
+/// swipeActions——首页不是 List，改成 List 会破坏现有排版。
+private struct IdeaSwipeRow<Content: View>: View {
+    let onArchive: () -> Void
+    let onDelete: () -> Void
+    @ViewBuilder var content: Content
+
+    @State private var openOffset: CGFloat = 0
+    @GestureState private var dragTranslation: CGFloat = 0
+
+    private let actionWidth: CGFloat = 78
+    private var actionsWidth: CGFloat { actionWidth * 2 }
+    private var offset: CGFloat {
+        min(0, max(-actionsWidth, openOffset + dragTranslation))
+    }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            HStack(spacing: 0) {
+                action("Archive", color: FlowCueTheme.warning, action: onArchive)
+                action("Delete", color: FlowCueTheme.failure, action: onDelete)
+            }
+            content
+                .background(FlowCueTheme.canvas)
+                .offset(x: offset)
+                .gesture(
+                    DragGesture(minimumDistance: 12)
+                        .updating($dragTranslation) { value, state, _ in
+                            state = value.translation.width
+                        }
+                        .onEnded { value in
+                            let projected = openOffset + value.translation.width
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                openOffset = projected < -actionsWidth / 2 ? -actionsWidth : 0
+                            }
+                        }
+                )
+        }
+        .clipped()
+    }
+
+    private func action(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { openOffset = 0 }
+            action()
+        } label: {
+            Text(title)
+                .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                .foregroundStyle(Color.white)
+                .frame(width: actionWidth)
+                .frame(maxHeight: .infinity)
+                .background(color)
+        }
+        .buttonStyle(.plain)
+    }
+}
 
 private struct HomeIdeaRow: View {
     let capture: CaptureItem
