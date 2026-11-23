@@ -77,10 +77,11 @@ push 改到 `site/**` 时，GitHub Actions（`.github/workflows/pages.yml`）
 
 ## 创始名额（999）
 
-首页 `#founding` 的名额条和邮箱表单调用 Cloudflare Worker
-`flowcue-founding`，数据存在 D1 `flowcue-founding`：
+首页 `#founding` 是 **$9.9 Mac Pro 终身授权的预约名单**（还不是付款）：
+名额条和邮箱表单调用 Cloudflare Worker `flowcue-founding`，数据存在 D1
+`flowcue-founding`。结账接入 Paddle 后再把“预约”换成“购买”。
 
-- `GET /api/founding/status`：已领取数量
+- `GET /api/founding/status`：已预约数量
 - `POST /api/founding/claim`：`{email}`，每人一个席位，上限 999
 
 Worker 不在 Pages 构建里，改动后要在 `workers/founding/` 手动
