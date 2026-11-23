@@ -2574,25 +2574,22 @@ private struct SearchResultRow: View {
 
 /// 左滑露出 Archive / Delete 两个操作。用自定义手势而不是 List 的
 /// swipeActions——首页不是 List，改成 List 会破坏现有排版。
+/// 左滑露出 Archive / Delete 两个操作。
+/// 位移只有一个数据源 offsetX：拖动时跟手、松手时吸附。
+/// 之前用 @GestureState + @State 双源，松手瞬间前者归零、后者才赋值，
+/// 中间会算出 0 再滑出去，看起来就是「闪了两下」。
 private struct IdeaSwipeRow<Content: View>: View {
     let onArchive: () -> Void
     let onDelete: () -> Void
-    /// 单击时才执行的导航；拖拽不会触发它。
     let onTap: () -> Void
     @ViewBuilder var content: Content
 
-    @State private var openOffset: CGFloat = 0
-    @GestureState private var dragTranslation: CGFloat = 0
-    /// 拖拽结束后同一帧里点击手势也会触发，用它把那次点击挡掉。
+    @State private var offsetX: CGFloat = 0
+    @State private var dragStart: CGFloat?
     @State private var didDrag = false
-    /// 滑开的时刻。刚滑开时到达的点击一律忽略，否则会再播一次收起动画。
-    @State private var openedAt: Date?
 
     private let actionWidth: CGFloat = 78
     private var actionsWidth: CGFloat { actionWidth * 2 }
-    private var offset: CGFloat {
-        min(0, max(-actionsWidth, openOffset + dragTranslation))
-    }
 
     var body: some View {
         ZStack(alignment: .trailing) {
@@ -2601,16 +2598,9 @@ private struct IdeaSwipeRow<Content: View>: View {
                 action("Delete", color: FlowCueTheme.failure, action: onDelete)
             }
             Button {
-                // 拖拽刚结束时系统仍会送来一次点击，用 didDrag 挡掉。
                 guard !didDrag else { return }
-                if openOffset != 0 {
-                    // 刚滑开 0.35 秒内到达的点击属于拖拽尾流，忽略，
-                    // 否则会紧接着播放一次收起动画，看起来像闪了两次。
-                    if let openedAt, Date().timeIntervalSince(openedAt) < 0.35 { return }
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                        openOffset = 0
-                        self.openedAt = nil
-                    }
+                if offsetX != 0 {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { offsetX = 0 }
                 } else {
                     onTap()
                 }
@@ -2619,44 +2609,47 @@ private struct IdeaSwipeRow<Content: View>: View {
             }
             .buttonStyle(.plain)
             .background(FlowCueTheme.canvas)
-            .offset(x: offset)
-                // 用 simultaneousGesture：ScrollView 的滚动手势会抢走普通 gesture，
-                // 同时识别才能拿到横向拖拽；再用「横向为主才跟手」避免影响上下滚动。
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 20)
-                        .updating($dragTranslation) { value, state, _ in
-                            let dx = value.translation.width
-                            let dy = value.translation.height
-                            state = abs(dx) > abs(dy) ? dx : 0
-                        }
-                        .onChanged { _ in
+            .offset(x: offsetX)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .onChanged { value in
+                        if dragStart == nil {
+                            dragStart = offsetX
                             didDrag = true
                         }
-                        .onEnded { value in
-                            let dx = value.translation.width
-                            let dy = value.translation.height
-                            guard abs(dx) > abs(dy) else {
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { didDrag = false }
-                                return
-                            }
-                            let projected = openOffset + dx
-                            let shouldOpen = projected < -actionsWidth / 2
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                                openOffset = shouldOpen ? -actionsWidth : 0
-                            }
-                            openedAt = shouldOpen ? Date() : nil
-                            // 留一点时间挡住这次抬指产生的点击。
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { didDrag = false }
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        guard abs(dx) > abs(dy) else { return }
+                        let base = dragStart ?? 0
+                        offsetX = min(0, max(-actionsWidth, base + dx))
+                    }
+                    .onEnded { value in
+                        let base = dragStart ?? 0
+                        dragStart = nil
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        let projected = abs(dx) > abs(dy) ? base + dx : base
+                        let shouldOpen = projected < -actionsWidth / 2
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            offsetX = shouldOpen ? -actionsWidth : 0
                         }
-                )
-
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { didDrag = false }
+                    }
+            )
+            // 长按走 onLongPressGesture 而不是 contextMenu：
+            // 后者会挂系统菜单识别器，拖慢列表滚动。
+            .onLongPressGesture(minimumDuration: 0.45) {
+                guard offsetX == 0 else { return }
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { offsetX = -actionsWidth }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
         }
         .clipped()
     }
 
     private func action(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
         Button {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { openOffset = 0 }
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { offsetX = 0 }
             action()
         } label: {
             Text(title)
