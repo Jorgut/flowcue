@@ -8,7 +8,9 @@
 | `01-inbox-merged-v2.html` | 收件箱（v2）：1040×680，捕获条 + 列表 / 编辑，按 `UI_DIRECTION` 无边框 |
 | `02-agents-console-v2.html` | Agent 控制台（v2）：节点/会话 → 对话 → 检查器，审批内联 |
 | `03-inbox-send-v2.html` | 收件箱里的「发送到会话」弹层（v2） |
-| `04-capture-panel.html` | 捕获面板两版：A 自由浮动 / B 菜单栏 popover |
+| `04-capture-panel.html` | 捕获面板两种承载：A 自由浮动 / B 菜单栏 popover |
+| `05-panel-a.html` | 面板方案 A：目的地 chip + 两级选择（Agent → 会话） |
+| `06-panel-b.html` | 面板方案 B：Agent 分段 + 来源/目标两行 |
 
 > v1（`01-inbox-merged.html` 等）是卡片 + 描边 + 多强调色的版本，偏离 `mac/inbox` 的
 > 「无边框、输入是唯一锚点」原则，只留作对比。
