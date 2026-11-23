@@ -535,7 +535,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCue;
 				PRODUCT_NAME = Reroute;
 				SDKROOT = iphoneos;
@@ -566,7 +566,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCue;
 				PRODUCT_NAME = Reroute;
 				SDKROOT = iphoneos;
@@ -598,7 +598,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCue.ShareExtension;
 				PRODUCT_NAME = FlowCueShareExtension;
 				SDKROOT = iphoneos;
@@ -629,7 +629,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCue.Widgets;
 				PRODUCT_NAME = FlowCueWidgetsExtension;
 				SDKROOT = iphoneos;
@@ -660,7 +660,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCue.Widgets;
 				PRODUCT_NAME = FlowCueWidgetsExtension;
 				SDKROOT = iphoneos;
@@ -692,7 +692,7 @@
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				MARKETING_VERSION = 1.2.0;
+				MARKETING_VERSION = 1.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCue.ShareExtension;
 				PRODUCT_NAME = FlowCueShareExtension;
 				SDKROOT = iphoneos;
