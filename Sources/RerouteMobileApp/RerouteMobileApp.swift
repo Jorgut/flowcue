@@ -909,6 +909,14 @@ final class LANRemoteController {
         }
     }
 
+    /// 推送整库快照：包含已归档和墓碑。
+    /// 离线时删掉的条目只留下本地墓碑，必须在重连后补推，否则 Mac 永远不会删。
+    func pushAllIdeas(_ ideas: [RemoteIdea]) async {
+        for idea in ideas {
+            await pushIdea(idea)
+        }
+    }
+
     /// 把 iPhone 上的订阅到期时间推给 Mac，让 Pro 在 Mac 解锁。
     /// 只在首次连接或值变化时发送；失败不打扰用户，下一次轮询自动重试。
     func syncProToMac(force: Bool = false) async {
@@ -1243,7 +1251,7 @@ private struct RootTabView: View {
             if let pulled = await remoteController.pullIdeas() {
                 _ = store.mergePulledIdeas(pulled)
             }
-            await remoteController.pushAllIdeas(store.captures)
+            await remoteController.pushAllIdeas(store.syncSnapshot())
             while !Task.isCancelled {
                 await remoteController.refreshApprovals()
                 await remoteController.refreshDSHQuestions()
@@ -2575,6 +2583,8 @@ private struct IdeaSwipeRow<Content: View>: View {
 
     @State private var openOffset: CGFloat = 0
     @GestureState private var dragTranslation: CGFloat = 0
+    /// 拖拽结束后同一帧里点击手势也会触发，用它把那次点击挡掉。
+    @State private var didDrag = false
 
     private let actionWidth: CGFloat = 78
     private var actionsWidth: CGFloat { actionWidth * 2 }
@@ -2594,6 +2604,7 @@ private struct IdeaSwipeRow<Content: View>: View {
                 // 用点击手势而不是 Button：Button 会在拖拽结束后仍然触发，
                 // 那时 openOffset 刚被设为滑开状态，于是「刚出现就收起」。
                 .onTapGesture {
+                    guard !didDrag else { return }
                     if openOffset != 0 {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { openOffset = 0 }
                     } else {
@@ -2609,14 +2620,22 @@ private struct IdeaSwipeRow<Content: View>: View {
                             let dy = value.translation.height
                             state = abs(dx) > abs(dy) ? dx : 0
                         }
+                        .onChanged { _ in
+                            didDrag = true
+                        }
                         .onEnded { value in
                             let dx = value.translation.width
                             let dy = value.translation.height
-                            guard abs(dx) > abs(dy) else { return }
+                            guard abs(dx) > abs(dy) else {
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { didDrag = false }
+                                return
+                            }
                             let projected = openOffset + dx
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                                 openOffset = projected < -actionsWidth / 2 ? -actionsWidth : 0
                             }
+                            // 留一点时间挡住这次抬指产生的点击。
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { didDrag = false }
                         }
                 )
                 // 左滑之外再给一条长按路径，两套都能用。
