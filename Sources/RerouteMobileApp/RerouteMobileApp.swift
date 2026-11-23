@@ -2583,18 +2583,30 @@ private struct IdeaSwipeRow<Content: View>: View {
             content
                 .background(FlowCueTheme.canvas)
                 .offset(x: offset)
-                .gesture(
+                // 用 simultaneousGesture：ScrollView 的滚动手势会抢走普通 gesture，
+                // 同时识别才能拿到横向拖拽；再用「横向为主才跟手」避免影响上下滚动。
+                .simultaneousGesture(
                     DragGesture(minimumDistance: 12)
                         .updating($dragTranslation) { value, state, _ in
-                            state = value.translation.width
+                            let dx = value.translation.width
+                            let dy = value.translation.height
+                            state = abs(dx) > abs(dy) ? dx : 0
                         }
                         .onEnded { value in
-                            let projected = openOffset + value.translation.width
+                            let dx = value.translation.width
+                            let dy = value.translation.height
+                            guard abs(dx) > abs(dy) else { return }
+                            let projected = openOffset + dx
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
                                 openOffset = projected < -actionsWidth / 2 ? -actionsWidth : 0
                             }
                         }
                 )
+                // 左滑之外再给一条长按路径，两套都能用。
+                .contextMenu {
+                    Button("Archive") { onArchive() }
+                    Button("Delete", role: .destructive) { onDelete() }
+                }
         }
         .clipped()
     }
