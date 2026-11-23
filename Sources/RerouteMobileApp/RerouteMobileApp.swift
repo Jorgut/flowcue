@@ -1789,6 +1789,7 @@ private struct InboxView: View {
     @State private var lastScrollOffset: CGFloat = 0
     @State private var hasCompletedInitialSync = false
     @State private var pendingDelete: CaptureItem?
+    @State private var openIdea: CaptureItem?
     @FocusState private var captureFocused: Bool
     @ScaledMetric(relativeTo: .caption) private var searchHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .caption) private var chipHeight: CGFloat = 26
@@ -1829,6 +1830,9 @@ private struct InboxView: View {
         .edgeSwipeBack()
             .navigationDestination(isPresented: $showingSearch) {
                 SearchView(store: store, remoteController: remoteController, startVoice: startSearchVoice)
+            }
+            .navigationDestination(item: $openIdea) { idea in
+                IdeaDetailView(store: store, remoteController: remoteController, capture: idea)
             }
             .confirmationDialog(
                 "删除这条想法？",
@@ -2134,14 +2138,10 @@ private struct InboxView: View {
                                 Task { await remoteController.pushIdea(updated) }
                             }
                         },
-                        onDelete: { pendingDelete = idea }
+                        onDelete: { pendingDelete = idea },
+                        onTap: { openIdea = idea }
                     ) {
-                        NavigationLink {
-                            IdeaDetailView(store: store, remoteController: remoteController, capture: idea)
-                        } label: {
-                            HomeIdeaRow(capture: idea)
-                        }
-                        .buttonStyle(.plain)
+                        HomeIdeaRow(capture: idea)
                     }
                     Rectangle()
                         .fill(FlowCueTheme.hairline)
@@ -2569,6 +2569,8 @@ private struct SearchResultRow: View {
 private struct IdeaSwipeRow<Content: View>: View {
     let onArchive: () -> Void
     let onDelete: () -> Void
+    /// 单击时才执行的导航；拖拽不会触发它。
+    let onTap: () -> Void
     @ViewBuilder var content: Content
 
     @State private var openOffset: CGFloat = 0
@@ -2586,9 +2588,18 @@ private struct IdeaSwipeRow<Content: View>: View {
                 action("Archive", color: FlowCueTheme.warning, action: onArchive)
                 action("Delete", color: FlowCueTheme.failure, action: onDelete)
             }
-            content
-                .background(FlowCueTheme.canvas)
-                .offset(x: offset)
+            Button {
+                if openOffset != 0 {
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { openOffset = 0 }
+                } else {
+                    onTap()
+                }
+            } label: {
+                content
+            }
+            .buttonStyle(.plain)
+            .background(FlowCueTheme.canvas)
+            .offset(x: offset)
                 // 用 simultaneousGesture：ScrollView 的滚动手势会抢走普通 gesture，
                 // 同时识别才能拿到横向拖拽；再用「横向为主才跟手」避免影响上下滚动。
                 .simultaneousGesture(
