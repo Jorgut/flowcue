@@ -29,8 +29,10 @@ struct CapturePanelView: View {
     @State private var agentSessionGroups: [(AgentRecord, [AgentSession])] = []
     @State private var loadingAgentSessions = false
 
-    private var destinationTitle: String {
-        switch destination {
+    private var destinationTitle: String { destinationTitle(for: destination) }
+
+    private func destinationTitle(for value: CaptureDestination) -> String {
+        switch value {
         case .inbox:
             return L10n.text("收件箱")
         case .codex(let id):
@@ -40,8 +42,10 @@ struct CapturePanelView: View {
         }
     }
 
-    private var primaryActionTitle: String? {
-        switch destination {
+    private var primaryActionTitle: String? { primaryActionTitle(for: destination) }
+
+    private func primaryActionTitle(for value: CaptureDestination) -> String? {
+        switch value {
         case .inbox: return nil
         case .codex: return L10n.text("排队")
         case .agent: return L10n.text("发送")
@@ -159,7 +163,11 @@ struct CapturePanelView: View {
         .animation(.easeOut(duration: reduceMotion ? 0.08 : 0.14), value: store.notification?.id)
         .onAppear {
             // 调试/截图用：`open FlowCue.app --args -panel -panelpicker`
-            if ProcessInfo.processInfo.arguments.contains("-panelpicker") {
+            guard ProcessInfo.processInfo.arguments.contains("-panelpicker") else { return }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(700))
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.keyWindow?.makeKey()
                 loadAgentSessionsIfNeeded()
                 destinationPickerOpen = true
             }
@@ -176,14 +184,30 @@ struct CapturePanelView: View {
         guard agentSessionGroups.isEmpty, !loadingAgentSessions else { return }
         loadingAgentSessions = true
         Task { @MainActor in
+            let scanned = AgentDiscovery.scan()
             var groups: [(AgentRecord, [AgentSession])] = []
-            for agent in AgentDiscovery.scan()
+            for agent in scanned
             where agent.capabilities.contains(.session) && agent.id != "codex" {
                 let list = (try? await AgentService.default.sessions(for: agent.id, limit: 20)) ?? []
                 groups.append((agent, list))
             }
             agentSessionGroups = groups
             loadingAgentSessions = false
+            if ProcessInfo.processInfo.arguments.contains("-panelpicker") {
+                var lines = ["scanned=\(scanned.map { $0.id }.joined(separator: ","))",
+                             "groups=\(groups.map { $0.0.id + ":" + String($0.1.count) }.joined(separator: ","))"]
+                if let context = store.contexts.first {
+                    let probe = CaptureDestination.codex(context.id)
+                    lines.append("codex: title=\(destinationTitle(for: probe)) action=\(primaryActionTitle(for: probe) ?? "nil")")
+                }
+                if let dsh = groups.first(where: { $0.0.id == "dsh" }) {
+                    if let session = dsh.1.first {
+                        let probe = CaptureDestination.agent(agentName: dsh.0.displayName, session: session)
+                        lines.append("agent: title=\(destinationTitle(for: probe)) action=\(primaryActionTitle(for: probe) ?? "nil")")
+                    }
+                }
+                try? lines.joined(separator: "\n").write(toFile: "/tmp/flowcue-panel-groups.log", atomically: true, encoding: .utf8)
+            }
         }
     }
 
@@ -295,6 +319,8 @@ private struct DestinationPicker: View {
             .frame(minWidth: 190, alignment: .topLeading)
         }
         .frame(width: 400, height: 250)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .preferredColorScheme(.dark)
     }
 
     private func row(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
