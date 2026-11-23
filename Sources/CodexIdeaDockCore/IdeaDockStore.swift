@@ -540,8 +540,15 @@ public final class IdeaDockStore {
                 capture.deletedAt = nil
                 if !text.isEmpty { capture.text = text }
             }
-            if let raw = idea.status, let status = CaptureStatus(rawValue: raw), capture.deletedAt == nil {
-                capture.status = status
+            if capture.deletedAt == nil {
+                // 草稿只属于设备本地：手机新建的想法状态是 draft，直接照搬会让它
+                // 在 Mac 列表里消失（filteredCaptures 不显示草稿）。
+                let incoming = idea.status.flatMap(CaptureStatus.init(rawValue:))
+                if let incoming, incoming != .draft {
+                    capture.status = incoming
+                } else if capture.status == .draft, !text.isEmpty {
+                    capture.status = .saved
+                }
             }
             return .applied
         }

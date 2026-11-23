@@ -118,4 +118,38 @@ final class RemoteIdeaTests: XCTestCase {
         let snapshot = store.syncSnapshot()
         XCTAssertEqual(snapshot.first?.status, CaptureStatus.archived.rawValue)
     }
+
+    func testRemoteDraftIsStoredAsSavedSoItAppearsInTheList() throws {
+        let store = try makeStore()
+        let now = Date()
+        // 手机新建的想法状态是 draft；直接照搬会让它在 Mac 列表里消失。
+        let idea = RemoteIdea(
+            id: UUID(),
+            text: "手机新建的想法",
+            createdAt: now,
+            updatedAt: now,
+            status: CaptureStatus.draft.rawValue
+        )
+        XCTAssertTrue(store.upsertRemoteIdea(idea))
+        XCTAssertEqual(store.captures.count, 1)
+        XCTAssertEqual(store.captures.first?.status, .saved)
+        // 列表能看见（filteredCaptures 不显示草稿）
+        XCTAssertEqual(store.filteredCaptures.count, 1)
+    }
+
+    func testExistingDraftIsPromotedWhenRemoteHasContent() throws {
+        let store = try makeStore()
+        let now = Date()
+        let id = UUID()
+        XCTAssertTrue(store.upsertRemoteIdea(RemoteIdea(
+            id: id, text: "先是草稿", createdAt: now, updatedAt: now,
+            status: CaptureStatus.draft.rawValue
+        )))
+        // 再推一次带内容的更新
+        XCTAssertEqual(store.mergePulledIdeas([RemoteIdea(
+            id: id, text: "草稿补全了", createdAt: now, updatedAt: now.addingTimeInterval(5),
+            status: CaptureStatus.draft.rawValue
+        )]), 1)
+        XCTAssertEqual(store.captures.first?.status, .saved)
+    }
 }
