@@ -4,6 +4,9 @@
 
 ## 1.1.5 — Agent 品牌图标
 
+> **发布状态（2026-11-23）**：已上传 TestFlight，`1.1.5 (95)`，Delivery UUID `7feeaff6-104f-440b-9354-b2218c06d815`。
+
+
 - Agents 页每个 Agent 用官方 mark：DeepSeek 鲸鱼、OpenAI 花、Anthropic 标记
 - 图标为单色矢量（SVG 进 `MobileAssets.xcassets`），按品牌色 tint：
   DeepSeek `#4D6BFE`、OpenAI `#10A37F`、Anthropic `#D97757`
