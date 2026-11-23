@@ -21,15 +21,20 @@ final class AgentSessionTests: XCTestCase {
         }
     }
 
-    func testDSHMessagesStayUnsupported() async throws {
+    /// DSH 的对话内容从本机会话日志读；不存在的会话应报 notFound，
+    /// 而不是像以前那样一律 unsupported。
+    func testDSHMessagesReadFromSessionLog() async throws {
         let adapter = DSHAgentAdapter()
-        let session = AgentSession(id: "s", agentID: "dsh", title: "t", updatedAt: Date(),
-                                   projectPath: nil, messageCount: nil, locator: "s")
+        let session = AgentSession(id: "does-not-exist", agentID: "dsh", title: "t", updatedAt: Date(),
+                                   projectPath: nil, messageCount: nil, locator: "does-not-exist")
         do {
-            _ = try await adapter.messages(in: session, limit: 5)
-            XCTFail("DSH 对话应抛 unsupported")
+            let messages = try await adapter.messages(in: session, limit: 5)
+            // 若本机恰好有同名会话，至少应能读出消息
+            XCTAssertFalse(messages.isEmpty)
+        } catch AgentAdapterError.notFound {
+            // 预期：会话不存在
         } catch AgentAdapterError.unsupported {
-            // 预期：桥只提供待审与发消息
+            XCTFail("DSH 对话不应再是 unsupported")
         }
     }
 }

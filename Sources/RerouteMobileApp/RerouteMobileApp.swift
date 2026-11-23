@@ -607,6 +607,19 @@ final class LANRemoteController {
     // MARK: - 通用 Agent
     private(set) var agentInfos: [RemoteAgentInfo] = []
 
+    private static let agentCacheKey = "FlowCue.agentInfoCache"
+
+    /// 冷启动时先读上次的统计，避免空白几秒。
+    func loadCachedAgents() {
+        guard agentInfos.isEmpty,
+              let data = UserDefaults.standard.data(forKey: Self.agentCacheKey) else { return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let cached = try? decoder.decode([RemoteAgentInfo].self, from: data) {
+            agentInfos = cached
+        }
+    }
+
     func refreshAgents() async {
         guard let selected else { return }
         guard let data = try? await LANHTTP.request(
@@ -617,6 +630,7 @@ final class LANRemoteController {
         decoder.dateDecodingStrategy = .iso8601
         if let agents = try? decoder.decode([RemoteAgentInfo].self, from: data) {
             agentInfos = agents
+            UserDefaults.standard.set(data, forKey: Self.agentCacheKey)
         }
     }
 
@@ -3595,6 +3609,7 @@ private struct AgentsView: View {
                         cannotReachContent
                     } else if controller.isConnected {
                         connectedContent
+                            .task { await loadAgentsIfNeeded() }
                     } else if showsDiscovering {
                         discoveringContent
                     } else {
@@ -3717,6 +3732,12 @@ private struct AgentsView: View {
         }
     }
 
+    /// 进页面就拉一次，别等 3 秒轮询。
+    private func loadAgentsIfNeeded() async {
+        controller.loadCachedAgents()
+        await controller.refreshAgents()
+    }
+
     private var deviceName: String {
         FlowCueLinkFormat.deviceName(controller.selected?.name ?? controller.lastAttempted?.name)
     }
@@ -3761,6 +3782,19 @@ private struct AgentsView: View {
                     .padding(.top, 16)
 
                 VStack(spacing: 0) {
+                    if controller.agentInfos.isEmpty {
+                        // 刚连上时第一次统计要扫各家的会话目录，先给个占位，
+                        // 不要留一片空白让人以为没装上 Agent。
+                        HStack(spacing: 10) {
+                            ProgressView().controlSize(.small)
+                            Text("正在读取这台 Mac 上的 Agent…")
+                                .flowCueFont(12, relativeTo: .caption)
+                                .foregroundStyle(FlowCueTheme.textSecondary)
+                            Spacer(minLength: 0)
+                        }
+                        .padding(.horizontal, AgentsLayout.margin)
+                        .padding(.vertical, 16)
+                    }
                     ForEach(controller.agentInfos) { agent in
                         NavigationLink {
                             AgentSessionsView(controller: controller, tab: $tab, agent: agent)

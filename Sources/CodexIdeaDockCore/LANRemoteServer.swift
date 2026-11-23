@@ -72,6 +72,8 @@ public final class LANRemoteServer {
                     self.port = self.listener?.port?.rawValue
                     // 预热缓存，免得手机第一条请求还要等 Codex 起 app-server。
                     Task { _ = try? await self.threadSnapshots() }
+                    // 同时预热通用 Agent 统计：手机连上 Agents 页时立刻就有内容。
+                    self.warmAgentSummary()
                 case .failed, .cancelled:
                     self.isRunning = false
                     self.port = nil
@@ -151,20 +153,38 @@ public final class LANRemoteServer {
     /// 会话/项目计数的缓存（列会话要读各家目录，不能每次请求都扫）。
     private var agentSummaryCache: [String: RemoteAgentInfo] = [:]
     private var agentSummaryCacheAt: Date?
+    private var agentSummaryTask: Task<[RemoteAgentInfo], Never>?
     /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——
     /// 这个接口只有手机会调，本机测试不会干扰计数。
     private var phonePollCount = 0
     private var lastPhonePollAt: Date?
 
-    /// 装上且被支持的 Agent，附会话数与项目数（60 秒缓存）。
+    /// 启动后在后台预热一次统计，避免手机刚连上时等几秒。
+    public func warmAgentSummary() {
+        Task { _ = await agentSummaries() }
+    }
+
+    /// 装上且被支持的 Agent，附会话数与项目数（60 秒缓存 + 并发去重）。
     private func agentSummaries() async -> [RemoteAgentInfo] {
         if let at = agentSummaryCacheAt, Date().timeIntervalSince(at) < 60, !agentSummaryCache.isEmpty {
             return agentSummaryCache.values.sorted { $0.displayName < $1.displayName }
         }
+        // 冷启动要扫三家的会话目录（约 7 秒），并发请求共享同一次计算。
+        if let inFlight = agentSummaryTask {
+            return await inFlight.value
+        }
+        let task = Task { await self.computeAgentSummaries() }
+        agentSummaryTask = task
+        let result = await task.value
+        agentSummaryTask = nil
+        return result
+    }
+
+    private func computeAgentSummaries() async -> [RemoteAgentInfo] {
         var result: [String: RemoteAgentInfo] = [:]
         let supported = Set(agentService.supportedAgentIDs)
         for record in AgentDiscovery.scan() where supported.contains(record.id) {
-            let sessions = (try? await agentService.sessions(for: record.id)) ?? []
+            let sessions = (try? await agentService.sessions(for: record.id, limit: 1000)) ?? []
             let projects = Set(sessions.compactMap { $0.projectPath }.filter { !$0.isEmpty })
             result[record.id] = RemoteAgentInfo(
                 id: record.id,
@@ -176,7 +196,7 @@ public final class LANRemoteServer {
         }
         // 支持的适配器即使没被目录扫到，也列出来（例如 DSH 靠桥接）
         for id in supported where result[id] == nil {
-            let sessions = (try? await agentService.sessions(for: id)) ?? []
+            let sessions = (try? await agentService.sessions(for: id, limit: 1000)) ?? []
             let projects = Set(sessions.compactMap { $0.projectPath }.filter { !$0.isEmpty })
             result[id] = RemoteAgentInfo(
                 id: id,
@@ -229,13 +249,13 @@ public final class LANRemoteServer {
                 let agentID = parts[0].removingPercentEncoding ?? parts[0]
                 if parts.count == 2 {
                     // GET /v1/agents/{id}/sessions
-                    let sessions = (try? await agentService.sessions(for: agentID)) ?? []
+                    let sessions = (try? await agentService.sessions(for: agentID, limit: 300)) ?? []
                     return Self.response(status: 200, body: (try? Self.encoder.encode(sessions.map(Self.remoteSession))) ?? Data("[]".utf8))
                 }
                 if parts.count >= 4 {
                     let sessionID = parts[2].removingPercentEncoding ?? parts[2]
                     let action = parts[3]
-                    let sessions = (try? await agentService.sessions(for: agentID)) ?? []
+                    let sessions = (try? await agentService.sessions(for: agentID, limit: 1000)) ?? []
                     guard let session = sessions.first(where: { $0.id == sessionID }) else {
                         return Self.response(status: 404, body: Data("{}".utf8))
                     }
