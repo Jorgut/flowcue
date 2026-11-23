@@ -33,6 +33,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rememberFrontmostExternalApplication()
     }
 
+    /// ⌘Q 本地监听的句柄；需要保留以便移除。
+    private var quitShortcutMonitor: Any?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if FLOWCUE_APP_STORE
         NSApp.setActivationPolicy(.regular)
@@ -40,6 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.setActivationPolicy(.accessory)
         configureDockIconPolicy()
         NotificationService.shared.start()
+        installQuitShortcutMonitor()
         NotificationService.shared.onOpenSession = { [weak self] agentID, sessionID in
             self?.unreadReplies.markRead(agentID: agentID, sessionID: sessionID)
             self?.showAgents()
@@ -396,6 +400,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             showStatusMenu(relativeTo: sender)
         } else {
             toggleCapturePanel()
+        }
+    }
+
+    /// 记录面板是 .nonactivatingPanel，不会激活 App，菜单栏还停在上一个 App 上，
+    /// ⌘Q 就发不到这里。加一个本地监听兜底，保证窗口里按 ⌘Q 一定退出。
+    private func installQuitShortcutMonitor() {
+        guard quitShortcutMonitor == nil else { return }
+        quitShortcutMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            guard flags == .command,
+                  event.charactersIgnoringModifiers?.lowercased() == "q" else {
+                return event
+            }
+            NSApp.terminate(nil)
+            return nil
         }
     }
 
