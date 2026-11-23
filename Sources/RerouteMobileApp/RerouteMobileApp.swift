@@ -3811,7 +3811,7 @@ private struct AgentsView: View {
                     Button {
                         controller.disconnect()
                     } label: {
-                        Label("断连", systemImage: "bolt.horizontal.circle")
+                        Label(L10n.language == .mandarin ? "断连" : "Disconnect", systemImage: "bolt.horizontal.circle")
                             .flowCueFont(11.5, relativeTo: .caption, weight: .semibold)
                             .foregroundStyle(FlowCueTheme.textSecondary)
                     }
@@ -3821,7 +3821,7 @@ private struct AgentsView: View {
                         controller.disconnect()
                         showingPairing = true
                     } label: {
-                        Label("更换配对码", systemImage: "number.circle")
+                        Label(L10n.language == .mandarin ? "更换配对码" : "Change code", systemImage: "number.circle")
                             .flowCueFont(11.5, relativeTo: .caption, weight: .semibold)
                             .foregroundStyle(FlowCueTheme.accent)
                     }
