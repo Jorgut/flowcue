@@ -881,7 +881,8 @@ final class LANRemoteController {
             id: capture.id,
             text: capture.text,
             createdAt: capture.createdAt,
-            updatedAt: capture.updatedAt
+            updatedAt: capture.updatedAt,
+            status: capture.status.rawValue
         ))
     }
 
@@ -2127,7 +2128,12 @@ private struct InboxView: View {
             LazyVStack(spacing: 0) {
                 ForEach(visibleIdeas) { idea in
                     IdeaSwipeRow(
-                        onArchive: { store.archive(idea.id) },
+                        onArchive: {
+                            store.archive(idea.id)
+                            if let updated = store.captures.first(where: { $0.id == idea.id }) {
+                                Task { await remoteController.pushIdea(updated) }
+                            }
+                        },
                         onDelete: { pendingDelete = idea }
                     ) {
                         NavigationLink {

@@ -234,6 +234,8 @@ public final class Capture {
     public var statusRawValue: String
     public var statusBeforeArchiveRawValue: String?
     public var lastError: String?
+    /// 墓碑：删除改成软删，否则另一台设备不知道这条被删了。
+    public var deletedAt: Date?
 
     public init(
         id: UUID = UUID(),
@@ -246,7 +248,8 @@ public final class Capture {
         updatedAt: Date = .now,
         status: CaptureStatus = .draft,
         statusBeforeArchive: CaptureStatus? = nil,
-        lastError: String? = nil
+        lastError: String? = nil,
+        deletedAt: Date? = nil
     ) {
         self.id = id
         self.text = text
@@ -259,6 +262,7 @@ public final class Capture {
         self.statusRawValue = status.rawValue
         self.statusBeforeArchiveRawValue = statusBeforeArchive?.rawValue
         self.lastError = lastError
+        self.deletedAt = deletedAt
     }
 
     public var status: CaptureStatus {
