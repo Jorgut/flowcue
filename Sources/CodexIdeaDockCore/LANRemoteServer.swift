@@ -139,15 +139,25 @@ public final class LANRemoteServer {
     }
     /// 最近一次收到请求的客户端版本（nil 表示对方没带）。
     public private(set) static var lastClientVersion: String?
+    /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——
+    /// 这个接口只有手机会调，本机测试不会干扰计数。
+    private var phonePollCount = 0
+    private var lastPhonePollAt: Date?
 
     private func respond(to request: HTTPRequest) async throws -> Data {
+        if request.path == "/v1/dsh/approvals" {
+            phonePollCount += 1
+            lastPhonePollAt = Date()
+        }
         if request.path == "/v1/ping" {
             // `version` 保留给旧客户端；`protocol` 与 `appVersion` 给新客户端做版本握手
             let payload: [String: String] = [
                 "name": "FlowCue",
                 "version": String(Self.protocolVersion),
                 "protocol": String(Self.protocolVersion),
-                "appVersion": Self.appVersion
+                "appVersion": Self.appVersion,
+                "phonePolls": String(phonePollCount),
+                "lastPhonePollAt": lastPhonePollAt.map { ISO8601DateFormatter().string(from: $0) } ?? ""
             ]
             return Self.response(status: 200, body: try JSONEncoder().encode(payload))
         }

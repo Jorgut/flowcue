@@ -103,6 +103,13 @@ public struct APNsSender: Sendable {
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
         let (data, response) = try await configuration.session.data(for: request)
+        if let http = response as? HTTPURLResponse {
+            NSLog("[FlowCue APNs] env=%@ token=%@ status=%ld body=%@",
+                  configuration.environment.host,
+                  String(deviceToken.prefix(8)),
+                  http.statusCode,
+                  String(data: data, encoding: .utf8) ?? "")
+        }
         guard let http = response as? HTTPURLResponse else { throw PushError.invalidKey }
         guard http.statusCode == 200 else {
             let reason = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["reason"] as? String
