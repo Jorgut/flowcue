@@ -2616,7 +2616,7 @@ private struct IdeaSwipeRow<Content: View>: View {
                 // 用 simultaneousGesture：ScrollView 的滚动手势会抢走普通 gesture，
                 // 同时识别才能拿到横向拖拽；再用「横向为主才跟手」避免影响上下滚动。
                 .simultaneousGesture(
-                    DragGesture(minimumDistance: 12)
+                    DragGesture(minimumDistance: 20)
                         .updating($dragTranslation) { value, state, _ in
                             let dx = value.translation.width
                             let dy = value.translation.height
@@ -2640,11 +2640,7 @@ private struct IdeaSwipeRow<Content: View>: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { didDrag = false }
                         }
                 )
-                // 左滑之外再给一条长按路径，两套都能用。
-                .contextMenu {
-                    Button("Archive") { onArchive() }
-                    Button("Delete", role: .destructive) { onDelete() }
-                }
+
         }
         .clipped()
     }
@@ -4906,55 +4902,6 @@ private struct NewSessionSheet: View {
     }
 }
 
-private struct DSHQuestionsSheet: View {
-    @Bindable var controller: LANRemoteController
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 12) {
-                    if controller.dshQuestions.isEmpty {
-                        VStack(spacing: 10) {
-                            Image(systemName: "questionmark.bubble.fill")
-                                .font(.system(size: 26))
-                                .foregroundStyle(FlowCueTheme.mint)
-                            Text("没有待回答的问题")
-                                .flowCueFont(14, relativeTo: .subheadline)
-                                .foregroundStyle(FlowCueTheme.textSecondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 40)
-                    } else {
-                        ForEach(controller.dshQuestions) { batch in
-                            ForEach(batch.questions) { question in
-                                DSHQuestionCard(question: question) { chosen in
-                                    _ = await controller.answerDSH(
-                                        batchID: batch.id, questionID: question.id, chosen: chosen
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(AgentsLayout.margin)
-            }
-            .background { FlowCueScreenBackground() }
-            .navigationTitle(controller.dshQuestions.isEmpty ? "Questions" : "问题 · \(controller.dshQuestions.count)")
-            .navigationBarTitleDisplayMode(.inline)
-            .onChange(of: controller.dshQuestions.isEmpty) { _, isEmpty in
-                guard isEmpty else { return }
-                Task {
-                    try? await Task.sleep(for: .milliseconds(350))
-                    dismiss()
-                }
-            }
-        }
-        .presentationDetents([.medium, .large])
-        .presentationDragIndicator(.visible)
-    }
-}
-
 private struct DSHQuestionCard: View {
     let question: DSHRemoteQuestionBatch.Question
     let answer: ([String]) async -> Void
@@ -6537,7 +6484,8 @@ final class VoiceDictation {
     private nonisolated static func requestMicrophoneAuthorization(
         _ completion: @escaping @Sendable (Bool) -> Void
     ) {
-        AVAudioSession.sharedInstance().requestRecordPermission(completion)
+        // iOS 17+ 的新入口；旧 API 已废弃。
+        AVAudioApplication.requestRecordPermission(completionHandler: completion)
     }
 
     func stop() {
