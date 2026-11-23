@@ -3496,17 +3496,43 @@ private struct AgentsAgentRow: View {
     let title: String
     let meta: String
     let isActive: Bool
+    /// Agent 的 id（codex/claude/dsh），用来挑品牌图标；为空时退回 FlowCue 小脸。
+    var agentID: String = ""
+
+    /// 品牌图标：用官方 mark 的单色矢量，按品牌色 tint。
+    private var brand: (asset: String, tint: Color)? {
+        switch agentID {
+        case "codex": return ("AgentOpenAI", Color(hex: "#10A37F"))
+        case "claude": return ("AgentAnthropic", Color(hex: "#D97757"))
+        case "dsh": return ("AgentDeepSeek", Color(hex: "#4D6BFE"))
+        default: return nil
+        }
+    }
 
     var body: some View {
         HStack(spacing: 10) {
-            AgentsFaceBadge(
-                size: AgentsLayout.agentIcon,
-                faceSize: 18,
-                ink: isActive ? FlowCueTheme.textPrimary : FlowCueTheme.textSecondary,
-                smile: isActive ? FlowCueTheme.accent : FlowCueTheme.textSecondary,
-                background: FlowCueTheme.surface,
-                cornerRadius: 8
-            )
+            if let brand {
+                Image(brand.asset)
+                    .renderingMode(.template)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 17, height: 17)
+                    .foregroundStyle(isActive ? brand.tint : brand.tint.opacity(0.45))
+                    .frame(width: AgentsLayout.agentIcon, height: AgentsLayout.agentIcon)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                            .fill(FlowCueTheme.surface)
+                    )
+            } else {
+                AgentsFaceBadge(
+                    size: AgentsLayout.agentIcon,
+                    faceSize: 18,
+                    ink: isActive ? FlowCueTheme.textPrimary : FlowCueTheme.textSecondary,
+                    smile: isActive ? FlowCueTheme.accent : FlowCueTheme.textSecondary,
+                    background: FlowCueTheme.surface,
+                    cornerRadius: 8
+                )
+            }
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .flowCueFont(13, relativeTo: .subheadline)
@@ -3802,7 +3828,8 @@ private struct AgentsView: View {
                             AgentsAgentRow(
                                 title: agent.displayName,
                                 meta: agentMeta(agent),
-                                isActive: !isOffline && agent.sessionCount > 0
+                                isActive: !isOffline && agent.sessionCount > 0,
+                                agentID: agent.id
                             )
                         }
                         .buttonStyle(.plain)

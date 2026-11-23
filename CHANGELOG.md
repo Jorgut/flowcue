@@ -2,6 +2,13 @@
 
 本项目遵循语义化版本号。公开发布前的构建记录在本文件中维护。
 
+## 1.1.5 — Agent 品牌图标
+
+- Agents 页每个 Agent 用官方 mark：DeepSeek 鲸鱼、OpenAI 花、Anthropic 标记
+- 图标为单色矢量（SVG 进 `MobileAssets.xcassets`），按品牌色 tint：
+  DeepSeek `#4D6BFE`、OpenAI `#10A37F`、Anthropic `#D97757`
+- 离线时图标降到 45% 透明度；未知 Agent 仍退回 FlowCue 小脸
+
 ## 1.1.4 — 真实统计与连接体验
 
 > **发布状态（2026-11-23）**：已上传 TestFlight，`1.1.4 (94)`，Delivery UUID `87f169f2-1c69-4345-a261-e3af029a9001`。
