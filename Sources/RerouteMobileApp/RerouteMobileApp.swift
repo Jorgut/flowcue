@@ -567,6 +567,16 @@ final class LANRemoteController {
         }
     }
 
+    /// 每次启动、以及系统换发新 token 后，把 token 重新上报给 Mac。
+    /// 只在连接时上传一次会漏掉「装新包换了 token」这种情况。
+    func uploadPushTokenIfNeeded() async {
+        guard let selected else { return }
+        guard FlowCuePushRegistration.shared.needsUpload else { return }
+        guard FlowCuePushRegistration.shared.token != nil else { return }
+        await uploadPushToken(endpoint: selected.endpoint, code: pairingCode)
+        FlowCuePushRegistration.shared.needsUpload = false
+    }
+
     /// 把 APNs device token 交给 Mac。Mac 用它直接给苹果推送服务发请求，
     /// 不需要自建服务端；token 变了会覆盖。
     private func uploadPushToken(endpoint: NWEndpoint, code: String) async {
@@ -1242,6 +1252,7 @@ private struct RootTabView: View {
                 await remoteController.refreshApprovals()
                 await remoteController.refreshDSHQuestions()
                 await remoteController.refreshAgents()
+                await remoteController.uploadPushTokenIfNeeded()
                 try? await Task.sleep(for: .seconds(3))
             }
         }
@@ -3787,6 +3798,15 @@ private struct AgentsView: View {
                         action: { Task { await controller.refresh() } }
                     )
                     .padding(.top, 10)
+                }
+
+                // 有待回答的问题时在顶部提醒，避免只靠推送（推送可能失败）
+                if !controller.dshQuestions.isEmpty {
+                    FlowCueInlineBanner(
+                        kind: .warning,
+                        title: "\(controller.dshQuestions.count) 个问题在等你回答"
+                    )
+                    .padding(.top, 12)
                 }
 
                 AgentsSectionHeader(title: "DEVICES")
@@ -9727,6 +9747,7 @@ final class FlowCueAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
         didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
     ) {
         FlowCuePushRegistration.shared.handleToken(deviceToken)
+        FlowCuePushRegistration.shared.needsUpload = true
     }
 
     func application(
@@ -9755,6 +9776,14 @@ final class FlowCuePushRegistration {
     private let errorKey = "FlowCue.pushError"
 
     var token: String? { UserDefaults.standard.string(forKey: tokenKey) }
+
+    /// token 变了或 App 刚启动时要重新上报给 Mac。
+    /// 之前只在「配对连接」那一刻上传一次，装新包换了 token 后 Mac 永远拿不到。
+    private let needsUploadKey = "FlowCue.pushNeedsUpload"
+    var needsUpload: Bool {
+        get { UserDefaults.standard.bool(forKey: needsUploadKey) }
+        set { UserDefaults.standard.set(newValue, forKey: needsUploadKey) }
+    }
     var lastError: String? { UserDefaults.standard.string(forKey: errorKey) }
 
     /// 每次启动都走一遍：
@@ -9767,6 +9796,7 @@ final class FlowCuePushRegistration {
         // 界面预览时可跳过授权弹窗，免得挡住要看的页面。
         if ProcessInfo.processInfo.arguments.contains("--flowcue-questions-preview") { return }
         #endif
+        needsUpload = true
         Task {
             let center = UNUserNotificationCenter.current()
             var settings = await center.notificationSettings()
@@ -10069,6 +10099,10 @@ private struct AgentSessionsView: View {
         }
     }
 
+    private func hasPendingQuestion(_ session: RemoteAgentSession) -> Bool {
+        controller.dshQuestions.contains { $0.sessionId == session.id }
+    }
+
     private func sessionRow(_ session: RemoteAgentSession) -> some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(session.title.isEmpty ? "未命名会话" : session.title)
@@ -10087,6 +10121,17 @@ private struct AgentSessionsView: View {
                     Text("\(count) 条消息")
                         .flowCueFont(11, relativeTo: .caption2)
                         .foregroundStyle(FlowCueTheme.textSecondary)
+                }
+                // 这个会话有等待回答的问题：即使推送没到，列表里也能看到。
+                if hasPendingQuestion(session) {
+                    Text("待回答")
+                        .flowCueFont(10, relativeTo: .caption2, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 1.5)
+                        .background(
+                            Capsule().fill(FlowCueTheme.accent)
+                        )
                 }
             }
         }
