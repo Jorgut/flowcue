@@ -154,6 +154,8 @@ public final class LANRemoteServer {
     private var agentSummaryCache: [String: RemoteAgentInfo] = [:]
     private var agentSummaryCacheAt: Date?
     private var agentSummaryTask: Task<[RemoteAgentInfo], Never>?
+    /// 各 Agent 的会话列表缓存（30 秒）：手机上反复进出同一个 Agent 不必重扫。
+    private var agentSessionsCache: [String: (items: [RemoteAgentSession], at: Date)] = [:]
     /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——
     /// 这个接口只有手机会调，本机测试不会干扰计数。
     private var phonePollCount = 0
@@ -249,8 +251,14 @@ public final class LANRemoteServer {
                 let agentID = parts[0].removingPercentEncoding ?? parts[0]
                 if parts.count == 2 {
                     // GET /v1/agents/{id}/sessions
-                    let sessions = (try? await agentService.sessions(for: agentID, limit: 300)) ?? []
-                    return Self.response(status: 200, body: (try? Self.encoder.encode(sessions.map(Self.remoteSession))) ?? Data("[]".utf8))
+                    if let cached = agentSessionsCache[agentID],
+                       Date().timeIntervalSince(cached.at) < 30 {
+                        return Self.response(status: 200, body: (try? Self.encoder.encode(cached.items)) ?? Data("[]".utf8))
+                    }
+                    let sessions = (try? await agentService.sessions(for: agentID, limit: 200)) ?? []
+                    let items = sessions.map(Self.remoteSession)
+                    agentSessionsCache[agentID] = (items, Date())
+                    return Self.response(status: 200, body: (try? Self.encoder.encode(items)) ?? Data("[]".utf8))
                 }
                 if parts.count >= 4 {
                     let sessionID = parts[2].removingPercentEncoding ?? parts[2]

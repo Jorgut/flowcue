@@ -6,6 +6,9 @@ import Foundation
 public struct DSHAgentAdapter: AgentAdapter {
     public let agentID = "dsh"
     private let client: DSHBridgeClient
+    /// 复用同一个读取器：它内部按会话缓存解析好的头部，
+    /// 每次新建会让 58 个日志全部重新解压（实测慢到 18 秒）。
+    private let reader = DSHSessionReader()
 
     public init(client: DSHBridgeClient = DSHBridgeClient()) {
         self.client = client
@@ -23,7 +26,6 @@ public struct DSHAgentAdapter: AgentAdapter {
             pendingCounts[sessionID, default: 0] += 1
         }
 
-        let reader = DSHSessionReader()
         let localSessions = reader.sessions(limit: limit)
         var sessions: [AgentSession] = localSessions.map { session in
             let count = pendingCounts[session.id] ?? 0
@@ -63,7 +65,6 @@ public struct DSHAgentAdapter: AgentAdapter {
 
     public func messages(in session: AgentSession, limit: Int = 80) async throws -> [AgentMessage] {
         // 桥只暴露待审/发消息/决策，对话内容从本机会话日志读。
-        let reader = DSHSessionReader()
         let raw = reader.messages(sessionID: session.locator, limit: limit)
         guard !raw.isEmpty else { throw AgentAdapterError.notFound }
         return raw.enumerated().map { index, message in

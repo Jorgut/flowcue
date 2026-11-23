@@ -10143,10 +10143,29 @@ private struct AgentSessionsView: View {
         .contentShape(Rectangle())
     }
 
+    private var sessionsCacheKey: String { "FlowCue.agentSessions.\(agent.id)" }
+
+    private func loadCachedSessions() {
+        guard sessions.isEmpty,
+              let data = UserDefaults.standard.data(forKey: sessionsCacheKey),
+              let cached = try? JSONDecoder().decode([RemoteAgentSession].self, from: data),
+              !cached.isEmpty else { return }
+        sessions = cached
+        loading = false
+    }
+
+    private func saveCachedSessions() {
+        guard !sessions.isEmpty, let data = try? JSONEncoder().encode(sessions) else { return }
+        UserDefaults.standard.set(data, forKey: sessionsCacheKey)
+    }
+
     private func reload() async {
-        loading = true
+        // 先显示上次的列表，避免每次进来都看骨架屏。
+        loadCachedSessions()
+        if sessions.isEmpty { loading = true }
         sessions = await controller.agentSessions(agent.id)
         loading = false
+        saveCachedSessions()
         // 记住上次位置，供切换器显示「上次：xxx」
         if let id = UserDefaults.standard.string(forKey: lastKey),
            let match = sessions.first(where: { $0.id == id }) {
