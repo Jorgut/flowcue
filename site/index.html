@@ -44,6 +44,29 @@
   .feature ul { margin: 14px 0 0; padding-left: 18px; }
   .feature li { font-size: 14px; margin-bottom: 5px; }
   .shot { width: 100%; border-radius: 14px; border: 1px solid var(--border); display: block; }
+  .eyebrow { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; font-size: 12px; color: var(--muted); }
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
+    color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent) 34%, transparent);
+    padding: 3px 9px; border-radius: 999px;
+  }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+  .future { margin-top: 88px; background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 28px 28px 22px; }
+  .future-head { display: grid; grid-template-columns: 1.15fr .85fr; gap: 34px; align-items: start; }
+  .future h2 { font-size: 26px; letter-spacing: -0.02em; margin: 0 0 10px; }
+  .future-head p { font-size: 15px; margin: 0; }
+  .future ul { margin: 34px 0 0; padding-left: 18px; }
+  .future li { font-size: 13.5px; margin-bottom: 5px; }
+  .future .shot { margin-top: 24px; }
+  .future .note { font-size: 12px; color: var(--muted); margin: 10px 0 0; }
+  @media (max-width: 860px) {
+    .future { padding: 22px 20px 18px; }
+    .future-head { grid-template-columns: 1fr; gap: 18px; }
+    .future h2 { font-size: 21px; }
+    .future h2 br { display: none; }
+    .future ul { margin-top: 0; }
+  }
 
   .proof { margin-top: 88px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
   @media (max-width: 860px) { .proof { grid-template-columns: 1fr; } }
@@ -142,6 +165,27 @@
     <img class="shot" src="assets/shots/settings-agents.png" alt="Local agents">
   </section>
 
+  <section class="future" id="windows">
+    <div class="future-head">
+      <div class="copy">
+        <div class="eyebrow">
+          <span class="badge" data-i18n="win.badge">Coming soon</span>
+          <span data-i18n="win.eyebrow">Windows · in development</span>
+        </div>
+        <h2 data-i18n-html="win.t">One node on Windows. <br>Every screen you already use.</h2>
+        <p data-i18n="win.b">FlowCue for Windows will be a small node, not another desktop app. Run it on the PC and its Codex sessions open in the browser on whichever device you pick up — Mac, iPad, Android — or in the iPhone app, paired with a six-digit code. No client to install — just a browser.</p>
+      </div>
+      <ul>
+        <li data-i18n="win.1">Console in any browser: Mac, Windows, iPad, Android</li>
+        <li data-i18n="win.2">iPhone app pairs to the node with a six-digit code</li>
+        <li data-i18n="win.3">No Android app yet; the browser console works there</li>
+        <li data-i18n="win.4">Codex first; Claude Code and approvals after</li>
+      </ul>
+    </div>
+    <img class="shot" src="assets/shots/windows-console.png" alt="FlowCue Windows console, design preview">
+    <p class="note" data-i18n="win.note">Design preview: the screen above is a mockup, not shipped UI. Windows support is in development.</p>
+  </section>
+
   <section class="proof">
     <div class="card"><h3 data-i18n="p1.t">Local by default</h3><p data-i18n="p1.b">No account, no analytics SDK, no server holding your text. Ideas live in a local database.</p></div>
     <div class="card"><h3 data-i18n="p2.t">Read, never write</h3><p data-i18n="p2.b">It opens <code>~/.claude</code> and <code>~/.codex</code> to show sessions. It does not edit your configuration.</p></div>
@@ -227,6 +271,14 @@ const I18N = {
     "f3.1":"Codex, Claude Code and DSH are chat-capable",
     "f3.2":"Others are detected, clearly marked as detect-only",
     "f3.3":"It reads your agent configs; it never writes them",
+    "win.badge":"Coming soon","win.eyebrow":"Windows · in development",
+    "win.t":"One node on Windows. <br>Every screen you already use.",
+    "win.b":"FlowCue for Windows will be a small node, not another desktop app. Run it on the PC and its Codex sessions open in the browser on whichever device you pick up — Mac, iPad, Android — or in the iPhone app, paired with a six-digit code. No client to install — just a browser.",
+    "win.1":"Console in any browser: Mac, Windows, iPad, Android",
+    "win.2":"iPhone app pairs to the node with a six-digit code",
+    "win.3":"No Android app yet; the browser console works there",
+    "win.4":"Codex first; Claude Code and approvals after",
+    "win.note":"Design preview: the screen above is a mockup, not shipped UI. Windows support is in development.",
     "p1.t":"Local by default","p1.b":"No account, no analytics SDK, no server holding your text. Ideas live in a local database.",
     "p2.t":"Read, never write","p2.b":"It opens ~/.claude and ~/.codex to show sessions. It does not edit your configuration.",
     "p3.t":"Small and signed","p3.b":"4.7 MB, runs in the menu bar, signed with Developer ID and notarized by Apple.",
@@ -269,6 +321,14 @@ const I18N = {
     "f3.1":"Codex、Claude Code、DSH 可以读会话、发消息",
     "f3.2":"其余只做检测，并明确标注「仅检测」",
     "f3.3":"只读你的 agent 配置，绝不写入",
+    "win.badge":"即将推出","win.eyebrow":"Windows · 开发中",
+    "win.t":"Windows 上跑一个节点，<br>手边每块屏幕都能用。",
+    "win.b":"Windows 版会是一个小节点，而不是又一个桌面 App。在 PC 上跑起来，Codex 会话就能在浏览器里打开 —— Mac、iPad、Android 都行 —— 或者用 iPhone App 配六位码连上。不用装客户端，浏览器打开就能用。",
+    "win.1":"浏览器打开控制台：Mac、Windows、iPad、Android",
+    "win.2":"iPhone App 用六位配对码连同一个节点",
+    "win.3":"Android App 还没开始做，浏览器版先用着",
+    "win.4":"先接 Codex，Claude Code 与审批随后",
+    "win.note":"设计预览：上方画面是视觉稿，不是已发布界面。Windows 支持仍在开发中。",
     "p1.t":"默认留在本机","p1.b":"没有账号、没有统计 SDK、没有保存你文字的服务器。想法存在本地数据库。",
     "p2.t":"只读，不写","p2.b":"它会打开 ~/.claude 与 ~/.codex 来显示会话，但不会修改你的配置。",
     "p3.t":"小，且已签名","p3.b":"4.7 MB，住在菜单栏，Developer ID 签名并通过 Apple 公证。",
