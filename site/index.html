@@ -104,6 +104,8 @@
     font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
   }
   .founding button:disabled { opacity: .5; cursor: default; }
+  .founding .tier-line { display: flex; align-items: baseline; gap: 6px; margin: 0 0 10px; }
+  .founding .tier-line strong { color: var(--text); font-size: 15px; }
   .founding .fine { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
   .founding .fine + .fine { margin-top: 4px; }
 
@@ -232,29 +234,30 @@
     <div>
       <div class="eyebrow">
         <span class="badge" data-i18n="fd.badge">Founding Mac Pro</span>
-        <span data-i18n="fd.eyebrow">999 seats · $9.9 once</span>
+        <span data-i18n="fd.eyebrow">1,999 seats · from $9.9</span>
       </div>
-      <h2 data-i18n="fd.t">Mac Pro for $9.9, once.</h2>
-      <p data-i18n="fd.b">The first 999 people can reserve Mac Pro for a one-time $9.9: sending to agents, parallel dispatch, favorites and search on the Mac. Checkout opens before launch — reserving costs nothing today.</p>
+      <h2 data-i18n="fd.t">The first 999 get $9.9.</h2>
+      <p data-i18n="fd.b">Mac Pro lifetime, one-time. Seats 1–999 are $9.9; seats 1,000–1,999 are $19.9. After 1,999, Mac Pro is $29. Reserve now — checkout opens before launch.</p>
       <ul>
-        <li data-i18n="fd.1">Mac Pro lifetime license — $9.9 once</li>
-        <li data-i18n="fd.2">Send to agents, parallel dispatch, favorites and search</li>
-        <li data-i18n="fd.3">One seat per email; $29 after seat 999</li>
+        <li data-i18n="fd.1">Seats 1–999: $9.9 once</li>
+        <li data-i18n="fd.2">Seats 1,000–1,999: $19.9 once</li>
+        <li data-i18n="fd.3">Send to agents, parallel dispatch, favorites and search</li>
         <li data-i18n="fd.4">Mobile Pro is a separate subscription</li>
       </ul>
     </div>
     <div>
       <div class="counter">
         <strong id="founding-count">—</strong>
-        <span data-i18n="fd.of">/ 999 reserved</span>
+        <span data-i18n="fd.of">/ 1,999 reserved</span>
       </div>
       <div class="meter" aria-hidden="true"><span id="founding-meter"></span></div>
+      <p class="fine tier-line"><span data-i18n="fd.nextLabel">Next seat</span> <strong id="founding-price">$9.9</strong></p>
       <form id="founding-form" novalidate>
         <input id="founding-email" type="email" required autocomplete="email" placeholder="you@example.com" aria-label="Email address">
         <button type="submit" data-i18n="fd.cta">Reserve my seat</button>
       </form>
       <p class="fine" id="founding-msg" role="status" aria-live="polite"></p>
-      <p class="fine" data-i18n="fd.note">Reservation only — no payment today. We'll email your $9.9 checkout link before launch.</p>
+      <p class="fine" data-i18n="fd.note">Reservation only — no payment today. We'll email your checkout link at the reserved price before launch.</p>
       <p class="fine"><a href="/privacy" data-i18n="fd.privacy">Email only. No account, no card.</a></p>
     </div>
   </section>
@@ -356,17 +359,17 @@ const I18N = {
     "p2.t":"Read, never write","p2.b":"It opens ~/.claude, ~/.codex and ~/.dsh to show sessions. It does not edit your configuration.",
     "p3.t":"Small and signed","p3.b":"5.4 MB, runs in the menu bar, signed with Developer ID and notarized by Apple.",
     "pr.free":"Free","pr.1":"Menu bar capture and the inbox","pr.2":"Local agent detection",
-    "pr.3":"LAN pairing with iPhone","pr.4":"Universal build, signed and notarized","pr.pro":"Mac Pro upgrade: $9.9 founding",
-    "fd.badge":"Founding Mac Pro","fd.eyebrow":"999 seats · $9.9 once",
-    "fd.t":"Mac Pro for $9.9, once.",
-    "fd.b":"The first 999 people can reserve Mac Pro for a one-time $9.9: sending to agents, parallel dispatch, favorites and search on the Mac. Checkout opens before launch — reserving costs nothing today.",
-    "fd.1":"Mac Pro lifetime license — $9.9 once","fd.2":"Send to agents, parallel dispatch, favorites and search",
-    "fd.3":"One seat per email; $29 after seat 999","fd.4":"Mobile Pro is a separate subscription",
-    "fd.of":"/ 999 reserved","fd.cta":"Reserve my seat","fd.privacy":"Email only. No account, no card.",
-    "fd.note":"Reservation only — no payment today. We'll email your $9.9 checkout link before launch.",
-    "fd.msg.success":"You're reserved at #{n}. We'll email the $9.9 checkout link before launch.",
-    "fd.msg.dup":"You're already reserved at #{n}.",
-    "fd.msg.full":"All 999 founding seats are reserved.",
+    "pr.3":"LAN pairing with iPhone","pr.4":"Universal build, signed and notarized","pr.pro":"Mac Pro upgrade: from $9.9",
+    "fd.badge":"Founding Mac Pro","fd.eyebrow":"1,999 seats · from $9.9",
+    "fd.t":"The first 999 get $9.9.",
+    "fd.b":"Mac Pro lifetime, one-time. Seats 1–999 are $9.9; seats 1,000–1,999 are $19.9. After 1,999, Mac Pro is $29. Reserve now — checkout opens before launch.",
+    "fd.1":"Seats 1–999: $9.9 once","fd.2":"Seats 1,000–1,999: $19.9 once",
+    "fd.3":"Send to agents, parallel dispatch, favorites and search","fd.4":"Mobile Pro is a separate subscription",
+    "fd.of":"/ 1,999 reserved","fd.cta":"Reserve my seat","fd.privacy":"Email only. No account, no card.",
+    "fd.nextLabel":"Next seat","fd.note":"Reservation only — no payment today. We'll email your checkout link at the reserved price before launch.",
+    "fd.msg.success":"You're reserved at #{n} — ${p}. We'll email the checkout link before launch.",
+    "fd.msg.dup":"You're already reserved at #{n} — ${p}.",
+    "fd.msg.full":"All 1,999 founding seats are reserved.",
     "fd.msg.invalid":"Enter a valid email address.",
     "fd.msg.rate":"Too many claims from this network. Try again later.",
     "fd.msg.error":"Couldn't claim right now. Please try again.",
@@ -422,17 +425,17 @@ const I18N = {
     "p2.t":"只读，不写","p2.b":"它会打开 ~/.claude、~/.codex 与 ~/.dsh 来显示会话，但不会修改你的配置。",
     "p3.t":"小，且已签名","p3.b":"5.4 MB，住在菜单栏，Developer ID 签名并通过 Apple 公证。",
     "pr.free":"免费","pr.1":"菜单栏捕获与收件箱","pr.2":"本机 agent 检测",
-    "pr.3":"与 iPhone 局域网配对","pr.4":"通用二进制，已签名公证","pr.pro":"Mac Pro 升级：$9.9 创始价",
-    "fd.badge":"创始 Mac Pro","fd.eyebrow":"999 个席位 · 一次性 $9.9",
-    "fd.t":"Mac Pro，$9.9 买断。",
-    "fd.b":"前 999 个可以按一次性 $9.9 预约 Mac Pro：解锁 Mac 上的发消息、并行分发、收藏与搜索。结账在发布前开放，现在预约不收费。",
-    "fd.1":"Mac Pro 终身授权——一次性 $9.9","fd.2":"发消息、并行分发、收藏与搜索",
-    "fd.3":"一个邮箱一个席位；第 1000 个起 $29","fd.4":"手机 Pro 是另一项订阅",
-    "fd.of":"/ 999 已预约","fd.cta":"预约席位","fd.privacy":"只收邮箱，不用账号，不用绑卡。",
-    "fd.note":"只是预约，今天不付款。发布前会把 $9.9 结账链接发到这个邮箱。",
-    "fd.msg.success":"已为你保留第 {n} 位。发布前会把 $9.9 结账链接发到这个邮箱。",
-    "fd.msg.dup":"你已经在名单里，第 {n} 位。",
-    "fd.msg.full":"999 个创始席位已经预约满了。",
+    "pr.3":"与 iPhone 局域网配对","pr.4":"通用二进制，已签名公证","pr.pro":"Mac Pro 升级：$9.9 起",
+    "fd.badge":"创始 Mac Pro","fd.eyebrow":"1,999 个席位 · 起价 $9.9",
+    "fd.t":"前 999 个，$9.9。",
+    "fd.b":"Mac Pro 终身授权，一次性买断。1–999 名 $9.9，1,000–1,999 名 $19.9；1,999 之后 $29。现在预约，结账在发布前开放。",
+    "fd.1":"1–999 名：一次性 $9.9","fd.2":"1,000–1,999 名：一次性 $19.9",
+    "fd.3":"发消息、并行分发、收藏与搜索","fd.4":"手机 Pro 是另一项订阅",
+    "fd.of":"/ 1,999 已预约","fd.cta":"预约席位","fd.privacy":"只收邮箱，不用账号，不用绑卡。",
+    "fd.nextLabel":"下一档","fd.note":"只是预约，今天不付款。发布前会按你锁定的价格把结账链接发到这个邮箱。",
+    "fd.msg.success":"已为你保留第 {n} 位，价格 ${p}。发布前会把结账链接发到这个邮箱。",
+    "fd.msg.dup":"你已经在名单里，第 {n} 位，价格 ${p}。",
+    "fd.msg.full":"1,999 个创始席位已经预约满了。",
     "fd.msg.invalid":"请输入有效的邮箱地址。",
     "fd.msg.rate":"这个网络领取太频繁了，稍后再试。",
     "fd.msg.error":"现在没能领上，请再试一次。",
@@ -474,35 +477,45 @@ function applyLanguage(lang) {
   const API = "https://flowcue-founding.honaler.workers.dev";
   const countEl = document.getElementById("founding-count");
   const meterEl = document.getElementById("founding-meter");
+  const priceEl = document.getElementById("founding-price");
   const form = document.getElementById("founding-form");
   const input = document.getElementById("founding-email");
   const msg = document.getElementById("founding-msg");
   if (!form || !countEl) return;
   const button = form.querySelector("button");
-  let state = { claimed: null, open: true };
-  let last = { key: "fd.msg.loading", n: null };
+  let state = { claimed: null, open: true, next: null };
+  let last = { key: "fd.msg.loading", values: {} };
   function dict() { return (I18N[document.documentElement.lang === "zh-Hans" ? "zh" : "en"] || I18N.en); }
-  function setMessage(key, n) {
-    last = { key, n: n == null ? null : n };
-    msg.textContent = (dict()[key] || key).replace("{n}", n == null ? "" : n);
+  function setMessage(key, values) {
+    last = { key: key, values: values || {} };
+    let text = dict()[key] || key;
+    Object.keys(last.values).forEach(function (k) {
+      text = text.split("{" + k + "}").join(String(last.values[k]));
+    });
+    msg.textContent = text;
   }
   function paint() {
     if (state.claimed == null) { countEl.textContent = "—"; return; }
     countEl.textContent = String(state.claimed);
-    meterEl.style.width = Math.min(100, (state.claimed / 999) * 100) + "%";
+    meterEl.style.width = Math.min(100, (state.claimed / 1999) * 100) + "%";
+    if (state.next && state.next.price != null) {
+      priceEl.textContent = "$" + state.next.price;
+    } else {
+      priceEl.textContent = "—";
+    }
     if (!state.open) { button.disabled = true; setMessage("fd.msg.full"); }
   }
-  window.__fcFounding = { relocalize: function () { setMessage(last.key, last.n); } };
+  window.__fcFounding = { relocalize: function () { setMessage(last.key, last.values); } };
 
   fetch(API + "/api/founding/status", { cache: "no-store" })
     .then(function (r) { return r.json(); })
     .then(function (data) {
       if (!data.ok) throw new Error("bad status");
-      state = { claimed: data.claimed, open: data.open };
+      state = { claimed: data.claimed, open: data.open, next: data.next };
       paint();
       if (data.open) { msg.textContent = ""; } else { setMessage("fd.msg.full"); }
     })
-    .catch(function () { countEl.textContent = "—"; setMessage("fd.msg.unavailable"); });
+    .catch(function () { countEl.textContent = "—"; if (priceEl) priceEl.textContent = "—"; setMessage("fd.msg.unavailable"); });
 
   form.addEventListener("submit", async function (e) {
     e.preventDefault();
@@ -517,12 +530,12 @@ function applyLanguage(lang) {
       });
       const data = await res.json();
       if (data.ok) {
-        state = { claimed: data.claimed, open: data.open };
+        state = { claimed: data.claimed, open: data.open, next: data.next };
         paint();
-        setMessage(data.duplicate ? "fd.msg.dup" : "fd.msg.success", data.seat);
+        setMessage(data.duplicate ? "fd.msg.dup" : "fd.msg.success", { n: data.seat, p: data.price });
         input.value = "";
       } else if (data.error === "full") {
-        state = { claimed: 999, open: false };
+        state = { claimed: 1999, open: false, next: { tier: 0, price: null } };
         paint();
         setMessage("fd.msg.full");
       } else if (data.error === "rate_limited") {

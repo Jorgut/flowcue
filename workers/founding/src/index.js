@@ -1,4 +1,7 @@
-const LIMIT = 999;
+const LIMIT = 1999;
+const TIER1 = 999;
+const PRICE1 = 9.9;
+const PRICE2 = 19.9;
 const ORIGINS = new Set([
   "https://flowcue.altn.vision",
   "http://127.0.0.1:8811",
@@ -40,10 +43,21 @@ async function ipHash(request, env) {
   return [...new Uint8Array(digest)].slice(0, 12).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+function nextTier(claimed) {
+  if (claimed < TIER1) return { tier: 1, price: PRICE1, remaining: TIER1 - claimed };
+  if (claimed < LIMIT) return { tier: 2, price: PRICE2, remaining: LIMIT - claimed };
+  return { tier: 0, price: null, remaining: 0 };
+}
+
 async function counts(env) {
   const row = await env.DB.prepare("SELECT COUNT(*) AS claimed FROM founding_users").first();
   const claimed = Number(row?.claimed || 0);
-  return { claimed, remaining: Math.max(0, LIMIT - claimed), open: claimed < LIMIT };
+  return {
+    claimed,
+    remaining: Math.max(0, LIMIT - claimed),
+    open: claimed < LIMIT,
+    next: nextTier(claimed)
+  };
 }
 
 export default {
@@ -64,7 +78,8 @@ export default {
       const state = await counts(env);
       const existing = await env.DB.prepare("SELECT id FROM founding_users WHERE email = ?").bind(email).first();
       if (existing) {
-        return json({ ok: true, duplicate: true, seat: Number(existing.id), limit: LIMIT, ...state }, 200, headers);
+        const seat = Number(existing.id);
+        return json({ ok: true, duplicate: true, seat, price: seat <= TIER1 ? PRICE1 : PRICE2, limit: LIMIT, ...state }, 200, headers);
       }
       if (!state.open) return json({ ok: false, error: "full", limit: LIMIT, ...state }, 409, headers);
 
@@ -82,7 +97,8 @@ export default {
         return json({ ok: false, error: "full", limit: LIMIT, ...(await counts(env)) }, 409, headers);
       }
       const after = await counts(env);
-      return json({ ok: true, seat, limit: LIMIT, ...after }, 201, headers);
+      const price = seat <= TIER1 ? PRICE1 : PRICE2;
+      return json({ ok: true, seat, price, tier: seat <= TIER1 ? 1 : 2, limit: LIMIT, ...after }, 201, headers);
     }
     return json({ ok: false, error: "not_found" }, 404, headers);
   }

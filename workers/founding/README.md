@@ -1,6 +1,6 @@
 # Founding users worker
 
-Backs the **999 founding seats** counter and reservation form on the landing page.
+Backs the **1,999 founding seats** counter and reservation form on the landing page.
 Static site stays on Cloudflare Pages; this Worker owns the write path.
 
 This is a **reservation list**, not a payment flow yet. Checkout (Paddle) and
@@ -11,7 +11,7 @@ license issuance are added separately; until then no money changes hands.
 | Method | Path | Body | Result |
 |---|---|---|---|
 | GET | `/api/founding/status` | — | `{ok, claimed, remaining, limit, open}` |
-| POST | `/api/founding/claim` | `{"email":"..."}` | `{ok, seat, claimed, remaining, open}`; `duplicate: true` if the email already reserved |
+| POST | `/api/founding/claim` | `{"email":"..."}` | `{ok, seat, price, tier, claimed, remaining, open}`; `duplicate: true` if the email already reserved |
 
 Errors: `invalid_email` (400), `full` (409), `rate_limited` (429), `bad_json` (400).
 
@@ -28,7 +28,7 @@ founding_users(
 )
 ```
 
-Seats are the row id, capped at 999. Test rows must be deleted with the
+Seats are the row id, capped at 1999. Seats 1–999 are priced at $9.9, 1,000–1999 at $19.9 in the UI; this Worker stores reservations only. Test rows must be deleted with the
 `sqlite_sequence` reset, otherwise the next real claimant gets a gap:
 
 ```bash
