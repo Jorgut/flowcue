@@ -9740,6 +9740,9 @@ private struct AgentSessionsView: View {
     @State private var collapsed: Set<String> = []
     @State private var switchedAgent: RemoteAgentInfo?
     @State private var resume: RemoteAgentSession?
+    /// 自定义项目图标：project 名 → emoji，只存本机。
+    @State private var projectIcons: [String: String] = [:]
+    @State private var iconTarget: String?
 
     private var collapsedKey: String { "FlowCue.agentCollapsed.\(agent.id)" }
     private var lastKey: String { "FlowCue.agentLast.\(agent.id)" }
@@ -9856,7 +9859,29 @@ private struct AgentSessionsView: View {
         }
         .task {
             collapsed = Set(UserDefaults.standard.stringArray(forKey: collapsedKey) ?? [])
+            loadProjectIcons()
             await reload()
+        }
+        .sheet(isPresented: Binding(
+            get: { iconTarget != nil },
+            set: { if !$0 { iconTarget = nil } }
+        )) {
+            if let target = iconTarget {
+                ProjectIconPicker(
+                    project: target,
+                    current: icon(for: target),
+                    onPick: { emoji in
+                        setIcon(emoji, for: target)
+                        iconTarget = nil
+                    },
+                    onReset: {
+                        setIcon(nil, for: target)
+                        iconTarget = nil
+                    }
+                )
+                .presentationDetents([.height(340)])
+                .presentationDragIndicator(.visible)
+            }
         }
     }
 
@@ -9881,34 +9906,78 @@ private struct AgentSessionsView: View {
     }
 
     private func projectHeader(_ project: String, count: Int) -> some View {
-        Button {
-            if collapsed.contains(project) {
-                collapsed.remove(project)
-            } else {
-                collapsed.insert(project)
+        HStack(spacing: 9) {
+            // 图标本身可点：打开 emoji 选择器。未关联项目固定 💬、不可改。
+            Button {
+                guard project != "未关联项目" else { return }
+                iconTarget = project
+            } label: {
+                Text(icon(for: project))
+                    .font(.system(size: 13))
+                    .frame(width: 22, height: 22)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                            .fill(FlowCueTheme.accent.opacity(0.16))
+                    )
+                    .contentShape(Rectangle())
             }
-            UserDefaults.standard.set(Array(collapsed), forKey: collapsedKey)
-        } label: {
-            HStack(spacing: 8) {
-                Text(project.uppercased())
-                    .flowCueFont(10, relativeTo: .caption2, weight: .semibold)
-                    .tracking(1.0)
-                    .foregroundStyle(FlowCueTheme.textSecondary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Text("\(count)")
-                    .flowCueFont(10, relativeTo: .caption2)
-                    .foregroundStyle(FlowCueTheme.textSecondary)
-                Image(systemName: collapsed.contains(project) ? "chevron.down" : "chevron.up")
-                    .font(.system(size: 9, weight: .bold))
-                    .foregroundStyle(FlowCueTheme.textSecondary)
+            .buttonStyle(.plain)
+            .accessibilityLabel("编辑项目图标")
+
+            // 名称区域可点：折叠 / 展开。
+            Button {
+                if collapsed.contains(project) {
+                    collapsed.remove(project)
+                } else {
+                    collapsed.insert(project)
+                }
+                UserDefaults.standard.set(Array(collapsed), forKey: collapsedKey)
+            } label: {
+                HStack(spacing: 8) {
+                    Text(project.uppercased())
+                        .flowCueFont(10, relativeTo: .caption2, weight: .semibold)
+                        .tracking(1.0)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text("\(count)")
+                        .flowCueFont(10, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                    Image(systemName: collapsed.contains(project) ? "chevron.down" : "chevron.up")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                }
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, AgentsLayout.margin)
-            .padding(.top, 16)
-            .padding(.bottom, 6)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, AgentsLayout.margin)
+        .padding(.top, 16)
+        .padding(.bottom, 6)
+    }
+
+    private func loadProjectIcons() {
+        let defaults = UserDefaults.standard
+        for (key, value) in defaults.dictionaryRepresentation() where key.hasPrefix("FlowCue.projectIcon.") {
+            guard let emoji = value as? String, !emoji.isEmpty else { continue }
+            projectIcons[String(key.dropFirst("FlowCue.projectIcon.".count))] = emoji
+        }
+    }
+
+    private func icon(for project: String) -> String {
+        if project == "未关联项目" { return "💬" }
+        return projectIcons[project] ?? "📁"
+    }
+
+    private func setIcon(_ emoji: String?, for project: String) {
+        let key = "FlowCue.projectIcon.\(project)"
+        if let emoji {
+            projectIcons[project] = emoji
+            UserDefaults.standard.set(emoji, forKey: key)
+        } else {
+            projectIcons.removeValue(forKey: project)
+            UserDefaults.standard.removeObject(forKey: key)
+        }
     }
 
     private func sessionRow(_ session: RemoteAgentSession) -> some View {
@@ -10049,5 +10118,72 @@ private struct AgentChatView: View {
         messages = await controller.agentMessages(agentID: agent.id, sessionID: session.id)
         loading = false
         UserDefaults.standard.set(session.id, forKey: "FlowCue.agentLast.\(agent.id)")
+    }
+}
+
+/// 项目图标选择器：emoji 网格 + 恢复默认。
+private struct ProjectIconPicker: View {
+    let project: String
+    let current: String
+    let onPick: (String) -> Void
+    let onReset: () -> Void
+
+    private let choices: [String] = [
+        "📁", "💻", "🧩", "🎛", "🎨", "📦",
+        "🗂", "⚙️", "🌐", "📱", "🧪", "💬",
+        "🚀", "🛠", "📝", "🧠", "⛰", "🎧",
+        "🏗", "🔧", "📊", "🎬", "🌱", "⭐️"
+    ]
+
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 6)
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Text(project)
+                        .flowCueFont(13, relativeTo: .subheadline, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.textPrimary)
+                    Text("仅影响这台 iPhone 的显示，不会改动 Mac 上的文件。")
+                        .flowCueFont(11, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+
+                    LazyVGrid(columns: columns, spacing: 10) {
+                        ForEach(choices, id: \.self) { emoji in
+                            Button {
+                                onPick(emoji)
+                            } label: {
+                                Text(emoji)
+                                    .font(.system(size: 20))
+                                    .frame(maxWidth: .infinity)
+                                    .frame(height: 44)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .fill(emoji == current
+                                                  ? FlowCueTheme.accent.opacity(0.18)
+                                                  : FlowCueTheme.surface)
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                            .strokeBorder(emoji == current
+                                                          ? FlowCueTheme.accent
+                                                          : FlowCueTheme.hairline)
+                                    )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
+                    Button("恢复默认 📁") { onReset() }
+                        .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .padding(.top, 4)
+                }
+                .padding(16)
+            }
+            .background { FlowCueScreenBackground() }
+            .navigationTitle("项目图标")
+            .navigationBarTitleDisplayMode(.inline)
+        }
     }
 }
