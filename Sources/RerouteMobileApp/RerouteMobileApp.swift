@@ -616,6 +616,27 @@ final class LANRemoteController {
 
     // MARK: - 通用 Agent
     private(set) var agentInfos: [RemoteAgentInfo] = []
+    /// 本机可用的 skill（斜杠菜单用）。
+    private(set) var skills: [RemoteSkillInfo] = []
+
+    func refreshSkills() async {
+        guard let selected else { return }
+        guard let data = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "GET", path: "/v1/skills",
+            token: pairingCode, body: nil, timeout: 15
+        ) else { return }
+        if let list = try? JSONDecoder().decode([RemoteSkillInfo].self, from: data) {
+            skills = list
+            UserDefaults.standard.set(data, forKey: "FlowCue.skillsCache")
+        }
+    }
+
+    func loadCachedSkills() {
+        guard skills.isEmpty,
+              let data = UserDefaults.standard.data(forKey: "FlowCue.skillsCache"),
+              let list = try? JSONDecoder().decode([RemoteSkillInfo].self, from: data) else { return }
+        skills = list
+    }
 
     private static let agentCacheKey = "FlowCue.agentInfoCache"
 
@@ -5312,7 +5333,11 @@ private struct CodexAgentView: View {
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
         .edgeSwipeBack()
-        .task { network.start() }
+        .task {
+            network.start()
+            controller.loadCachedSkills()
+            await controller.refreshSkills()
+        }
         .onDisappear { network.stop() }
         .sheet(isPresented: $showingNewSession) {
             NewSessionSheet(agent: "Codex") { await controller.refresh() }
@@ -5671,6 +5696,15 @@ private struct ChatScreen: View {
     @State private var showingDisconnect = false
     @State private var showingApprovals = false
     @State private var isAtBottom = true
+
+    /// 输入 `/xxx`（尚未空格）时展示 skill 候选。
+    private var skillQuery: String {
+        guard text.hasPrefix("/"), !text.dropFirst().contains(" ") else { return "" }
+        return String(text.dropFirst())
+    }
+    private var showsSkillMenu: Bool {
+        text.hasPrefix("/") && !text.dropFirst().contains(" ")
+    }
     @State private var live = FlowCueLiveActivityController.shared
 
     private var target: ChatTarget { switchedTarget ?? initialTarget }
@@ -5773,6 +5807,11 @@ private struct ChatScreen: View {
                 }
                 .padding(.horizontal, AgentsLayout.margin)
                 .padding(.bottom, 8)
+            }
+            if showsSkillMenu {
+                SlashSkillMenu(skills: controller.skills, query: skillQuery) { name in
+                    text = "/" + name + " "
+                }
             }
             ChatComposer(text: $text, sending: sending) { images in
                 send(images)
@@ -10184,6 +10223,14 @@ private struct AgentChatView: View {
     @State private var text = ""
     @State private var sending = false
     @State private var loading = true
+    @State private var isAtBottom = true
+
+    /// 以 `/` 开头且还没敲空格时，展示 skill 候选。
+    private var slashQuery: String? {
+        guard text.hasPrefix("/"), !text.dropFirst().contains(" ") else { return nil }
+        return String(text.dropFirst())
+    }
+    private var showsSlashMenu: Bool { slashQuery != nil }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -10201,6 +10248,32 @@ private struct AgentChatView: View {
                     if let last = messages.last {
                         withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                     }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    if !isAtBottom {
+                        Button {
+                            withAnimation {
+                                proxy.scrollTo(messages.last?.id, anchor: .bottom)
+                            }
+                        } label: {
+                            Image(systemName: "arrow.down")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(FlowCueTheme.onAccent)
+                                .frame(width: 34, height: 34)
+                                .background(Circle().fill(FlowCueTheme.accent))
+                                .shadow(color: .black.opacity(0.25), radius: 6, y: 2)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 16)
+                        .padding(.bottom, 12)
+                        .accessibilityLabel("回到底部")
+                    }
+                }
+                .modifier(ScrollBottomTracking(isAtBottom: $isAtBottom))
+            }
+            if showsSlashMenu {
+                SlashSkillMenu(skills: controller.skills, query: slashQuery ?? "") { name in
+                    text = "/" + name + " "
                 }
             }
             composer
@@ -10269,6 +10342,8 @@ private struct AgentChatView: View {
     private func load() async {
         loading = true
         messages = await controller.agentMessages(agentID: agent.id, sessionID: session.id)
+        controller.loadCachedSkills()
+        await controller.refreshSkills()
         loading = false
         UserDefaults.standard.set(session.id, forKey: "FlowCue.agentLast.\(agent.id)")
     }
@@ -10337,6 +10412,83 @@ private struct ProjectIconPicker: View {
             .background { FlowCueScreenBackground() }
             .navigationTitle("项目图标")
             .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+/// 本机 skill（Mac 端扫描目录得出）。
+struct RemoteSkillInfo: Codable, Identifiable, Hashable {
+    let name: String
+    let summary: String
+    var id: String { name }
+}
+
+/// 输入 `/` 时弹出的 skill 列表。点一条就把 `/name ` 填进输入框。
+private struct SlashSkillMenu: View {
+    let skills: [RemoteSkillInfo]
+    let query: String
+    let onPick: (String) -> Void
+
+    private var matches: [RemoteSkillInfo] {
+        guard !query.isEmpty else { return Array(skills.prefix(30)) }
+        let q = query.lowercased()
+        return skills.filter {
+            $0.name.lowercased().contains(q) || $0.summary.lowercased().contains(q)
+        }.prefix(30).map { $0 }
+    }
+
+    var body: some View {
+        if !matches.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(matches) { skill in
+                    Button {
+                        onPick(skill.name)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("/" + skill.name)
+                                .flowCueFont(12.5, relativeTo: .caption, weight: .semibold)
+                                .foregroundStyle(FlowCueTheme.textPrimary)
+                            if !skill.summary.isEmpty {
+                                Text(skill.summary)
+                                    .flowCueFont(10, relativeTo: .caption2)
+                                    .foregroundStyle(FlowCueTheme.textSecondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+                }
+            }
+            .frame(maxHeight: 220)
+            .background(FlowCueTheme.surface)
+            .overlay(alignment: .top) {
+                Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+            }
+        }
+    }
+}
+
+/// 跟踪聊天是否已经滚到底部（用于显示/隐藏「回到底部」按钮）。
+private struct ScrollBottomTracking: ViewModifier {
+    @Binding var isAtBottom: Bool
+
+    func body(content: Content) -> some View {
+        if #available(iOS 18.0, *) {
+            content.onScrollGeometryChange(for: Bool.self) { geometry in
+                let distance = geometry.contentSize.height
+                    - geometry.contentOffset.y
+                    - geometry.containerSize.height
+                return distance < 40
+            } action: { _, atBottom in
+                isAtBottom = atBottom
+            }
+        } else {
+            content
         }
     }
 }

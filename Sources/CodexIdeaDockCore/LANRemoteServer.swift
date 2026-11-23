@@ -139,6 +139,54 @@ public final class LANRemoteServer {
     public static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
+    /// 一个可用的 skill（供手机端斜杠菜单展示）。
+    public struct RemoteSkill: Codable, Identifiable, Hashable, Sendable {
+        public let id: String
+        public let name: String
+        public let summary: String
+    }
+
+    /// 扫描本机常见 skill 目录。前端只用名字和一句话描述。
+    private func localSkills() -> [RemoteSkill] {
+        let roots = [
+            ".agents/skills",
+            ".codex/skills",
+            ".claude/skills",
+            ".dsh/skills"
+        ].map { URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent($0) }
+        var seen = Set<String>()
+        var result: [RemoteSkill] = []
+        for root in roots {
+            let entries = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? []
+            for entry in entries {
+                let skillFile = entry.appendingPathComponent("SKILL.md")
+                guard let text = try? String(contentsOfFile: skillFile.path, encoding: .utf8) else { continue }
+                var name = entry.lastPathComponent
+                var summary = ""
+                func clean(_ raw: Substring) -> String {
+                    var value = raw.trimmingCharacters(in: .whitespaces)
+                    // YAML 里常写成 name: "xxx"，去掉两端引号
+                    if value.hasPrefix("\"") || value.hasPrefix("'") { value.removeFirst() }
+                    if value.hasSuffix("\"") || value.hasSuffix("'") { value.removeLast() }
+                    return value
+                }
+                for line in text.split(separator: "\n").prefix(12) {
+                    let trimmed = line.trimmingCharacters(in: .whitespaces)
+                    if trimmed.hasPrefix("name:") {
+                        let value = clean(trimmed.dropFirst(5))
+                        if !value.isEmpty { name = value }
+                    } else if trimmed.hasPrefix("description:") {
+                        summary = String(clean(trimmed.dropFirst(12)).prefix(120))
+                    }
+                }
+                guard !name.isEmpty, !seen.contains(name) else { continue }
+                seen.insert(name)
+                result.append(RemoteSkill(id: name, name: name, summary: summary))
+            }
+        }
+        return result.sorted { $0.name < $1.name }
+    }
+
     /// 通用 Agent 接口用的编码器（日期走 ISO8601，和手机端一致）。
     private static let encoder: JSONEncoder = {
         let encoder = JSONEncoder()
@@ -287,6 +335,10 @@ public final class LANRemoteServer {
                 }
             }
             return Self.response(status: 404, body: Data("{}".utf8))
+        }
+
+        if request.method == "GET", request.path == "/v1/skills" {
+            return Self.response(status: 200, body: (try? Self.encoder.encode(localSkills())) ?? Data("[]".utf8))
         }
 
         if request.path == "/v1/ping" {

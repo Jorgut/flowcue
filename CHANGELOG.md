@@ -2,6 +2,22 @@
 
 本项目遵循语义化版本号。公开发布前的构建记录在本文件中维护。
 
+## 1.1.9 — 回到底部按钮 + 斜杠唤出 skill
+
+### 修复
+
+- **「回到底部」按钮不是所有对话页都有**：只有 DSH 用的旧 `ChatScreen` 有，
+  新写的通用 `AgentChatView`（Codex / Claude）漏了。已补上，
+  滚动离开底部时出现，点击平滑回到底部。
+
+### 新增
+
+- **斜杠唤出 skill**：输入框里敲 `/` 会弹出本机 skill 列表（121 个），
+  按名字或描述过滤，点一条即填入 `/name `。DSH 与通用对话页都支持。
+- Mac 新增 `GET /v1/skills`：扫描 `~/.agents/skills`、`~/.codex/skills`、
+  `~/.claude/skills`、`~/.dsh/skills`，读出 SKILL.md 的 name / description。
+- skill 列表本地缓存，进页面立即可用。
+
 ## 1.1.8 — 会话列表加载加速
 
 > **发布状态（2026-11-24）**：已上传 TestFlight，`1.1.8 (98)`，Delivery UUID `13434ac6-796f-4116-b495-3315e27d3e17`，已加入 Internal 测试组。
