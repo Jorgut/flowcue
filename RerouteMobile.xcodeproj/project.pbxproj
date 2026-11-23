@@ -53,6 +53,7 @@
 		E00000000000000000000002 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000002 /* PrivacyInfo.xcprivacy */; };
 		E3D2B745D159CD2847A60ED1 /* MobileAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000001 /* MobileAssets.xcassets */; };
 		F20929B4D1D262F0885B36DD /* FlowCueWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290A387167079A39C313F1B3 /* FlowCueWidgets.swift */; };
+		AA000000000000000000000A /* IdeasUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000009 /* IdeasUITests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -69,6 +70,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = 6B7F53A693A7904C340BEAD6;
 			remoteInfo = FlowCueWidgetsExtension;
+		};
+		AA000000000000000000000C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 001000000000000000000000 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 002000000000000000000000;
+			remoteInfo = RerouteMobile;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -127,6 +135,8 @@
 		C00000000000000000000004 /* AppStore.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AppStore.entitlements; sourceTree = "<group>"; };
 		C07DD7DC6F50AF7C48D79D74 /* FlowCueWidgets.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = FlowCueWidgets.entitlements; sourceTree = "<group>"; };
 		FB8E35A98922C72F05B0BFD1 /* FlowCueLiveActivityView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowCueLiveActivityView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000009 /* IdeasUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeasUITests.swift; sourceTree = "<group>"; };
+		AA0000000000000000000008 /* RerouteMobileUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RerouteMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -153,6 +163,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000000000000000000006 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -160,6 +177,7 @@
 			isa = PBXGroup;
 			children = (
 				006000000000000000000000 /* Sources */,
+				AA000000000000000000000D /* RerouteMobileUITests */,
 				009000000000000000000000 /* Support */,
 				004000000000000000000000 /* Products */,
 				06011F33345699B11B8BB83D /* Frameworks */,
@@ -172,6 +190,7 @@
 				005000000000000000000000 /* Reroute.app */,
 				4B1B856760554637E25AE225 /* FlowCueShareExtension.appex */,
 				98D22AD83AF7AE07B8603E41 /* FlowCueWidgetsExtension.appex */,
+				AA0000000000000000000008 /* RerouteMobileUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -284,6 +303,14 @@
 			path = ShareExtension;
 			sourceTree = "<group>";
 		};
+		AA000000000000000000000D /* RerouteMobileUITests */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000009 /* IdeasUITests.swift */,
+			);
+			path = Tests/RerouteMobileUITests;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -341,6 +368,24 @@
 			productReference = 4B1B856760554637E25AE225 /* FlowCueShareExtension.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		AA0000000000000000000001 /* RerouteMobileUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000002 /* Build configuration list for PBXNativeTarget "RerouteMobileUITests" */;
+			buildPhases = (
+				AA0000000000000000000005 /* Sources */,
+				AA0000000000000000000006 /* Frameworks */,
+				AA0000000000000000000007 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AA000000000000000000000B /* PBXTargetDependency */,
+			);
+			name = RerouteMobileUITests;
+			productName = RerouteMobileUITests;
+			productReference = AA0000000000000000000008 /* RerouteMobileUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -353,6 +398,10 @@
 				TargetAttributes = {
 					002000000000000000000000 = {
 						CreatedOnToolsVersion = 27.0;
+					};
+					AA0000000000000000000001 = {
+						CreatedOnToolsVersion = 27.0;
+						TestTargetID = 002000000000000000000000;
 					};
 				};
 			};
@@ -370,6 +419,7 @@
 			projectRoot = "";
 			targets = (
 				002000000000000000000000 /* RerouteMobile */,
+				AA0000000000000000000001 /* RerouteMobileUITests */,
 				DC45B26874386B85C52D1FE4 /* FlowCueShareExtension */,
 				6B7F53A693A7904C340BEAD6 /* FlowCueWidgetsExtension */,
 			);
@@ -399,6 +449,13 @@
 			buildActionMask = 2147483647;
 			files = (
 				7845BB8FDA3CBA3BC9C98398 /* MobileAssets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -464,6 +521,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000000000000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA000000000000000000000A /* IdeasUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -478,6 +543,11 @@
 			name = FlowCueShareExtension;
 			target = DC45B26874386B85C52D1FE4 /* FlowCueShareExtension */;
 			targetProxy = C9768E056F0D9F57CD354909 /* PBXContainerItemProxy */;
+		};
+		AA000000000000000000000B /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 002000000000000000000000 /* RerouteMobile */;
+			targetProxy = AA000000000000000000000C /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -525,7 +595,7 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueMobile.entitlements;
 				APS_ENVIRONMENT = development;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 86;
+				CURRENT_PROJECT_VERSION = 87;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -556,7 +626,7 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueMobile.entitlements;
 				APS_ENVIRONMENT = production;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 86;
+				CURRENT_PROJECT_VERSION = 87;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -587,7 +657,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 86;
+				CURRENT_PROJECT_VERSION = 87;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -618,7 +688,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/Widgets/FlowCueWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 86;
+				CURRENT_PROJECT_VERSION = 87;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -649,7 +719,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/Widgets/FlowCueWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 86;
+				CURRENT_PROJECT_VERSION = 87;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -681,7 +751,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 86;
+				CURRENT_PROJECT_VERSION = 87;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -702,6 +772,34 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AA0000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCueUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RerouteMobile;
+			};
+			name = Debug;
+		};
+		AA0000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.archintera.FlowCueUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RerouteMobile;
 			};
 			name = Release;
 		};
@@ -740,6 +838,15 @@
 			buildConfigurations = (
 				DE00872D1D93FDB1A544F9DB /* Release */,
 				95DB0D529D0349E000FF5D8A /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000002 /* Build configuration list for PBXNativeTarget "RerouteMobileUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000003 /* Debug */,
+				AA0000000000000000000004 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

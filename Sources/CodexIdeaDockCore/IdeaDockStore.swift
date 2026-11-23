@@ -506,6 +506,22 @@ public final class IdeaDockStore {
         }
     }
 
+    #if DEBUG
+    /// 仅用于 UI 测试：插入几条可预测的想法，方便断言列表行为。
+    public func seedUIIdeasIfNeeded() {
+        let prefix = "UITest idea"
+        // 逐条补齐，而不是「有就整体跳过」——否则上一轮只种了 6 条，
+        // 这一轮要 20 条时会以为已经种过。
+        for index in 1...20 {
+            let text = "\(prefix) \(index)"
+            guard !captures.contains(where: { $0.text == text }) else { continue }
+            modelContext.insert(Capture(text: text, status: .saved))
+        }
+        try? modelContext.save()
+        try? reloadCaptures()
+    }
+    #endif
+
     /// 从垃圾箱恢复：清掉墓碑，恢复时间往前走，让对端也跟着恢复。
     @discardableResult
     public func restore(_ captureID: UUID) -> Bool {

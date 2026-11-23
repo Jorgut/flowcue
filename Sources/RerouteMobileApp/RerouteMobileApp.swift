@@ -1264,6 +1264,11 @@ private struct RootTabView: View {
         .onChange(of: remoteController.dshQuestions.isEmpty) { _, isEmpty in
         }
         .onAppear {
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--flowcue-uitest-seed") {
+                store.seedUIIdeasIfNeeded()
+            }
+            #endif
             if !remoteController.dshApprovals.isEmpty { activeSheet = .approvals }
             if showingSharePreview { activeSheet = .sharePreview }
             FlowCuePushRegistration.shared.requestIfNeeded()
@@ -1828,7 +1833,9 @@ private struct InboxView: View {
                         if store.notification?.id == note.id { store.notification = nil }
                     }
                 }
-                HomeCaptureBar(store: store, controller: remoteController, focused: $captureFocused)
+                if !isSelecting {
+                    HomeCaptureBar(store: store, controller: remoteController, focused: $captureFocused)
+                }
                 if !captureFocused {
                     FlowCueTabBar(selection: $tab)
                         .transition(.opacity)
@@ -2678,19 +2685,30 @@ private struct IdeaSwipeRow<Content: View>: View {
         ZStack(alignment: .trailing) {
             if !isSelecting {
                 HStack(spacing: 0) {
-                    action("Archive", color: FlowCueTheme.warning, action: onArchive)
-                    action("Delete", color: FlowCueTheme.failure, action: onDelete)
+                    action("Archive", systemImage: "archivebox", color: FlowCueTheme.warning, action: onArchive)
+                    action("Delete", systemImage: "trash", color: FlowCueTheme.failure, action: onDelete)
                 }
+                // 只圆右侧两个角，左侧和行内容贴合。
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        bottomTrailingRadius: FlowCueTheme.radiusInline,
+                        topTrailingRadius: FlowCueTheme.radiusInline,
+                        style: .continuous
+                    )
+                )
+                .padding(.vertical, 2)
             }
             content
                 .background(FlowCueTheme.canvas)
                 .offset(x: isSelecting ? 0 : offsetX)
+                // 选择模式下把内容右移，给左侧的勾选圆圈腾出位置，
+                // 否则圆圈会压在标题上。
+                .padding(.leading, isSelecting ? 26 : 0)
                 .overlay(alignment: .leading) {
                     if isSelecting {
                         Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                             .font(.system(size: 20, weight: .semibold))
                             .foregroundStyle(isSelected ? FlowCueTheme.accent : FlowCueTheme.textSecondary)
-                            .padding(.leading, 2)
                     }
                 }
                 .contentShape(Rectangle())
@@ -2748,19 +2766,25 @@ private struct IdeaSwipeRow<Content: View>: View {
         .clipped()
     }
 
-    private func action(_ title: String, color: Color, action: @escaping () -> Void) -> some View {
+    private func action(_ title: String, systemImage: String, color: Color, action: @escaping () -> Void) -> some View {
         Button {
             withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { offsetX = 0 }
             action()
         } label: {
-            Text(title)
-                .flowCueFont(12, relativeTo: .caption, weight: .semibold)
-                .foregroundStyle(Color.white)
-                .frame(width: actionWidth)
-                .frame(maxHeight: .infinity)
-                .background(color)
+            VStack(spacing: 3) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(title)
+                    .flowCueFont(10, relativeTo: .caption2, weight: .semibold)
+            }
+            .foregroundStyle(Color.white)
+            .frame(width: actionWidth)
+            .frame(maxHeight: .infinity)
+            .background(color)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 }
 
