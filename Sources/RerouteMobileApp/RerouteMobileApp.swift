@@ -374,6 +374,16 @@ final class LANRemoteController {
                 createdAt: nil
             )]
         }
+        if args.contains("--flowcue-sessions-preview") {
+            let now = Date()
+            dshSessions = [
+                .init(id: "pv-1", title: "iOS 开发", projectDirectory: "/Users/aj/Jorgut-Independent Developer/FlowCue/FlowCue-Development", updatedAt: now, isSubagent: false),
+                .init(id: "pv-2", title: "继续 MacOS 开发会话", projectDirectory: "/Users/aj/Jorgut-Independent Developer/FlowCue/FlowCue-Development", updatedAt: now.addingTimeInterval(-3600), isSubagent: false),
+                .init(id: "pv-3", title: "1.1 已发布 1.2 继续", projectDirectory: "/Users/aj/Jorgut-Independent Developer/QuietBar", updatedAt: now.addingTimeInterval(-7200), isSubagent: false),
+                .init(id: "pv-4", title: "Tight canvas 任务开工", projectDirectory: "/Users/aj/Jorgut-Independent Developer/QuietBar", updatedAt: now.addingTimeInterval(-86400), isSubagent: false),
+                .init(id: "pv-5", title: "检查 Kaloop 并准备上架", projectDirectory: "/Users/aj/Jorgut-Independent Developer/Kaloop fit app", updatedAt: now.addingTimeInterval(-90000), isSubagent: false),
+            ]
+        }
         if args.contains("--flowcue-questions-preview") {
             dshQuestions = [
                 DSHRemoteQuestionBatch(
@@ -5249,6 +5259,20 @@ private struct DSHAgentView: View {
             .sorted { $0.updatedAt > $1.updatedAt }
     }
 
+    /// 按项目文件夹分组。Mac 端侧栏就是这么分的，iOS 之前把所有项目混在一个列表里，
+    /// 会话一多就分不清哪个属于哪个项目。
+    private var groupedSessions: [(project: String, sessions: [DSHSessionSnapshot])] {
+        Dictionary(grouping: sessions) { session in
+            let path = session.projectDirectory
+            guard !path.isEmpty else { return "未关联项目" }
+            return (path as NSString).lastPathComponent
+        }
+        .map { (project: $0.key, sessions: $0.value.sorted { $0.updatedAt > $1.updatedAt }) }
+        .sorted { lhs, rhs in
+            (lhs.sessions.first?.updatedAt ?? .distantPast) > (rhs.sessions.first?.updatedAt ?? .distantPast)
+        }
+    }
+
     private var isOnline: Bool {
         controller.isConnected && network.isOnline
     }
@@ -5322,22 +5346,40 @@ private struct DSHAgentView: View {
                     }
                     SessionsCountLabel(count: sessions.count)
                     VStack(spacing: 0) {
-                        ForEach(sessions) { session in
-                            NavigationLink {
-                                ChatScreen(controller: controller, tab: $tab, initialTarget: .dsh(session))
-                            } label: {
-                                AgentSessionRowView(
-                                    title: session.title,
-                                    subtitle: subtitle(for: session),
-                                    updatedAt: session.updatedAt,
-                                    isOnline: isOnline
-                                )
+                        ForEach(groupedSessions, id: \.project) { group in
+                            // 项目标题：和 Mac 侧栏一致，按文件夹名分组
+                            HStack(spacing: 6) {
+                                Text(group.project.uppercased())
+                                    .flowCueFont(10, relativeTo: .caption2)
+                                    .tracking(1.0)
+                                    .foregroundStyle(FlowCueTheme.textSecondary)
+                                    .lineLimit(1)
+                                Spacer(minLength: 0)
+                                Text("\(group.sessions.count)")
+                                    .flowCueFont(10, relativeTo: .caption2)
+                                    .foregroundStyle(FlowCueTheme.textSecondary)
                             }
-                            .buttonStyle(.plain)
-                            Rectangle()
-                                .fill(FlowCueTheme.hairline)
-                                .frame(height: 1)
-                                .accessibilityHidden(true)
+                            .padding(.horizontal, AgentsLayout.margin)
+                            .padding(.top, 16)
+                            .padding(.bottom, 6)
+
+                            ForEach(group.sessions) { session in
+                                NavigationLink {
+                                    ChatScreen(controller: controller, tab: $tab, initialTarget: .dsh(session))
+                                } label: {
+                                    AgentSessionRowView(
+                                        title: session.title,
+                                        subtitle: subtitle(for: session),
+                                        updatedAt: session.updatedAt,
+                                        isOnline: isOnline
+                                    )
+                                }
+                                .buttonStyle(.plain)
+                                Rectangle()
+                                    .fill(FlowCueTheme.hairline)
+                                    .frame(height: 1)
+                                    .accessibilityHidden(true)
+                            }
                         }
                     }
                     .padding(.horizontal, AgentsLayout.margin)

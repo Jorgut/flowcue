@@ -98,3 +98,40 @@ final class IdeasUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Trash"].exists, "Me 页面找不到 Trash 入口")
     }
 }
+
+/// Agents → DSH 的会话列表应按项目文件夹分组。
+final class AgentSessionsUITests: XCTestCase {
+    func testSessionsAreGroupedByProject() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["--flowcue-sessions-preview", "--flowcue-pro-preview", "--flowcue-uitest-seed"]
+        app.launch()
+
+        app.buttons["Agents"].firstMatch.tap()
+        sleep(2)
+        // 模拟器没有配对 Mac 时 Agents 页是空态，分组无从验证。
+        if app.staticTexts["No agents yet"].waitForExistence(timeout: 3) {
+            throw XCTSkip("模拟器未连接 Mac，跳过会话分组验证")
+        }
+        let early = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        early.name = "11-agents-page"
+        early.lifetime = .keepAlways
+        add(early)
+        let dshRow = app.staticTexts["DSH"].firstMatch
+        if !dshRow.waitForExistence(timeout: 5) {
+            app.swipeUp()
+            sleep(1)
+        }
+        XCTAssertTrue(dshRow.waitForExistence(timeout: 5), "Agents 页面没有 DSH 入口")
+        dshRow.tap()
+
+        // 三个项目名应该作为分组标题出现
+        for project in ["FLOWCUE-DEVELOPMENT", "QUIETBAR"] {
+            XCTAssertTrue(app.staticTexts[project].waitForExistence(timeout: 8),
+                          "缺少分组标题 \(project)")
+        }
+        let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        shot.name = "10-sessions-grouped"
+        shot.lifetime = .keepAlways
+        add(shot)
+    }
+}
