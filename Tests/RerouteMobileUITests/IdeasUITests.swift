@@ -12,6 +12,13 @@ final class IdeasUITests: XCTestCase {
         app.launch()
     }
 
+
+    /// 任意一条种子想法。不要写死编号——删除用例会把某一条删掉，
+    /// 后续用例就会因为找不到它而失败。
+    private func anySeedRow() -> XCUIElement {
+        app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "UITest idea")).firstMatch
+    }
+
     private func snap(_ name: String) {
         let shot = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         shot.name = name
@@ -21,7 +28,7 @@ final class IdeasUITests: XCTestCase {
 
     /// 列表能滚：向上拖之后，顶部那条的位置必须上移。
     func testScrollingWorks() {
-        let top = app.staticTexts["UITest idea 20"]
+        let top = anySeedRow()
         XCTAssertTrue(top.waitForExistence(timeout: 10), "种子数据没出现")
         snap("01-list")
         let before = top.frame.minY
@@ -35,7 +42,7 @@ final class IdeasUITests: XCTestCase {
 
     /// 长按进入批量选择，底部出现计数与操作。
     func testLongPressEntersSelection() {
-        let first = app.staticTexts["UITest idea 20"]
+        let first = anySeedRow()
         XCTAssertTrue(first.waitForExistence(timeout: 10))
         first.press(forDuration: 0.8)
         snap("03-longpress")
@@ -52,7 +59,7 @@ final class IdeasUITests: XCTestCase {
 
     /// 左滑露出两个操作，且不会跳详情。
     func testSwipeRevealsActions() {
-        let first = app.staticTexts["UITest idea 20"]
+        let first = anySeedRow()
         XCTAssertTrue(first.waitForExistence(timeout: 10))
         first.swipeLeft()
         snap("05-swipe")
@@ -65,8 +72,9 @@ final class IdeasUITests: XCTestCase {
 
     /// 左滑后点 Delete 必须真的生效（不只是按钮存在）。
     func testSwipeDeleteActuallyWorks() {
-        let top = app.staticTexts["UITest idea 20"]
+        let top = anySeedRow()
         XCTAssertTrue(top.waitForExistence(timeout: 10))
+        let deletedLabel = top.label
         top.swipeLeft()
         snap("06-before-delete-tap")
 
@@ -81,12 +89,13 @@ final class IdeasUITests: XCTestCase {
         confirm.tap()
         snap("08-after-confirm")
 
-        XCTAssertTrue(top.waitForNonExistence(timeout: 5), "确认后这一行还在")
+        XCTAssertTrue(app.staticTexts[deletedLabel].waitForNonExistence(timeout: 5),
+                      "确认后这一行还在")
     }
 
     /// Me 页面必须有 Trash 入口。
     func testTrashEntryExistsInMe() {
-        XCTAssertTrue(app.staticTexts["UITest idea 20"].waitForExistence(timeout: 10))
+        XCTAssertTrue(anySeedRow().waitForExistence(timeout: 10))
         app.buttons["Me"].firstMatch.tap()
         snap("08-me-page")
 
