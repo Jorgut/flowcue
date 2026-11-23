@@ -7,12 +7,25 @@ public struct RemoteIdea: Codable, Identifiable, Sendable {
     public let text: String
     public let createdAt: Date
     public let updatedAt: Date
+    /// 状态原始值；旧版 Mac/手机不带这个字段时按 saved 处理。
+    public let status: String?
+    /// 墓碑时间；非空表示这条已被删除。
+    public let deletedAt: Date?
 
-    public init(id: UUID, text: String, createdAt: Date, updatedAt: Date) {
+    public init(
+        id: UUID,
+        text: String,
+        createdAt: Date,
+        updatedAt: Date,
+        status: String? = nil,
+        deletedAt: Date? = nil
+    ) {
         self.id = id
         self.text = text
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.status = status
+        self.deletedAt = deletedAt
     }
 }
 

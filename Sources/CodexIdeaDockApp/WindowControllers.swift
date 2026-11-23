@@ -245,7 +245,7 @@ final class InboxWindowController: NSWindowController, NSWindowDelegate {
 final class AgentWindowController: NSWindowController, NSWindowDelegate {
     init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 620),
+            contentRect: NSRect(x: 0, y: 0, width: 1000, height: 640),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
@@ -256,7 +256,7 @@ final class AgentWindowController: NSWindowController, NSWindowDelegate {
         window.isOpaque = true
         window.backgroundColor = .windowBackgroundColor
         window.titlebarAppearsTransparent = true
-        window.minSize = NSSize(width: 760, height: 480)
+        window.minSize = NSSize(width: 880, height: 520)
         window.isReleasedWhenClosed = false
         window.setFrameAutosaveName("FlowCue.Agents")
         window.center()

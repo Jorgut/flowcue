@@ -120,6 +120,63 @@ public struct DSHSessionReader: Sendable {
         return (cwd, title, firstPrompt)
     }
 
+    /// 当前在做什么：正在跑的工具，或者「思考中」（turn 已开始还没结束）。
+    /// 手机靠它显示「执行命令 · … · 12s」，否则处理期间界面上什么都没发生。
+    public func currentActivity(sessionID: String) -> (label: String, at: Date)? {
+        guard let log = logURL(sessionID: sessionID),
+              let data = Self.decompress(path: log.path, maxBytes: 80_000_000) else { return nil }
+        var running: (label: String, at: Date)?
+        var turnStartedAt: Date?
+        for line in data.split(separator: UInt8(ascii: "\n")) {
+            guard let object = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  let type = object["type"] as? String else { continue }
+            let at = (object["time"] as? Double).map { Date(timeIntervalSince1970: $0 / 1000) } ?? Date()
+            switch type {
+            case "turn/start":
+                turnStartedAt = at
+                running = nil
+            case "turn/end":
+                turnStartedAt = nil
+                running = nil
+            case "tool/call":
+                guard let payload = object["data"] as? [String: Any] else { continue }
+                let name = payload["name"] as? String ?? "tool"
+                running = (Self.activityLabel(tool: name, arguments: payload["arguments"] as? String), at)
+            case "tool/result", "assistant/message":
+                running = nil
+            default:
+                break
+            }
+        }
+        if let running { return running }
+        if let turnStartedAt { return ("思考中", turnStartedAt) }
+        return nil
+    }
+
+    private static func activityLabel(tool name: String, arguments: String?) -> String {
+        func field(_ key: String) -> String? {
+            guard let arguments,
+                  let data = arguments.data(using: .utf8),
+                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let value = object[key] as? String else { return nil }
+            return value
+        }
+        switch name {
+        case "bash":
+            if let command = field("command") {
+                let firstLine = command.split(separator: "\n").first.map(String.init) ?? command
+                return "执行命令 · " + firstLine.prefix(60)
+            }
+        case "read", "write":
+            if let path = field("file_path") {
+                return (name == "read" ? "读取文件 · " : "写入文件 · ") + (path as NSString).lastPathComponent
+            }
+        default:
+            break
+        }
+        return "调用 " + name
+    }
+
     public func messages(sessionID: String, limit: Int = 100) -> [RemoteConversationMessage] {
         guard let log = logURL(sessionID: sessionID) else { return [] }
         guard let data = Self.decompress(path: log.path, maxBytes: 80_000_000) else { return [] }

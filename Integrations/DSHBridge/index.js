@@ -20,9 +20,13 @@ const PORT = Number(process.env.FLOWCUE_DSH_PORT || 47823);
 const HOST_BASE = `http://${HOST}:${PORT}`;
 // 手机在这个窗口内轮询过，就只等手机（不再同时弹桌面卡）。
 const PHONE_WINDOW_MS = Number(process.env.FLOWCUE_BRIDGE_PHONE_WINDOW_MS || 15_000);
-// 等手机多久；超时回退到桌面审批。手机连上时每 3 秒轮询，15 秒足够。
-// 两个值都可以用环境变量缩短，测试里跑得快一点。
-const PHONE_GRACE_MS = Number(process.env.FLOWCUE_BRIDGE_PHONE_GRACE_MS || 15_000);
+// 等手机多久；超时回退到桌面审批。手机锁屏时靠推送唤醒，给 45 秒。
+const PHONE_GRACE_MS = Number(process.env.FLOWCUE_BRIDGE_PHONE_GRACE_MS || 45_000);
+// 手机在这个窗口内出现过（轮询或决定），就优先只走手机。
+// 桌面卡一旦弹出，手机再批准时那张卡不会自动消失——所以宁可等手机。
+const PHONE_PAIR_WINDOW_MS = Number(process.env.FLOWCUE_BRIDGE_PHONE_PAIR_MS || 10 * 60_000);
+// 等问题卡回答多久；超时落回桌面。测试里可以调短。
+const QUESTION_TIMEOUT_MS = Number(process.env.FLOWCUE_BRIDGE_QUESTION_MS || 60_000);
 const STATE_DIR = join(homedir(), ".flowcue");
 const STATE_FILE = join(STATE_DIR, "dsh-bridge.json");
 
@@ -57,10 +61,31 @@ function json(res, status, body) {
   res.end(payload);
 }
 
-async function readJSON(req) {
+// 默认 16 KB 够审批用；发消息带图片时要大得多，所以按路由给上限。
+// DSH 的提问结构在不同调用方略有差异，这里统一成手机能直接渲染的形状。
+function normalizeQuestions(request) {
+  const raw = Array.isArray(request?.questions) ? request.questions
+    : Array.isArray(request) ? request
+    : request?.questions ? [request.questions] : [];
+  return raw.map((question, index) => ({
+    id: String(question?.id ?? index),
+    title: String(question?.prompt ?? question?.title ?? question?.question ?? ""),
+    detail: question?.detail ?? question?.description ?? null,
+    multiSelect: question?.multiSelect === true,
+    options: (Array.isArray(question?.options) ? question.options : []).map((option) => {
+      if (typeof option === "string") return { label: option, detail: null };
+      return {
+        label: String(option?.label ?? option?.title ?? option?.value ?? ""),
+        detail: option?.description ?? option?.detail ?? null,
+      };
+    }),
+  }));
+}
+
+async function readJSON(req, limit = 16_384) {
   let body = "";
   for await (const chunk of req) body += chunk;
-  if (body.length > 16_384) throw new Error("payload too large");
+  if (body.length > limit) throw new Error("payload too large");
   return JSON.parse(body || "{}");
 }
 
@@ -69,9 +94,13 @@ export function apply(ctx) {
 
   /** @type {Map<string, { request: any, resolve: (outcome: string) => void, createdAt: number }>} */
   const pending = new Map();
+  /** @type {Map<string, { request: any, resolve: (answers: any) => void, createdAt: number }>} */
+  const pendingQuestions = new Map();
   let closed = false;
   /** Last time the paired phone polled or decided; used to skip the desktop prompt. */
   let lastPhoneActivity = 0;
+  /** Last time the phone was seen at all; keeps desktop-only approval from stealing the card. */
+  let lastPhoneSeenAt = 0;
 
   const tokenReady = loadToken();
 
@@ -87,8 +116,17 @@ export function apply(ctx) {
         // 只有真的替手机转发的轮询才算「手机在线」。桌面端自己的轮询
         // （菜单栏角标、待审批面板、会话列表）不能冒充手机，否则每一轮
         // 桌面审批都会被扣住等手机，最后拖到 fallback 才出现。
-        if (url.searchParams.get("source") === "phone") lastPhoneActivity = Date.now();
+        if (url.searchParams.get("source") === "phone") {
+          lastPhoneActivity = Date.now();
+          lastPhoneSeenAt = lastPhoneActivity;
+        }
         return json(res, 200, {
+          questions: [...pendingQuestions.entries()].map(([id, item]) => ({
+            id,
+            createdAt: new Date(item.createdAt).toISOString(),
+            sessionId: item.request?.agent?.session?.id ?? item.request?.sessionId ?? null,
+            questions: normalizeQuestions(item.request),
+          })),
           pending: [...pending.entries()].map(([id, item]) => ({
             id,
             sessionId: item.sessionId ?? null,
@@ -102,7 +140,7 @@ export function apply(ctx) {
       }
 
       if (req.method === "POST" && req.url === "/v1/message") {
-        const body = await readJSON(req);
+        const body = await readJSON(req, 24 * 1024 * 1024);
         if (typeof body.sessionId !== "string" || typeof body.text !== "string" || !body.text.trim()) {
           return json(res, 400, { error: "sessionId and text are required" });
         }
@@ -125,8 +163,19 @@ export function apply(ctx) {
         return json(res, 200, { ok: true });
       }
 
-      if (req.method === "POST" && req.url === "/v1/decide") {
+      if (req.method === "POST" && url.pathname === "/v1/answer") {
+        const body = await readJSON(req, 256 * 1024);
+        const item = pendingQuestions.get(body.id);
+        if (!item) return json(res, 404, { error: "question is no longer pending" });
+        if (!Array.isArray(body.answers)) return json(res, 400, { error: "answers is required" });
+        pendingQuestions.delete(body.id);
+        item.resolve({ answers: body.answers });
+        return json(res, 200, { ok: true });
+      }
+
+      if (req.method === "POST" && url.pathname === "/v1/decide") {
         lastPhoneActivity = Date.now();
+        lastPhoneSeenAt = lastPhoneActivity;
         const body = await readJSON(req);
         const item = pending.get(body.id);
         if (!item) return json(res, 404, { error: "request is no longer pending" });
@@ -169,7 +218,9 @@ export function apply(ctx) {
       // here would also open the desktop prompt, which stays on screen even
       // after the phone decides because the desktop answerer is still waiting.
       // If the phone goes quiet for PHONE_GRACE_MS, fall back to the desktop prompt.
-      if (Date.now() - lastPhoneActivity < PHONE_WINDOW_MS) {
+      const phonePresent = Date.now() - lastPhoneActivity < PHONE_WINDOW_MS
+        || Date.now() - lastPhoneSeenAt < PHONE_PAIR_WINDOW_MS;
+      if (phonePresent) {
         let timer;
         const timeout = new Promise((resolve) => {
           timer = setTimeout(() => resolve("unavailable"), PHONE_GRACE_MS);
@@ -193,10 +244,36 @@ export function apply(ctx) {
       return first === "unavailable" ? await bridged : first;
     }, { prepend: true });
 
+    // 提问卡：和审批同构的 waterfall。手机答完直接返回结构化答案；
+    // 手机没答就落回桌面，绝不吞掉问题。
+    yield ctx.on("user-questions/request", async (request, next) => {
+      if (closed) return next();
+      const id = randomBytes(12).toString("hex");
+      const answered = new Promise((resolve) => {
+        pendingQuestions.set(id, { request, resolve, createdAt: Date.now() });
+        request.signal?.addEventListener?.("abort", () => {
+          if (!pendingQuestions.has(id)) return;
+          pendingQuestions.delete(id);
+          resolve("unavailable");
+        }, { once: true });
+      });
+      let timer;
+      const timeout = new Promise((resolve) => {
+        timer = setTimeout(() => resolve("unavailable"), QUESTION_TIMEOUT_MS);
+      });
+      const outcome = await Promise.race([answered, timeout]);
+      clearTimeout(timer);
+      pendingQuestions.delete(id);
+      if (outcome === "unavailable") return await next();
+      return outcome;
+    }, { prepend: true });
+
     yield async () => {
       closed = true;
       for (const item of pending.values()) item.resolve("unavailable");
       pending.clear();
+      for (const item of pendingQuestions.values()) item.resolve({ answers: [] });
+      pendingQuestions.clear();
       await new Promise((resolve) => server.close(() => resolve()));
     };
   });

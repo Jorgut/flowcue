@@ -274,72 +274,6 @@ final class SubscriptionManager {
 
 // MARK: - LAN remote continuation
 
-struct DSHRemoteApproval: Codable, Identifiable, Hashable {
-    let id: String
-    let sessionId: String?
-    let toolName: String?
-    let callId: String?
-    let reason: String?
-    let displayReason: String?
-    let createdAt: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case id, sessionId, toolName, callId, reason, displayReason, createdAt
-    }
-
-    init(
-        id: String,
-        sessionId: String? = nil,
-        toolName: String? = nil,
-        callId: String? = nil,
-        reason: String? = nil,
-        displayReason: String? = nil,
-        createdAt: String? = nil
-    ) {
-        self.id = id
-        self.sessionId = sessionId
-        self.toolName = toolName
-        self.callId = callId
-        self.reason = reason
-        self.displayReason = displayReason
-        self.createdAt = createdAt
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
-        sessionId = try? container.decode(String.self, forKey: .sessionId)
-        toolName = try? container.decode(String.self, forKey: .toolName)
-        callId = try? container.decode(String.self, forKey: .callId)
-        createdAt = try? container.decode(String.self, forKey: .createdAt)
-        reason = Self.text(from: container, forKey: .reason)
-        displayReason = Self.text(from: container, forKey: .displayReason)
-    }
-
-    /// Auto review 会把原因写成多语言对象；旧版是字符串。两种都要能解。
-    private static func text(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> String? {
-        if let value = try? container.decode(String.self, forKey: key) {
-            return value
-        }
-        if let localized = try? container.decode([String: String].self, forKey: key) {
-            return localized["zh"] ?? localized["en"] ?? localized.values.first
-        }
-        return nil
-    }
-
-    var title: String { displayReason ?? reason ?? toolName ?? "DSH approval" }
-}
-
-struct DSHRemoteDecision: Codable {
-    let id: String
-    let decision: String
-}
-
-struct DSHRemoteApprovalsResponse: Codable {
-    let available: Bool
-    let pending: [DSHRemoteApproval]
-}
-
 /// `GET /v1/ping` 的响应。旧版 Mac 只返回 name/version，所以全部可选。
 struct MacHandshake: Decodable {
     let name: String?
@@ -381,6 +315,8 @@ final class LANRemoteController {
     private(set) var dshSessions: [DSHSessionSnapshot] = []
     private(set) var dshSubagents: [DSHSessionSnapshot] = []
     private(set) var dshBridgeAvailable = false
+    /// DSH 在等人回答的问题（提问卡）。
+    private(set) var dshQuestions: [DSHRemoteQuestionBatch] = []
     private(set) var isLoading = false
     private(set) var isScanning = false
     var pairingCode = ""
@@ -426,7 +362,7 @@ final class LANRemoteController {
         if !manualAddress.isEmpty && pairingCode.count == 6 {
             Task { [weak self] in await self?.connectManually() }
         }
-        if args.contains("--flowcue-approvals-preview") {
+        if args.contains("--flowcue-approvals-preview") || args.contains("--flowcue-approvals-preview=2") {
             dshBridgeAvailable = true
             dshApprovals = [DSHRemoteApproval(
                 id: "preview-approval",
@@ -437,6 +373,57 @@ final class LANRemoteController {
                 displayReason: "Auto review denied this call: 上传 build 49 到 TestFlight 属于对外发布",
                 createdAt: nil
             )]
+        }
+        if args.contains("--flowcue-questions-preview") {
+            dshQuestions = [
+                DSHRemoteQuestionBatch(
+                    id: "preview-q1",
+                    createdAt: nil,
+                    sessionId: nil,
+                    questions: [
+                        .init(
+                            id: "q1",
+                            title: "现在修深色对比与无障碍阻塞项吗？",
+                            detail: "QA 报告里还有 21 条对比度失败需要逐条判定。",
+                            multiSelect: false,
+                            options: [
+                                .init(label: "现在修并重跑 QA", detail: "改自适应文字色，重跑无障碍与深色截图"),
+                                .init(label: "先记录，不改", detail: "保留报告，暂不改代码"),
+                                .init(label: "本轮到此为止", detail: "先到这里，下次继续"),
+                            ]
+                        )
+                    ]
+                ),
+                DSHRemoteQuestionBatch(
+                    id: "preview-q2",
+                    createdAt: nil,
+                    sessionId: nil,
+                    questions: [
+                        .init(
+                            id: "q2",
+                            title: "这次发布要带哪些构建目标？",
+                            detail: "可多选。",
+                            multiSelect: true,
+                            options: [
+                                .init(label: "iOS 1.1.0", detail: nil),
+                                .init(label: "macOS 0.1.5", detail: nil),
+                                .init(label: "官网同步", detail: "更新下载页与 changelog"),
+                            ]
+                        )
+                    ]
+                ),
+            ]
+        }
+        if args.contains("--flowcue-approvals-preview=2") {
+                dshApprovals.append(DSHRemoteApproval(
+                    id: "preview-approval-2",
+                    sessionId: nil,
+                    toolName: "apply_patch",
+                    callId: nil,
+                    reason: "Allow writing outside the workspace?",
+                    displayReason: "Write to ~/Library/Application Support/FlowCueRemote",
+                    createdAt: nil
+                ))
         }
         #endif
     }
@@ -559,6 +546,7 @@ final class LANRemoteController {
             await refreshDSHApprovals()
             await refreshDSHSessions()
             await syncProToMac(force: true)
+            await uploadPushToken(endpoint: endpoint, code: code)
             statusMessage = threads.isEmpty ? "Connected. No sessions are available yet." : "Connected."
             lastError = nil
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -569,10 +557,114 @@ final class LANRemoteController {
         }
     }
 
+    /// 把 APNs device token 交给 Mac。Mac 用它直接给苹果推送服务发请求，
+    /// 不需要自建服务端；token 变了会覆盖。
+    private func uploadPushToken(endpoint: NWEndpoint, code: String) async {
+        guard let token = FlowCuePushRegistration.shared.token else { return }
+        struct Body: Encodable {
+            let token: String
+            let environment: String
+            let diagnostics: [String: Int]
+        }
+        #if DEBUG
+        let environment = "development"
+        #else
+        let environment = "production"
+        #endif
+        let diagnostics = FlowCuePushRegistration.shared.diagnostics.mapValues { ($0 as? Bool) == true ? 1 : 0 }
+        guard let body = try? JSONEncoder().encode(
+            Body(token: token, environment: environment, diagnostics: diagnostics)
+        ) else { return }
+        _ = try? await LANHTTP.request(
+            endpoint: endpoint, method: "POST", path: "/v1/push/token", token: code, body: body
+        )
+    }
+
+    /// 发送前压一下：截图原图动辄 3–5 MB，base64 后更大，走局域网没必要传原图。
+    static func compressedImage(_ data: Data) -> Data? {
+        guard let image = UIImage(data: data) else { return nil }
+        let maxSide: CGFloat = 1600
+        let longest = max(image.size.width, image.size.height)
+        let scale = longest > maxSide ? maxSide / longest : 1
+        let target = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+        let renderer = UIGraphicsImageRenderer(size: target)
+        let resized = renderer.image { _ in
+            image.draw(in: CGRect(origin: .zero, size: target))
+        }
+        return resized.jpegData(compressionQuality: 0.7)
+    }
+
+    /// 从 Mac 拉取全部想法（包含 Mac 上原有的历史想法），用于反向同步。
+    func pullIdeas() async -> [RemoteIdea]? {
+        guard let selected else { return nil }
+        guard let data = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "GET", path: "/v1/ideas",
+            token: pairingCode, body: nil, timeout: 20
+        ) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode([RemoteIdea].self, from: data)
+    }
+
+    /// 手机删掉一条想法后，让 Mac 也删掉同一条（同步是单向推送，不删会留副本）。
+    func deleteIdeaOnMac(_ id: UUID) async {
+        guard let selected else { return }
+        struct Body: Encodable { let id: String }
+        guard let body = try? JSONEncoder().encode(Body(id: id.uuidString)) else { return }
+        _ = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "POST",
+            path: "/v1/ideas/delete", token: pairingCode, body: body, timeout: 15
+        )
+    }
+
+    func refreshDSHQuestions() async {
+        guard let selected else { return }
+        guard let data = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/questions", token: pairingCode, body: nil
+        ), let list = try? JSONDecoder().decode([DSHRemoteQuestionBatch].self, from: data) else { return }
+        if list != dshQuestions { dshQuestions = list }
+    }
+
+    @discardableResult
+    func answerDSH(batchID: String, questionID: String, chosen: [String]) async -> Bool {
+        guard let selected else { return false }
+        let answer = DSHQuestionAnswer(id: batchID, answers: [.init(id: questionID, selected: chosen, custom: nil)])
+        guard let body = try? JSONEncoder().encode(answer) else { return false }
+        do {
+            _ = try await LANHTTP.request(
+                endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/answer",
+                token: pairingCode, body: body, timeout: 20
+            )
+            await refreshDSHQuestions()
+            return true
+        } catch {
+            lastError = "问题已回答或已失效。"
+            await refreshDSHQuestions()
+            return false
+        }
+    }
+
+    /// Mac 当前在跑什么（最近一次工具调用还没结束）。没有就返回 nil。
+    func dshActivity(for session: DSHSessionSnapshot) async -> (label: String, since: Date)? {
+        guard let selected else { return nil }
+        struct Activity: Decodable {
+            let label: String
+            let since: Double?
+        }
+        let encoded = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
+        guard let data = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "GET",
+            path: "/v1/dsh/activity/\(encoded)", token: pairingCode, body: nil
+        ), let activity = try? JSONDecoder().decode(Activity.self, from: data) else { return nil }
+        let since = activity.since.map { Date(timeIntervalSince1970: $0) } ?? Date()
+        return (activity.label, since)
+    }
+
     func disconnect() {
         selected = nil
         threads = []
         dshApprovals = []
+        dshQuestions = []
         dshSessions = []
         dshSubagents = []
         dshBridgeAvailable = false
@@ -627,13 +719,13 @@ final class LANRemoteController {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !images.isEmpty else { return false }
         do {
-            let encodedImages = images.map { $0.base64EncodedString() }
+            let encodedImages = images.compactMap(Self.compressedImage).map { $0.base64EncodedString() }
             let body = try JSONEncoder().encode(DSHRemoteMessage(
                 sessionId: session.id,
                 text: trimmed.isEmpty ? "Image attachment" : trimmed,
                 images: encodedImages.isEmpty ? nil : encodedImages
             ))
-            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/send", token: pairingCode, body: body)
+            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/send", token: pairingCode, body: body, timeout: 30)
             statusMessage = "Sent to DSH."
             return true
         } catch {
@@ -691,7 +783,8 @@ final class LANRemoteController {
             id: capture.id,
             text: capture.text,
             createdAt: capture.createdAt,
-            updatedAt: capture.updatedAt
+            updatedAt: capture.updatedAt,
+            status: capture.status.rawValue
         ))
     }
 
@@ -715,6 +808,14 @@ final class LANRemoteController {
         for capture in captures where capture.status != .archived {
             guard !capture.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
             await pushIdea(capture)
+        }
+    }
+
+    /// 推送整库快照：包含已归档和墓碑。
+    /// 离线时删掉的条目只留下本地墓碑，必须在重连后补推，否则 Mac 永远不会删。
+    func pushAllIdeas(_ ideas: [RemoteIdea]) async {
+        for idea in ideas {
+            await pushIdea(idea)
         }
     }
 
@@ -777,7 +878,7 @@ final class LANRemoteController {
             phoneID = UUID()
             UserDefaults.standard.set(phoneID.uuidString, forKey: "FlowCue.remotePhoneID")
         }
-        let encodedImages = images.map { $0.base64EncodedString() }
+        let encodedImages = images.compactMap(Self.compressedImage).map { $0.base64EncodedString() }
         let command = RemoteCommand(
             phoneID: phoneID,
             executorID: thread.executorID,
@@ -802,11 +903,20 @@ final class LANRemoteController {
 }
 
 private enum LANHTTP {
-    static func request(endpoint: NWEndpoint, method: String, path: String, token: String?, body: Data?) async throws -> Data {
+    /// 发送类请求要更长的超时：桥接转发消息前要先唤醒 DSH 的 agent，
+    /// 10 秒经常不够，会让手机把「已送达」误判成失败，用户于是反复重发。
+    static func request(
+        endpoint: NWEndpoint,
+        method: String,
+        path: String,
+        token: String?,
+        body: Data?,
+        timeout: TimeInterval = 10
+    ) async throws -> Data {
         try await withCheckedThrowingContinuation { continuation in
             let runner = LANHTTPRunner(endpoint: endpoint, method: method, path: path, token: token, body: body, continuation: continuation)
             runner.start()
-            DispatchQueue.global().asyncAfter(deadline: .now() + 10) {
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
                 runner.fail(URLError(.timedOut))
             }
         }
@@ -911,6 +1021,7 @@ private final class LANHTTPRunner: @unchecked Sendable {
 
 @main
 struct RerouteMobileApp: App {
+    @UIApplicationDelegateAdaptor(FlowCueAppDelegate.self) private var appDelegate
     @State private var store: IdeaDockStore?
     @State private var syncController: IdeaSyncController?
     @State private var subscription = SubscriptionManager()
@@ -986,8 +1097,14 @@ private struct RootTabView: View {
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
     @AppStorage("FlowCue.hasSeenOnboarding") private var hasSeenOnboarding = false
     @Environment(\.scenePhase) private var scenePhase
-    @State private var showingApprovals = false
+    /// 同一个视图上只能可靠地存在一个 .sheet，所以这里合并成一个入口。
+    @State private var activeSheet: RootSheet?
     @State private var didSeedSharedPreview = false
+    private enum RootSheet: String, Identifiable {
+        case approvals, sharePreview
+        var id: String { rawValue }
+    }
+
     @State private var showingSharePreview: Bool = {
         #if DEBUG
         ProcessInfo.processInfo.arguments.contains("--flowcue-share-extension-preview")
@@ -1031,20 +1148,44 @@ private struct RootTabView: View {
         .tint(FlowCueTheme.accent)
         .task(id: remoteController.isConnected) {
             guard remoteController.isConnected else { return }
-            await remoteController.pushAllIdeas(store.captures)
+            // 先把 Mac 上的想法拉下来合并（Mac → iPhone），再把本地推上去
+            // （iPhone → Mac）。两边按 id 对齐，updatedAt 新的赢。
+            if let pulled = await remoteController.pullIdeas() {
+                _ = store.mergePulledIdeas(pulled)
+            }
+            await remoteController.pushAllIdeas(store.syncSnapshot())
             while !Task.isCancelled {
                 await remoteController.refreshApprovals()
+                await remoteController.refreshDSHQuestions()
                 try? await Task.sleep(for: .seconds(3))
             }
         }
         .onChange(of: remoteController.dshApprovals.isEmpty) { _, isEmpty in
-            if !isEmpty { showingApprovals = true }
+            if !isEmpty { activeSheet = .approvals }
+        }
+        .onChange(of: remoteController.dshQuestions.isEmpty) { _, isEmpty in
         }
         .onAppear {
-            if !remoteController.dshApprovals.isEmpty { showingApprovals = true }
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--flowcue-uitest-seed") {
+                store.seedUIIdeasIfNeeded()
+            }
+            #endif
+            if !remoteController.dshApprovals.isEmpty { activeSheet = .approvals }
+            if showingSharePreview { activeSheet = .sharePreview }
+            FlowCuePushRegistration.shared.requestIfNeeded()
         }
-        .sheet(isPresented: $showingApprovals) {
-            DSHApprovalsSheet(controller: remoteController)
+        .sheet(item: $activeSheet) { sheet in
+            switch sheet {
+            case .approvals:
+                DSHApprovalsSheet(controller: remoteController)
+            case .sharePreview:
+                ShareExtensionView(
+                    initialText: "The retry backoff feels too slow on flaky Wi-Fi — should we make it exponential?",
+                    onSave: { _, _ in activeSheet = nil },
+                    onCancel: { activeSheet = nil }
+                )
+            }
         }
         .onChange(of: store.captures) { _, _ in
             writeWidgetSnapshot()
@@ -1052,15 +1193,6 @@ private struct RootTabView: View {
         .onOpenURL { url in
             guard url.scheme == "flowcue" else { return }
             tab = url.host == "chat" ? .agents : .inbox
-        }
-        .sheet(isPresented: $showingSharePreview) {
-            ShareExtensionView(
-                initialText: "The retry backoff feels too slow on flaky Wi-Fi — should we make it exponential?",
-                onSave: { _, _ in showingSharePreview = false },
-                onCancel: { showingSharePreview = false }
-            )
-            .presentationDetents([.height(380)])
-            .presentationDragIndicator(.visible)
         }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
@@ -1571,6 +1703,10 @@ private struct InboxView: View {
     @State private var chipsCollapsed = false
     @State private var lastScrollOffset: CGFloat = 0
     @State private var hasCompletedInitialSync = false
+    @State private var pendingDelete: CaptureItem?
+    @State private var openIdea: CaptureItem?
+    @State private var isSelecting = false
+    @State private var selectedIDs: Set<UUID> = []
     @FocusState private var captureFocused: Bool
     @ScaledMetric(relativeTo: .caption) private var searchHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .caption) private var chipHeight: CGFloat = 26
@@ -1599,7 +1735,9 @@ private struct InboxView: View {
                         if store.notification?.id == note.id { store.notification = nil }
                     }
                 }
-                HomeCaptureBar(store: store, controller: remoteController, focused: $captureFocused)
+                if !isSelecting {
+                    HomeCaptureBar(store: store, controller: remoteController, focused: $captureFocused)
+                }
                 if !captureFocused {
                     FlowCueTabBar(selection: $tab)
                         .transition(.opacity)
@@ -1608,8 +1746,32 @@ private struct InboxView: View {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: captureFocused)
             .background { FlowCueScreenBackground() }
             .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
             .navigationDestination(isPresented: $showingSearch) {
                 SearchView(store: store, remoteController: remoteController, startVoice: startSearchVoice)
+            }
+            .navigationDestination(item: $openIdea) { idea in
+                IdeaDetailView(store: store, remoteController: remoteController, capture: idea)
+            }
+            .confirmationDialog(
+                "删除这条想法？",
+                isPresented: Binding(
+                    get: { pendingDelete != nil },
+                    set: { if !$0 { pendingDelete = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingDelete
+            ) { idea in
+                Button("删除", role: .destructive) {
+                    Task {
+                        await remoteController.deleteIdeaOnMac(idea.id)
+                        store.delete(idea.id)
+                    }
+                    pendingDelete = nil
+                }
+                Button("取消", role: .cancel) { pendingDelete = nil }
+            } message: { _ in
+                Text("会移到垃圾箱（Me → Trash），可以随时恢复。Mac 上同一条也会一起移走。")
             }
             .task { network.start() }
             .onChange(of: syncController.isSyncing) { _, isSyncing in
@@ -1888,12 +2050,31 @@ private struct InboxView: View {
             ScrollViewOffsetReader()
             LazyVStack(spacing: 0) {
                 ForEach(visibleIdeas) { idea in
-                    NavigationLink {
-                        IdeaDetailView(store: store, remoteController: remoteController, capture: idea)
-                    } label: {
+                    IdeaSwipeRow(
+                        onArchive: {
+                            store.archive(idea.id)
+                            if let updated = store.captures.first(where: { $0.id == idea.id }) {
+                                Task { await remoteController.pushIdea(updated) }
+                            }
+                        },
+                        onDelete: { pendingDelete = idea },
+                        onTap: {
+                            if isSelecting {
+                                toggleSelection(idea.id)
+                            } else {
+                                openIdea = idea
+                            }
+                        },
+                        onLongPress: {
+                            guard !isSelecting else { return }
+                            isSelecting = true
+                            selectedIDs = [idea.id]
+                        },
+                        isSelecting: isSelecting,
+                        isSelected: selectedIDs.contains(idea.id)
+                    ) {
                         HomeIdeaRow(capture: idea)
                     }
-                    .buttonStyle(.plain)
                     Rectangle()
                         .fill(FlowCueTheme.hairline)
                         .frame(height: 1)
@@ -1907,6 +2088,71 @@ private struct InboxView: View {
         .scrollDismissesKeyboard(.interactively)
         .onPreferenceChange(HomeScrollOffsetKey.self) { offset in
             updateChipVisibility(offset)
+        }
+        .overlay(alignment: .bottom) {
+            if isSelecting { selectionBar }
+        }
+    }
+
+    /// 批量选择时底部的操作条。
+    private var selectionBar: some View {
+        HStack(spacing: 10) {
+            Text("\(selectedIDs.count) selected")
+                .flowCueFont(11, relativeTo: .caption, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+            Spacer(minLength: 0)
+            Button("Archive") { archiveSelected() }
+                .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .disabled(selectedIDs.isEmpty)
+            Button("Delete") { deleteSelected() }
+                .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.failure)
+                .disabled(selectedIDs.isEmpty)
+            Button("Cancel") {
+                isSelecting = false
+                selectedIDs.removeAll()
+            }
+            .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+            .foregroundStyle(FlowCueTheme.accent)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+        }
+        .padding(.bottom, 4)
+    }
+
+    private func toggleSelection(_ id: UUID) {
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+            if selectedIDs.isEmpty { isSelecting = false }
+        } else {
+            selectedIDs.insert(id)
+        }
+    }
+
+    private func archiveSelected() {
+        let ids = selectedIDs
+        isSelecting = false
+        selectedIDs.removeAll()
+        for id in ids {
+            store.archive(id)
+            if let updated = store.captures.first(where: { $0.id == id }) {
+                Task { await remoteController.pushIdea(updated) }
+            }
+        }
+    }
+
+    private func deleteSelected() {
+        let ids = selectedIDs
+        isSelecting = false
+        selectedIDs.removeAll()
+        for id in ids { store.delete(id) }
+        Task {
+            for id in ids { await remoteController.deleteIdeaOnMac(id) }
         }
     }
 
@@ -2056,6 +2302,7 @@ private struct SearchView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
         .onAppear(perform: prepare)
         .onDisappear { dictation.stop() }
         .alert(
@@ -2313,6 +2560,134 @@ private struct SearchResultRow: View {
     }
 }
 
+
+/// 左滑露出 Archive / Delete 两个操作。用自定义手势而不是 List 的
+/// swipeActions——首页不是 List，改成 List 会破坏现有排版。
+/// 左滑露出 Archive / Delete 两个操作。
+/// 位移只有一个数据源 offsetX：拖动时跟手、松手时吸附。
+/// 之前用 @GestureState + @State 双源，松手瞬间前者归零、后者才赋值，
+/// 中间会算出 0 再滑出去，看起来就是「闪了两下」。
+private struct IdeaSwipeRow<Content: View>: View {
+    let onArchive: () -> Void
+    let onDelete: () -> Void
+    let onTap: () -> Void
+    let onLongPress: () -> Void
+    let isSelecting: Bool
+    let isSelected: Bool
+    @ViewBuilder var content: Content
+
+    @State private var offsetX: CGFloat = 0
+    @State private var dragStart: CGFloat?
+    @State private var didDrag = false
+
+    private let actionWidth: CGFloat = 78
+    private var actionsWidth: CGFloat { actionWidth * 2 }
+
+    var body: some View {
+        ZStack(alignment: .trailing) {
+            content
+                .background(FlowCueTheme.canvas)
+                .offset(x: isSelecting ? 0 : offsetX)
+                // 选择模式下把内容右移，给左侧的勾选圆圈腾出位置，
+                // 否则圆圈会压在标题上。
+                .padding(.leading, isSelecting ? 26 : 0)
+                .overlay(alignment: .leading) {
+                    if isSelecting {
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(isSelected ? FlowCueTheme.accent : FlowCueTheme.textSecondary)
+                    }
+                }
+                .contentShape(Rectangle())
+                // 单击：滑开时收起，否则进详情。用 simultaneousGesture，
+                // 避免独占点击手势拖住列表滚动（.onTapGesture 曾经这么干过）。
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        guard !didDrag else { return }
+                        if offsetX != 0 {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { offsetX = 0 }
+                        } else {
+                            onTap()
+                        }
+                    }
+                )
+                // 长按：直接滑出操作。放在这里而不是 Button 上，
+                // Button 的手势优先级高，长按永远轮不到。
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.45)
+                        .onEnded { _ in
+                            guard !isSelecting else { return }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            onLongPress()
+                        }
+                )
+                .simultaneousGesture(
+                DragGesture(minimumDistance: 20)
+                    .onChanged { value in
+                        guard !isSelecting else { return }
+                        if dragStart == nil {
+                            dragStart = offsetX
+                            didDrag = true
+                        }
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        guard abs(dx) > abs(dy) else { return }
+                        let base = dragStart ?? 0
+                        offsetX = min(0, max(-actionsWidth, base + dx))
+                    }
+                    .onEnded { value in
+                        guard !isSelecting else { return }
+                        let base = dragStart ?? 0
+                        dragStart = nil
+                        let dx = value.translation.width
+                        let dy = value.translation.height
+                        let projected = abs(dx) > abs(dy) ? base + dx : base
+                        let shouldOpen = projected < -actionsWidth / 2
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                            offsetX = shouldOpen ? -actionsWidth : 0
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { didDrag = false }
+                    }
+            )
+            if !isSelecting && offsetX != 0 {
+                HStack(spacing: 0) {
+                    action("Archive", systemImage: "archivebox", color: FlowCueTheme.warning, action: onArchive)
+                    action("Delete", systemImage: "trash", color: FlowCueTheme.failure, action: onDelete)
+                }
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        bottomTrailingRadius: FlowCueTheme.radiusInline,
+                        topTrailingRadius: FlowCueTheme.radiusInline,
+                        style: .continuous
+                    )
+                )
+                .padding(.vertical, 2)
+            }
+        }
+        .clipped()
+    }
+
+    private func action(_ title: String, systemImage: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { offsetX = 0 }
+            action()
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 14, weight: .semibold))
+                Text(title)
+                    .flowCueFont(10, relativeTo: .caption2, weight: .semibold)
+            }
+            .foregroundStyle(Color.white)
+            .frame(width: actionWidth)
+            .frame(maxHeight: .infinity)
+            .background(color)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
+    }
+}
 
 private struct HomeIdeaRow: View {
     let capture: CaptureItem
@@ -2592,6 +2967,7 @@ private struct IdeaDetailView: View {
     @State private var text: String
     @State private var isSaving = false
     @State private var showingSend = false
+    @State private var showingDelete = false
     @State private var sentNote: String?
     @Environment(\.dismiss) private var dismiss
 
@@ -2660,19 +3036,36 @@ private struct IdeaDetailView: View {
                     .disabled(!canSave)
             }
             ToolbarItem(placement: .bottomBar) {
-                if isArchived {
-                    Button("Restore") {
-                        store.undoArchive(capture.id)
-                        dismiss()
+                HStack(spacing: 18) {
+                    if isArchived {
+                        Button("Restore") {
+                            store.undoArchive(capture.id)
+                            dismiss()
+                        }
+                    } else {
+                        Button("Archive", role: .destructive) {
+                            _ = save(force: true)
+                            store.archive(capture.id)
+                            dismiss()
+                        }
                     }
-                } else {
-                    Button("Archive", role: .destructive) {
-                        _ = save(force: true)
-                        store.archive(capture.id)
-                        dismiss()
+                    Button("Delete", role: .destructive) {
+                        showingDelete = true
                     }
                 }
             }
+        }
+        .confirmationDialog("删除这条想法？", isPresented: $showingDelete, titleVisibility: .visible) {
+            Button("删除", role: .destructive) {
+                Task {
+                    await remoteController.deleteIdeaOnMac(capture.id)
+                    store.delete(capture.id)
+                    dismiss()
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("会移到垃圾箱（Me → Trash），可以随时恢复。Mac 上同一条也会一起移走。")
         }
         .sheet(isPresented: $showingSend) {
             SendIdeaSheet(controller: remoteController, text: text) { target in
@@ -2761,25 +3154,11 @@ private struct SendIdeaSheet: View {
 
     private var targetList: some View {
         List {
-            if !controller.threads.isEmpty {
-                Section("Codex") {
-                    ForEach(controller.threads) { thread in
-                        row(
-                            id: "codex-\(thread.id)",
-                            title: thread.title.isEmpty ? "Untitled session" : thread.title,
-                            subtitle: thread.projectDirectory ?? ""
-                        ) {
-                            await controller.send(to: thread, text: trimmedText)
-                        } onSuccess: {
-                            onSent("Codex · \(thread.title)")
-                        }
-                    }
-                }
-            }
-
+            // DSH 的实时会话排在最前：Codex 那边可能有几十条历史任务，
+            // 放前面会把真正想发过去的会话挤到列表底部（用户只看得到 Codex）。
             let sessions = controller.dshSessions.filter { !$0.isSubagent }
             if !sessions.isEmpty {
-                Section("DSH") {
+                Section("DSH · live sessions") {
                     ForEach(sessions) { session in
                         row(
                             id: "dsh-\(session.id)",
@@ -2790,6 +3169,28 @@ private struct SendIdeaSheet: View {
                         } onSuccess: {
                             onSent("DSH · \(session.title)")
                         }
+                    }
+                }
+            }
+
+            if !controller.threads.isEmpty {
+                Section {
+                    ForEach(Array(controller.threads.prefix(12))) { thread in
+                        row(
+                            id: "codex-\(thread.id)",
+                            title: thread.title.isEmpty ? "Untitled session" : thread.title,
+                            subtitle: thread.projectDirectory ?? ""
+                        ) {
+                            await controller.send(to: thread, text: trimmedText)
+                        } onSuccess: {
+                            onSent("Codex · \(thread.title)")
+                        }
+                    }
+                } header: {
+                    Text("Codex · recent")
+                } footer: {
+                    if controller.threads.count > 12 {
+                        Text("只显示最近 12 个，共 \(controller.threads.count) 个会话。")
                     }
                 }
             }
@@ -3133,6 +3534,7 @@ private struct AgentsView: View {
             }
             .background { FlowCueScreenBackground() }
             .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
             .navigationDestination(isPresented: $showingRemote) {
                 RemoteDeviceView(controller: controller, tab: $tab)
             }
@@ -4064,6 +4466,7 @@ private struct RemoteDeviceView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 10) {
                 if isOnline {
@@ -4535,6 +4938,117 @@ private struct NewSessionSheet: View {
     }
 }
 
+private struct DSHQuestionCard: View {
+    let question: DSHRemoteQuestionBatch.Question
+    let answer: ([String]) async -> Void
+
+    @State private var selection: Set<String> = []
+    @State private var busy = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("QUESTION")
+                .flowCueFont(9.5, relativeTo: .caption2)
+                .tracking(1.3)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+            Text(question.title)
+                .flowCueFont(13, relativeTo: .subheadline)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+            if let detail = question.detail, !detail.isEmpty {
+                Text(detail)
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineLimit(6)
+            }
+            VStack(spacing: 8) {
+                ForEach(question.options, id: \.label) { option in
+                    Button {
+                        choose(option.label)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 8) {
+                                Text(option.label)
+                                    .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                                    .foregroundStyle(selection.contains(option.label)
+                                                     ? FlowCueTheme.onAccent
+                                                     : FlowCueTheme.textPrimary)
+                                Spacer(minLength: 0)
+                                if selection.contains(option.label) {
+                                    Image(systemName: "checkmark")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(FlowCueTheme.onAccent)
+                                }
+                            }
+                            if let detail = option.detail, !detail.isEmpty {
+                                Text(detail)
+                                    .flowCueFont(10, relativeTo: .caption2)
+                                    .foregroundStyle(selection.contains(option.label)
+                                                     ? FlowCueTheme.onAccent.opacity(0.8)
+                                                     : FlowCueTheme.textSecondary)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .background(
+                            RoundedRectangle(cornerRadius: FlowCueTheme.radiusInline, style: .continuous)
+                                .fill(selection.contains(option.label)
+                                      ? FlowCueTheme.accent
+                                      : FlowCueTheme.canvas)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(busy)
+                }
+            }
+            if question.multiSelect {
+                Button {
+                    submit()
+                } label: {
+                    Text("回答")
+                        .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 36)
+                        .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusInline, style: .continuous)
+                            .fill(selection.isEmpty ? FlowCueTheme.hairline : FlowCueTheme.accent))
+                }
+                .buttonStyle(.plain)
+                .disabled(busy || selection.isEmpty)
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
+                .fill(FlowCueTheme.surface)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
+                .strokeBorder(FlowCueTheme.hairline)
+        )
+    }
+
+    /// 单选：点一下直接提交；多选：切换后按「回答」。
+    private func choose(_ label: String) {
+        guard !question.multiSelect else {
+            if selection.contains(label) { selection.remove(label) } else { selection.insert(label) }
+            return
+        }
+        selection = [label]
+        submit()
+    }
+
+    private func submit() {
+        guard !busy, !selection.isEmpty else { return }
+        busy = true
+        let chosen = question.options.map(\.label).filter { selection.contains($0) }
+        Task {
+            await answer(chosen)
+            busy = false
+        }
+    }
+}
+
 private struct DSHApprovalsSheet: View {
     @Bindable var controller: LANRemoteController
     @Environment(\.dismiss) private var dismiss
@@ -4565,17 +5079,25 @@ private struct DSHApprovalsSheet: View {
                 .padding(AgentsLayout.margin)
             }
             .background { FlowCueScreenBackground() }
-            .navigationTitle("Approvals")
+            // 多条时把剩余数量放进标题，用户知道还有没有下一条。
+            .navigationTitle(controller.dshApprovals.count > 1
+                             ? "Approvals · \(controller.dshApprovals.count)"
+                             : "Approvals")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                        .foregroundStyle(FlowCueTheme.accent)
+            // 最后一条决定完就自己关，不必再去点 Done。
+            .onChange(of: controller.dshApprovals.isEmpty) { _, isEmpty in
+                guard isEmpty else { return }
+                Task {
+                    try? await Task.sleep(for: .milliseconds(350))
+                    dismiss()
                 }
             }
+            .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
         }
+        // 半屏卡片：单条审批时不占满整屏，背景还能看见；多条可以上拉看全部。
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 }
 
@@ -4615,6 +5137,7 @@ private struct CodexAgentView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
         .task { network.start() }
         .onDisappear { network.stop() }
         .sheet(isPresented: $showingNewSession) {
@@ -4761,6 +5284,7 @@ private struct DSHAgentView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
         .task { network.start() }
         .onDisappear { network.stop() }
         .sheet(isPresented: $showingNewSession) {
@@ -4977,8 +5501,26 @@ private struct ChatScreen: View {
             && !loading
     }
 
+    /// 属于当前会话的提问卡。提问卡只在对应 chat 里出现，不全局弹。
+    private var sessionQuestions: [DSHRemoteQuestionBatch] {
+        guard case .dsh(let session) = target else { return [] }
+        return controller.dshQuestions.filter { $0.sessionId == session.id }
+    }
+
+    /// Mac 上正在执行的动作，来自 DSH 会话日志里的 tool/call 或 turn。
+    @State private var activityLabel: String?
+    @State private var activitySince: Date?
+
     private var isWorking: Bool {
-        isOnline && (sending || displayMessages.last?.role == "user")
+        isOnline && (sending || activityLabel != nil || displayMessages.last?.role == "user")
+    }
+
+    /// 和电脑端一致的写法：动作 · 已耗时
+    private func activityText(at date: Date) -> String {
+        guard let activityLabel else { return "\(target.agentName) is working…" }
+        guard let activitySince else { return activityLabel }
+        let seconds = max(0, Int(date.timeIntervalSince(activitySince)))
+        return "\(activityLabel) · \(seconds)s"
     }
 
     var body: some View {
@@ -4995,17 +5537,36 @@ private struct ChatScreen: View {
             }
             content
             if isWorking {
-                HStack(spacing: 6) {
-                    ProgressView()
-                        .controlSize(.mini)
-                        .tint(FlowCueTheme.textSecondary)
-                    Text("\(target.agentName) is working…")
-                        .flowCueFont(11, relativeTo: .caption2)
-                        .foregroundStyle(FlowCueTheme.textSecondary)
-                    Spacer(minLength: 0)
+                // 每秒刷新一次，显示「执行命令 · … · 12s」，和电脑端的
+                // "Deep diving for 12s" 同一个意思。
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .tint(FlowCueTheme.textSecondary)
+                        Text(activityText(at: context.date))
+                            .flowCueFont(11, relativeTo: .caption2)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 2)
                 }
-                .padding(.horizontal, 18)
-                .padding(.bottom, 2)
+            }
+            ForEach(sessionQuestions) { batch in
+                VStack(spacing: 10) {
+                    ForEach(batch.questions) { question in
+                        DSHQuestionCard(question: question) { chosen in
+                            _ = await controller.answerDSH(
+                                batchID: batch.id, questionID: question.id, chosen: chosen
+                            )
+                        }
+                    }
+                }
+                .padding(.horizontal, AgentsLayout.margin)
+                .padding(.bottom, 8)
             }
             ChatComposer(text: $text, sending: sending) { images in
                 send(images)
@@ -5016,6 +5577,7 @@ private struct ChatScreen: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
         .task { network.start() }
         .onDisappear { network.stop() }
         .task(id: target.id) { await runChat() }
@@ -5286,6 +5848,13 @@ private struct ChatScreen: View {
             await refreshSubagentsIfNeeded()
             let updated = await fetchMessages(for: target)
             if updated != messages { messages = updated }
+            if case .dsh(let session) = target {
+                let next = await controller.dshActivity(for: session)
+                if next?.label != activityLabel {
+                    activityLabel = next?.label
+                    activitySince = next?.since
+                }
+            }
         }
     }
 
@@ -5339,7 +5908,19 @@ private struct ChatScreen: View {
         pending = item
         text = ""
         sending = true
+        startWatchdog()
         Task { await deliver(item, to: sessionTarget) }
+    }
+
+    /// 兜底：任何一次发送如果没能回到 deliver 的收尾（连接半死、任务被取消），
+    /// `sending` 会永远为 true，输入框从此锁死。超过 45 秒强制解开。
+    private func startWatchdog() {
+        Task {
+            try? await Task.sleep(for: .seconds(45))
+            guard sending else { return }
+            sending = false
+            if pending?.state == .sending { pending?.state = .failed }
+        }
     }
 
     private func retry() {
@@ -5348,6 +5929,7 @@ private struct ChatScreen: View {
         item.state = .sending
         pending = item
         sending = true
+        startWatchdog()
         Task { await deliver(item, to: sessionTarget) }
     }
 
@@ -5370,7 +5952,17 @@ private struct ChatScreen: View {
                 messages = await fetchMessages(for: sessionTarget)
             }
         } else if sessionTarget == target {
-            pending?.state = .failed
+            // 超时 ≠ 没送到：桥接转发前要先唤醒 DSH 的 agent，消息可能已经进队列。
+            // 核对最近几条，命中就当已送达，避免用户反复重发。
+            let refreshed = await fetchMessages(for: sessionTarget)
+            let delivered = !item.text.isEmpty
+                && refreshed.suffix(3).contains { $0.text.contains(item.text) }
+            if delivered {
+                pending = nil
+                messages = refreshed
+            } else {
+                pending?.state = .failed
+            }
         }
         sending = false
     }
@@ -5451,13 +6043,20 @@ private struct ChatMessageBubble: View {
                         .multilineTextAlignment(.leading)
                 }
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 10)
+            // 纯图片消息不要气泡底：气泡色和图片边缘不一致时会出现白边/色块。
+            .padding(.horizontal, imageOnly ? 0 : 13)
+            .padding(.vertical, imageOnly ? 0 : 10)
             .background(
                 RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
-                    .fill(FlowCueTheme.accent)
+                    .fill(imageOnly ? Color.clear : FlowCueTheme.accent)
             )
         }
+    }
+
+    /// 只有图片、没有文字：此时不应该画气泡背景。
+    private var imageOnly: Bool {
+        let hasImages = !(message.images?.isEmpty ?? true)
+        return hasImages && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var assistantBubble: some View {
@@ -5470,19 +6069,62 @@ private struct ChatMessageBubble: View {
                     MarkdownMessageView(text: message.text)
                 }
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 10)
+            .padding(.horizontal, imageOnly ? 0 : 13)
+            .padding(.vertical, imageOnly ? 0 : 10)
             .background(
                 RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
-                    .fill(FlowCueTheme.surface)
+                    .fill(imageOnly ? Color.clear : FlowCueTheme.surface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
-                    .strokeBorder(FlowCueTheme.hairline.opacity(0.6))
+                    .strokeBorder(imageOnly ? Color.clear : FlowCueTheme.hairline.opacity(0.6))
             )
             Spacer(minLength: 32)
         }
     }
+}
+
+/// 左边缘拖拽返回。系统自带的交互式返回在这里会被 TabView 的翻页手势抢走，
+/// 所以用一个高优先级手势兜住：只有从最左 24pt 起手、横向拖过 90pt 才触发。
+private struct EdgeSwipeBackModifier: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+    /// 跟随手指的位移；手势结束会自动回零，配上下面的动画就是弹性回弹。
+    @GestureState private var dragOffset: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            // 页面跟着手指往右走，松手回弹或返回。
+            .offset(x: dragOffset)
+            .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.86), value: dragOffset)
+            // 只在整个视图的最左 24pt 铺一条透明触控带：不抢列表的垂直滚动，
+            // 也不影响页面中间的横向内容。
+            .overlay(alignment: .leading) {
+                Color.clear
+                    .frame(width: 24)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+                            .updating($dragOffset) { value, state, _ in
+                                let dx = value.translation.width
+                                let dy = value.translation.height
+                                // 只在横向为主时才跟手，避免竖滑时页面乱动。
+                                state = abs(dx) > abs(dy) ? max(0, dx) : 0
+                            }
+                            .onEnded { value in
+                                let dx = value.translation.width
+                                let dy = value.translation.height
+                                guard dx > 90, abs(dy) < abs(dx) else { return }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                dismiss()
+                            }
+                    )
+            }
+    }
+}
+
+extension View {
+    /// 给推入的页面加上「从左边缘右拖返回」。
+    func edgeSwipeBack() -> some View { modifier(EdgeSwipeBackModifier()) }
 }
 
 private struct ChatPendingBubble: View {
@@ -5885,7 +6527,8 @@ final class VoiceDictation {
     private nonisolated static func requestMicrophoneAuthorization(
         _ completion: @escaping @Sendable (Bool) -> Void
     ) {
-        AVAudioSession.sharedInstance().requestRecordPermission(completion)
+        // iOS 17+ 的新入口；旧 API 已废弃。
+        AVAudioApplication.requestRecordPermission(completionHandler: completion)
     }
 
     func stop() {
@@ -5955,11 +6598,18 @@ private struct MessageImageGrid: View {
         VStack(alignment: .leading, spacing: 6) {
             ForEach(images) { image in
                 if let data = Data(base64Encoded: image.base64), let uiImage = UIImage(data: data) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: 260, maxHeight: 260)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    // 自带深色底并自己裁剪：外部容器是什么底色都盖得住，
+                    // 也避免透明区域被系统垫成白色。
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(FlowCueTheme.canvas)
+                        Image(uiImage: uiImage)
+                            .resizable()
+                            .interpolation(.high)
+                            .scaledToFit()
+                    }
+                    .frame(maxWidth: 240, maxHeight: 240)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 }
             }
         }
@@ -5989,6 +6639,8 @@ private enum MarkdownBlock {
     case numbered([String])
     case quote(String)
     case rule
+    /// Markdown 表格：表头 + 数据行。手机上横向空间有限，按列等宽铺开。
+    case table(header: [String], rows: [[String]])
 }
 
 private enum MarkdownParser {
@@ -6032,6 +6684,29 @@ private enum MarkdownParser {
             if trimmed == "---" || trimmed == "***" {
                 blocks.append(.rule)
                 index += 1
+                continue
+            }
+
+            if trimmed.hasPrefix("|") {
+                var rows: [[String]] = []
+                while index < lines.count {
+                    let value = lines[index].trimmingCharacters(in: .whitespaces)
+                    guard value.hasPrefix("|") else { break }
+                    let cells = value
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "|"))
+                        .components(separatedBy: "|")
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                    let isSeparator = !cells.isEmpty && cells.allSatisfy { cell in
+                        !cell.isEmpty && cell.allSatisfy { $0 == "-" || $0 == ":" }
+                    }
+                    if !isSeparator { rows.append(cells) }
+                    index += 1
+                }
+                if rows.count > 1 {
+                    blocks.append(.table(header: rows[0], rows: Array(rows.dropFirst())))
+                } else if let only = rows.first {
+                    blocks.append(.paragraph(only.joined(separator: " · ")))
+                }
                 continue
             }
 
@@ -6143,6 +6818,29 @@ private struct MarkdownMessageView: View {
                     }
                 }
             }
+        case .table(let header, let rows):
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(alignment: .top, spacing: 10) {
+                    ForEach(Array(header.enumerated()), id: \.offset) { _, cell in
+                        Text(cell)
+                            .flowCueFont(11, relativeTo: .caption2, weight: .semibold)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                Rectangle()
+                    .fill(FlowCueTheme.hairline)
+                    .frame(height: 1)
+                ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                    HStack(alignment: .top, spacing: 10) {
+                        ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
+                            InlineMarkdownText(text: cell)
+                                .flowCueFont(12, relativeTo: .caption)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
+            }
         case .quote(let text):
             HStack(alignment: .top, spacing: 10) {
                 Rectangle().fill(FlowCueTheme.accent.opacity(0.6)).frame(width: 3)
@@ -6240,7 +6938,6 @@ private struct MeView: View {
     @State private var showingAppearance = MePreview.state == "appearance"
     @State private var showingLanguage = MePreview.state == "language"
     @State private var showingPro = MePreview.state == "pro"
-    @State private var showingArchive = MePreview.state == "archive"
     @State private var showingAbout = MePreview.state == "about"
     @State private var showingFeedback = MePreview.state == "feedback"
     @State private var showingWidgets = MePreview.state == "widgets"
@@ -6290,6 +6987,7 @@ private struct MeView: View {
             }
             .background { FlowCueScreenBackground() }
             .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
             .task { network.start() }
             .onDisappear { network.stop() }
             .fullScreenCover(isPresented: $showingPaywall) {
@@ -6315,9 +7013,6 @@ private struct MeView: View {
             }
             .navigationDestination(isPresented: $showingAppearance) {
                 AppearanceView(showsDone: false)
-            }
-            .navigationDestination(isPresented: $showingArchive) {
-                ArchiveView(store: store, remoteController: remoteController)
             }
             .navigationDestination(isPresented: $showingAbout) {
                 AboutView(showOnboarding: showOnboarding)
@@ -6473,6 +7168,18 @@ private struct MeView: View {
                 ArchiveView(store: store, remoteController: remoteController)
             } label: {
                 MeRowLabel(title: "Archive")
+            }
+            .buttonStyle(.plain)
+
+            divider
+
+            NavigationLink {
+                TrashView(store: store, remoteController: remoteController)
+            } label: {
+                MeRowLabel(
+                    title: "Trash",
+                    value: store.trashedCaptures.isEmpty ? nil : "\(store.trashedCaptures.count)"
+                )
             }
             .buttonStyle(.plain)
 
@@ -7418,6 +8125,121 @@ private struct ProStatusSheet: View {
 }
 
 // MARK: - Archive
+
+/// 垃圾箱：删除的想法先放这里，可以恢复，也可以彻底清掉。
+private struct TrashView: View {
+    @Bindable var store: IdeaDockStore
+    @Bindable var remoteController: LANRemoteController
+    @State private var showingEmptyConfirmation = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if store.trashedCaptures.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 26))
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                        Text("Trash is empty")
+                            .flowCueFont(14, relativeTo: .subheadline)
+                            .foregroundStyle(FlowCueTheme.textPrimary)
+                        Text("Deleted ideas stay here so you can restore them.")
+                            .flowCueFont(11, relativeTo: .caption)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 60)
+                    .padding(.horizontal, 32)
+                } else {
+                    Text("\(store.trashedCaptures.count) IN TRASH")
+                        .flowCueFont(10, relativeTo: .caption2)
+                        .tracking(1.0)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 16)
+
+                    VStack(spacing: 0) {
+                        ForEach(store.trashedCaptures) { capture in
+                            row(capture)
+                            Rectangle()
+                                .fill(FlowCueTheme.hairline)
+                                .frame(height: 1)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 2)
+
+                    Text("Ideas deleted here are kept on this iPhone until you empty the trash.")
+                        .flowCueFont(10, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 14)
+                }
+            }
+            .padding(.bottom, 32)
+        }
+        .background { FlowCueScreenBackground() }
+        .navigationTitle("Trash")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            if !store.trashedCaptures.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Empty", role: .destructive) { showingEmptyConfirmation = true }
+                }
+            }
+        }
+        .confirmationDialog("清空垃圾箱？", isPresented: $showingEmptyConfirmation, titleVisibility: .visible) {
+            Button("全部彻底删除", role: .destructive) {
+                for capture in store.trashedCaptures {
+                    store.deletePermanently(capture.id)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("清空后这些想法无法再恢复。")
+        }
+    }
+
+    private func row(_ capture: CaptureItem) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(capture.text)
+                .flowCueFont(13, relativeTo: .subheadline)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .lineLimit(2)
+            HStack(spacing: 10) {
+                Button {
+                    Task {
+                        if store.restore(capture.id),
+                           let restored = store.captures.first(where: { $0.id == capture.id }) {
+                            await remoteController.pushIdea(restored)
+                        }
+                    }
+                } label: {
+                    Label("恢复", systemImage: "arrow.uturn.backward")
+                        .flowCueFont(11, relativeTo: .caption, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.accent)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    store.deletePermanently(capture.id)
+                } label: {
+                    Label("彻底删除", systemImage: "trash.slash")
+                        .flowCueFont(11, relativeTo: .caption, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.failure)
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.vertical, 10)
+    }
+}
 
 private struct ArchiveView: View {
     @Bindable var store: IdeaDockStore
@@ -8697,5 +9519,114 @@ private struct OnboardingPrivacyChip: View {
             .padding(.vertical, 5)
             .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.canvas))
             .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
+    }
+}
+
+// MARK: - 远程推送
+
+/// APNs 注册。推送由 Mac 直接用 .p8 发往 api.push.apple.com，不需要服务端；
+/// 手机这边只负责拿到 device token 并交给 Mac。
+final class FlowCueAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // 不挂 delegate 的话，App 在前台收到的推送会被系统静默丢弃。
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        FlowCuePushRegistration.shared.handleToken(deviceToken)
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        FlowCuePushRegistration.shared.handleFailure(error)
+    }
+
+    // 前台也显示横幅。非 async + nonisolated，避开 Swift 6 的并发检查。
+    nonisolated func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        completionHandler([.banner, .sound, .list])
+    }
+}
+
+@MainActor
+final class FlowCuePushRegistration {
+    static let shared = FlowCuePushRegistration()
+
+    private let tokenKey = "FlowCue.pushToken"
+    private let askedKey = "FlowCue.pushAsked"
+    private let errorKey = "FlowCue.pushError"
+
+    var token: String? { UserDefaults.standard.string(forKey: tokenKey) }
+    var lastError: String? { UserDefaults.standard.string(forKey: errorKey) }
+
+    /// 每次启动都走一遍：
+    /// - 没问过才问授权
+    /// - 只要已授权就重新注册 token（重装/恢复/系统重置后 token 会变，
+    ///   旧逻辑只在第一次启动注册，之后永远不刷新）
+    /// - 顺便把系统返回的通知设置记下来，用来诊断「为什么没声音」
+    func requestIfNeeded() {
+        #if DEBUG
+        // 界面预览时可跳过授权弹窗，免得挡住要看的页面。
+        if ProcessInfo.processInfo.arguments.contains("--flowcue-questions-preview") { return }
+        #endif
+        Task {
+            let center = UNUserNotificationCenter.current()
+            var settings = await center.notificationSettings()
+            if settings.authorizationStatus == .notDetermined,
+               !UserDefaults.standard.bool(forKey: askedKey) {
+                UserDefaults.standard.set(true, forKey: askedKey)
+                _ = try? await center.requestAuthorization(options: [.alert, .sound, .badge])
+                settings = await center.notificationSettings()
+            }
+            record(settings)
+            guard settings.authorizationStatus == .authorized
+                || settings.authorizationStatus == .provisional else { return }
+            UIApplication.shared.registerForRemoteNotifications()
+        }
+    }
+
+    /// 系统里这些开关决定推送有没有横幅和声音，出问题时先看它们。
+    private func record(_ settings: UNNotificationSettings) {
+        let defaults = UserDefaults.standard
+        defaults.set(settings.soundSetting == .enabled, forKey: "FlowCue.pushSoundEnabled")
+        defaults.set(settings.alertSetting == .enabled, forKey: "FlowCue.pushAlertEnabled")
+        defaults.set(settings.lockScreenSetting == .enabled, forKey: "FlowCue.pushLockScreenEnabled")
+        defaults.set(settings.notificationCenterSetting == .enabled, forKey: "FlowCue.pushCenterEnabled")
+        defaults.set(settings.authorizationStatus.rawValue, forKey: "FlowCue.pushAuthStatus")
+    }
+
+    /// 上报给 Mac 的诊断字段，和 token 一起发。
+    var diagnostics: [String: Any] {
+        let defaults = UserDefaults.standard
+        return [
+            "sound": defaults.bool(forKey: "FlowCue.pushSoundEnabled"),
+            "alert": defaults.bool(forKey: "FlowCue.pushAlertEnabled"),
+            "lockScreen": defaults.bool(forKey: "FlowCue.pushLockScreenEnabled"),
+            "authorization": defaults.integer(forKey: "FlowCue.pushAuthStatus"),
+        ]
+    }
+
+    func handleToken(_ data: Data) {
+        let hex = data.map { String(format: "%02x", $0) }.joined()
+        guard !hex.isEmpty else { return }
+        UserDefaults.standard.set(hex, forKey: tokenKey)
+        UserDefaults.standard.removeObject(forKey: errorKey)
+    }
+
+    func handleFailure(_ error: Error) {
+        // 模拟器或未开推送能力时会到这里；不当作致命错误。
+        UserDefaults.standard.set(error.localizedDescription, forKey: errorKey)
     }
 }

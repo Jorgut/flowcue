@@ -16,6 +16,14 @@ final class ProbeMonitor {
     private let dshBundle = "com.deepseek.dsh"
     private let dshReader = DSHSessionReader()
     private var knownApprovals: Set<String> = []
+    /// 只在第一次轮询时建立基线。用 knownApprovals.isEmpty 判断是错的：
+    /// 启动后没有待审批时它一直是空集，于是「启动后的第一条审批」会被
+    /// 当成基线吞掉，既不推手机也不弹桌面通知。
+    private var hasSeededApprovals = false
+    private var knownQuestions: Set<String> = []
+    /// sessionId → 会话标题，用来在锁屏上显示「游方 app 有问题需要答复」。
+    private var sessionTitles: [String: String] = [:]
+    private var hasSeededQuestions = false
 
     /// 待审批数量变化（喂给菜单栏角标）
     var onApprovalsCount: ((Int) -> Void)?
@@ -31,11 +39,15 @@ final class ProbeMonitor {
         task = Task { [weak self] in
             var tick = 0
             while !Task.isCancelled {
+                // 审批每 3 秒查一次：这是本机回环请求，几乎不花钱，
+                // 但决定了审批推到手机的快慢。其它探测仍保持 15 秒。
+                await self?.refreshSessionTitles()
                 await self?.pollApprovals()
-                if tick % 2 == 0 { await self?.pollClaude() }
-                if tick % 2 == 1 { await self?.pollDSH() }
+                await self?.pollQuestions()
+                if tick % 5 == 0 { await self?.pollClaude() }
+                if tick % 5 == 2 { await self?.pollDSH() }
                 tick += 1
-                do { try await Task.sleep(for: .seconds(15)) } catch { return }
+                do { try await Task.sleep(for: .seconds(3)) } catch { return }
             }
         }
     }
@@ -48,8 +60,9 @@ final class ProbeMonitor {
     private func pollApprovals() async {
         guard bridge.isConfigured, let pending = try? await bridge.pending() else { return }
         let ids = Set(pending.map { $0.id })
-        if knownApprovals.isEmpty {
-            // 首次只记基线，避免启动瞬间刷一屏通知
+        if !hasSeededApprovals {
+            // 只在进程启动后的第一次轮询记基线，避免启动瞬间刷一屏通知。
+            hasSeededApprovals = true
             knownApprovals = ids
             await MainActor.run { self.onApprovalsCount?(ids.count) }
             return
@@ -59,7 +72,69 @@ final class ProbeMonitor {
         await MainActor.run { self.onApprovalsCount?(ids.count) }
         if !fresh.isEmpty {
             await MainActor.run { NotificationService.shared.postApprovals(count: fresh.count) }
+            await pushApprovals(fresh: fresh, pending: pending)
         }
+    }
+
+    /// 缓存会话标题，让推送能说清「是哪个任务」。
+    private func refreshSessionTitles() async {
+        let sessions = dshReader.sessions()
+        guard !sessions.isEmpty else { return }
+        var map: [String: String] = [:]
+        for session in sessions where !session.title.isEmpty {
+            map[session.id] = session.title
+        }
+        if !map.isEmpty { sessionTitles = map }
+    }
+
+    /// 有人在等你回答问题时推一条（和审批分开，方便区别对待）。
+    private func pollQuestions() async {
+        guard bridge.isConfigured, let batches = try? await bridge.questions() else { return }
+        let ids = Set(batches.map { $0.id })
+        if !hasSeededQuestions {
+            hasSeededQuestions = true
+            knownQuestions = ids
+            return
+        }
+        let fresh = batches.filter { !knownQuestions.contains($0.id) }
+        knownQuestions = ids
+        guard let first = fresh.first,
+              let question = first.questions.first,
+              let settings = APNsSettings.load(),
+              let deviceToken = UserDefaults.standard.string(forKey: "FlowCue.pushDeviceToken"),
+              !deviceToken.isEmpty else { return }
+        let environment = UserDefaults.standard.string(forKey: "FlowCue.pushEnvironment")
+        let sender = settings.sender(environmentOverride: environment)
+        guard sender.isConfigured else { return }
+        let project = sessionTitles[first.sessionId ?? ""]
+        let title = project.map { "\($0) 有问题需要答复" } ?? "有任务在等你回答"
+        try? await sender.send(
+            deviceToken: deviceToken,
+            title: title,
+            body: question.title,
+            threadID: "dsh-questions"
+        )
+    }
+
+    /// 给手机推一条 APNs 通知：锁屏、后台也能看到。
+    /// 没配置密钥或手机没上报 token 时静默跳过，不影响桌面逻辑。
+    private func pushApprovals(fresh: Set<String>, pending: [DSHRemoteApproval]) async {
+        guard let settings = APNsSettings.load(),
+              let deviceToken = UserDefaults.standard.string(forKey: "FlowCue.pushDeviceToken"),
+              !deviceToken.isEmpty,
+              let first = pending.first(where: { fresh.contains($0.id) }) else { return }
+        let environment = UserDefaults.standard.string(forKey: "FlowCue.pushEnvironment")
+        let sender = settings.sender(environmentOverride: environment)
+        guard sender.isConfigured else { return }
+        let title = fresh.count > 1 ? "\(fresh.count) 个 DSH 待审批" : "DSH 待审批"
+        let project = sessionTitles[first.sessionId ?? ""]
+        let pushTitle = project.map { "\($0) 需要确认" } ?? title
+        try? await sender.send(
+            deviceToken: deviceToken,
+            title: pushTitle,
+            body: first.title,
+            threadID: "dsh-approvals"
+        )
     }
 
     /// DSH 没有可读的对话接口，只能看会话文件的修改时间。

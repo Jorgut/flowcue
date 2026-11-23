@@ -59,6 +59,62 @@ public struct DSHRemoteApproval: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+/// 一次提问（可能包含多个问题）。
+public struct DSHRemoteQuestionBatch: Codable, Identifiable, Hashable, Sendable {
+    public struct Question: Codable, Hashable, Sendable, Identifiable {
+        public struct Option: Codable, Hashable, Sendable {
+            public let label: String
+            public let detail: String?
+
+            public init(label: String, detail: String? = nil) {
+                self.label = label
+                self.detail = detail
+            }
+        }
+
+        public let id: String
+        public let title: String
+        public let detail: String?
+        public let multiSelect: Bool
+        public let options: [Option]
+    }
+
+    public let id: String
+    public let createdAt: String?
+    /// 这个问题属于哪个 DSH 会话；手机据此把卡片放回对应 chat。
+    public let sessionId: String?
+    public let questions: [Question]
+}
+
+/// 回答某一次提问。
+public struct DSHQuestionAnswer: Codable, Sendable {
+    public struct Item: Codable, Sendable {
+        public let id: String
+        public let selected: [String]
+        public let custom: String?
+
+        public init(id: String, selected: [String], custom: String? = nil) {
+            self.id = id
+            self.selected = selected
+            self.custom = custom
+        }
+    }
+
+    public let id: String
+    public let answers: [Item]
+}
+
+/// `GET /v1/dsh/approvals` 的响应，供手机端解码。
+public struct DSHRemoteApprovalsResponse: Codable, Sendable {
+    public let available: Bool
+    public let pending: [DSHRemoteApproval]
+
+    public init(available: Bool, pending: [DSHRemoteApproval]) {
+        self.available = available
+        self.pending = pending
+    }
+}
+
 /// Decision payload sent back to the DSH bridge.
 public struct DSHRemoteDecision: Codable, Sendable {
     public let id: String
@@ -124,6 +180,20 @@ public final class DSHBridgeClient: @unchecked Sendable {
     public func send(sessionID: String, text: String, images: [String] = []) async throws {
         var request = try authorizedRequest(path: "/v1/message", method: "POST")
         request.httpBody = try JSONEncoder().encode(DSHRemoteMessage(sessionId: sessionID, text: text, images: images.isEmpty ? nil : images))
+        let (_, response) = try await configuration.session.data(for: request)
+        try validate(response)
+    }
+
+    /// 读待回答的问题（和审批同一个端点，只是取 questions 字段）。
+    public func questions() async throws -> [DSHRemoteQuestionBatch] {
+        let data = try await get(path: "/v1/pending")
+        struct Response: Decodable { let questions: [DSHRemoteQuestionBatch]? }
+        return try JSONDecoder().decode(Response.self, from: data).questions ?? []
+    }
+
+    public func answer(_ answer: DSHQuestionAnswer) async throws {
+        var request = try authorizedRequest(path: "/v1/answer", method: "POST")
+        request.httpBody = try JSONEncoder().encode(answer)
         let (_, response) = try await configuration.session.data(for: request)
         try validate(response)
     }

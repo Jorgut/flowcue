@@ -30,6 +30,8 @@ public final class IdeaDockStore {
 
     public private(set) var contexts: [WorkContextItem]
     public private(set) var captures: [CaptureItem]
+    /// 已删除、还在垃圾箱里的想法（可恢复）。
+    public private(set) var trashedCaptures: [CaptureItem] = []
     public private(set) var sourceThreadID: String?
     public private(set) var targetThreadID: String?
     public var searchText: String
@@ -468,29 +470,14 @@ public final class IdeaDockStore {
     /// iPhone 通过局域网推来的想法：按 id 幂等写入，重复推送不会产生副本。
     @discardableResult
     public func upsertRemoteIdea(_ idea: RemoteIdea) -> Bool {
-        let text = idea.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return false }
-
-        if let capture = fetchCapture(id: idea.id) {
-            let effectiveStatus = capture.status == .archived
-                ? capture.statusBeforeArchive ?? .unknown
-                : capture.status
-            guard effectiveStatus != .queued, effectiveStatus != .queueing else { return true }
-            if capture.text != text {
-                capture.text = text
-                capture.updatedAt = max(capture.updatedAt, idea.updatedAt)
-            }
-        } else {
-            let capture = Capture(
-                id: idea.id,
-                text: text,
-                createdAt: idea.createdAt,
-                updatedAt: idea.updatedAt,
-                status: .saved
-            )
-            modelContext.insert(capture)
+        switch applyRemote(idea) {
+        case .rejected:
+            return false
+        case .unchanged:
+            return true
+        case .applied:
+            break
         }
-
         do {
             try modelContext.save()
             try reloadCaptures()
@@ -500,6 +487,148 @@ public final class IdeaDockStore {
             try? reloadCaptures()
             return false
         }
+    }
+
+    /// 拉取合并：和 upsertRemoteIdea 走同一套规则，只是调用方不同。
+    @discardableResult
+    public func mergePulledIdeas(_ ideas: [RemoteIdea]) -> Int {
+        var merged = 0
+        for idea in ideas where applyRemote(idea) == .applied { merged += 1 }
+        guard merged > 0 else { return 0 }
+        do {
+            try modelContext.save()
+            try reloadCaptures()
+            return merged
+        } catch {
+            modelContext.rollback()
+            try? reloadCaptures()
+            return 0
+        }
+    }
+
+    #if DEBUG
+    /// 仅用于测试：直接改状态，避免在单测里驱动整个队列流程。
+    public func setStatusForTesting(captureID: UUID, status: CaptureStatus) {
+        guard let capture = fetchCapture(id: captureID) else { return }
+        capture.status = status
+        try? modelContext.save()
+        try? reloadCaptures()
+    }
+
+    /// 仅用于 UI 测试：插入几条可预测的想法，方便断言列表行为。
+    public func seedUIIdeasIfNeeded() {
+        let prefix = "UITest idea"
+        // 逐条补齐，而不是「有就整体跳过」——否则上一轮只种了 6 条，
+        // 这一轮要 20 条时会以为已经种过。
+        for index in 1...20 {
+            let text = "\(prefix) \(index)"
+            guard !captures.contains(where: { $0.text == text }) else { continue }
+            modelContext.insert(Capture(text: text, status: .saved))
+        }
+        try? modelContext.save()
+        try? reloadCaptures()
+    }
+    #endif
+
+    /// 从垃圾箱恢复：清掉墓碑，恢复时间往前走，让对端也跟着恢复。
+    @discardableResult
+    public func restore(_ captureID: UUID) -> Bool {
+        guard let capture = fetchCapture(id: captureID) else { return false }
+        capture.deletedAt = nil
+        capture.updatedAt = Date.now
+        do {
+            try modelContext.save()
+            try reloadCaptures()
+            notification = DockNotification(kind: .success, message: "已恢复。")
+            return true
+        } catch {
+            modelContext.rollback()
+            try? reloadCaptures()
+            return false
+        }
+    }
+
+    /// 彻底删除（清空垃圾箱用）。对端已持有墓碑，不会再把它当新想法插回来。
+    @discardableResult
+    public func deletePermanently(_ captureID: UUID) -> Bool {
+        guard let capture = fetchCapture(id: captureID) else { return false }
+        modelContext.delete(capture)
+        do {
+            try modelContext.save()
+            try reloadCaptures()
+            return true
+        } catch {
+            modelContext.rollback()
+            try? reloadCaptures()
+            return false
+        }
+    }
+
+    /// 同步用的整库快照：包含墓碑（deletedAt 非空的也要给对端），
+    /// 这样删除才能传播出去。
+    public func syncSnapshot() -> [RemoteIdea] {
+        let all = (try? modelContext.fetch(FetchDescriptor<Capture>())) ?? []
+        return all.map { capture in
+            RemoteIdea(
+                id: capture.id,
+                text: capture.text,
+                createdAt: capture.createdAt,
+                updatedAt: capture.updatedAt,
+                status: capture.statusRawValue,
+                deletedAt: capture.deletedAt
+            )
+        }
+    }
+
+    private enum RemoteApplyResult {
+        case rejected   // 空内容且不是墓碑，直接拒绝
+        case unchanged  // 本地更新或内容一致，什么都不用做
+        case applied    // 已修改本地，需要保存
+    }
+
+    /// 一条远端想法怎么合并：时间更新的赢；墓碑优先于正文。
+    private func applyRemote(_ idea: RemoteIdea) -> RemoteApplyResult {
+        let text = idea.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let remoteTime = max(idea.updatedAt, idea.deletedAt ?? .distantPast)
+
+        if let capture = fetchCapture(id: idea.id) {
+            // 正在排队/投递中的想法不能被另一台设备覆盖：
+            // 正文和状态都以本机为准，否则队列会和实际发送的内容对不上。
+            if capture.status == .queued || capture.status == .queueing,
+               idea.deletedAt == nil {
+                return .unchanged
+            }
+            guard remoteTime > capture.updatedAt else { return .unchanged }
+            capture.updatedAt = remoteTime
+            if let deletedAt = idea.deletedAt {
+                capture.deletedAt = deletedAt
+            } else {
+                capture.deletedAt = nil
+                if !text.isEmpty { capture.text = text }
+            }
+            if capture.deletedAt == nil {
+                // 草稿只属于设备本地：手机新建的想法状态是 draft，直接照搬会让它
+                // 在 Mac 列表里消失（filteredCaptures 不显示草稿）。
+                let incoming = idea.status.flatMap(CaptureStatus.init(rawValue:))
+                if let incoming, incoming != .draft {
+                    capture.status = incoming
+                } else if capture.status == .draft, !text.isEmpty {
+                    capture.status = .saved
+                }
+            }
+            return .applied
+        }
+
+        guard !text.isEmpty || idea.deletedAt != nil else { return .rejected }
+        modelContext.insert(Capture(
+            id: idea.id,
+            text: text,
+            createdAt: idea.createdAt,
+            updatedAt: remoteTime,
+            status: .saved,
+            deletedAt: idea.deletedAt
+        ))
+        return .applied
     }
 
     @discardableResult
@@ -729,6 +858,27 @@ public final class IdeaDockStore {
             predicate: #Predicate { $0.statusRawValue == "draft" }
         )
         return try? modelContext.fetch(descriptor).max { $0.updatedAt < $1.updatedAt }
+    }
+
+    /// 删除改成写墓碑（软删）。硬删会让另一台设备永远不知道这条已经没了，
+    /// 下次拉取又会把它当“缺失”重新插回来。
+    @discardableResult
+    public func delete(_ captureID: UUID) -> Bool {
+        guard let capture = fetchCapture(id: captureID) else { return false }
+        let now = Date.now
+        capture.deletedAt = now
+        capture.updatedAt = now
+        do {
+            try modelContext.save()
+            try reloadCaptures()
+            notification = DockNotification(kind: .success, message: "已删除。")
+            return true
+        } catch {
+            modelContext.rollback()
+            try? reloadCaptures()
+            notification = DockNotification(kind: .error, message: "删除失败。")
+            return false
+        }
     }
 
     private func fetchCapture(id: UUID) -> Capture? {
@@ -986,9 +1136,18 @@ public final class IdeaDockStore {
     }
 
     private func reloadCaptures() throws {
-        captures = try modelContext.fetch(FetchDescriptor<Capture>())
+        let all = try modelContext.fetch(FetchDescriptor<Capture>())
+        captures = all
+            .filter { $0.deletedAt == nil }
             .sorted { $0.updatedAt > $1.updatedAt }
             .map(\.item)
+        trashedCaptures = all
+            .compactMap { capture -> (Capture, Date)? in
+                guard let deletedAt = capture.deletedAt else { return nil }
+                return (capture, deletedAt)
+            }
+            .sorted { $0.1 > $1.1 }
+            .map(\.0.item)
     }
 
 }

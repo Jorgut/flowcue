@@ -4,6 +4,12 @@ import CodexIdeaDockCore
 import Observation
 import SwiftUI
 
+private enum CaptureDestination: Equatable {
+    case inbox
+    case codex(String)
+    case agent(agentName: String, session: AgentSession)
+}
+
 struct CapturePanelView: View {
     @Bindable var store: IdeaDockStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -18,28 +24,100 @@ struct CapturePanelView: View {
         store.draftText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    @State private var destination: CaptureDestination = .inbox
+    @State private var destinationPickerOpen = false
+    @State private var agentSessionGroups: [(AgentRecord, [AgentSession])] = []
+    @State private var loadingAgentSessions = false
+
+    private var destinationTitle: String { destinationTitle(for: destination) }
+
+    private func destinationTitle(for value: CaptureDestination) -> String {
+        switch value {
+        case .inbox:
+            return L10n.text("收件箱")
+        case .codex(let id):
+            return store.contexts.first { $0.id == id }?.title ?? "Codex"
+        case .agent(let agentName, let session):
+            return "\(agentName) · \(session.title)"
+        }
+    }
+
+    private var primaryActionTitle: String? { primaryActionTitle(for: destination) }
+
+    private func primaryActionTitle(for value: CaptureDestination) -> String? {
+        switch value {
+        case .inbox: return nil
+        case .codex: return L10n.text("排队")
+        case .agent: return L10n.text("发送")
+        }
+    }
+
     var body: some View {
         VStack(spacing: 10) {
             if AppDistribution.supportsDirectQueue {
-                CaptureHeader(
-                    contexts: store.contexts,
-                    source: store.sourceContext,
-                    target: store.targetContext,
-                    isRefreshing: store.isLoadingContexts,
-                    isQueueing: store.isQueueing,
-                    onSelectSource: { store.setSource($0) },
-                    onSelectTarget: { store.setTarget($0) },
-                    onTogglePinned: { context in
-                        store.setPinned(!context.isPinned, for: context.id)
-                    },
-                    onRefresh: {
-                        Task { @MainActor in
-                            await store.refreshThreads()
+                HStack(spacing: 6) {
+                    Image(systemName: "sparkles")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Color(hex: FlowCueTokens.airyDark.success))
+                    Text("FlowCue")
+                        .font(.system(size: 11, weight: .semibold))
+
+                    Button {
+                        if !destinationPickerOpen { loadAgentSessionsIfNeeded() }
+                        destinationPickerOpen.toggle()
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(destinationTitle)
+                                .font(.system(size: 11, weight: .medium))
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8, weight: .semibold))
                         }
-                    },
-                    onOpenInbox: onOpenInbox,
-                    onClose: onClose
-                )
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(Capsule().fill(.white.opacity(0.07)))
+                        .overlay(Capsule().strokeBorder(.white.opacity(0.14)))
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(store.isQueueing)
+                    .popover(isPresented: $destinationPickerOpen, arrowEdge: .bottom) {
+                        DestinationPicker(
+                            contexts: store.contexts,
+                            groups: agentSessionGroups,
+                            isLoading: loadingAgentSessions,
+                            onPick: apply(destination:)
+                        )
+                    }
+
+                    Spacer(minLength: 8)
+
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(store.isQueueing ? Color(hex: FlowCueTokens.airyDark.accent)
+                                                   : Color(hex: FlowCueTokens.airyDark.success))
+                            .frame(width: 5, height: 5)
+                        Text(store.isQueueing ? L10n.text("投递中")
+                                              : "Codex · \(store.contexts.count) " + L10n.text("个会话"))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Button(action: onOpenInbox) {
+                        Image(systemName: "tray.full")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.text("打开收件箱"))
+                    .accessibilityLabel(L10n.text("打开收件箱"))
+
+                    Button(action: onClose) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.plain)
+                    .help(L10n.text("隐藏悬浮窗，保留草稿"))
+                    .accessibilityLabel(L10n.text("隐藏悬浮窗并保留草稿"))
+                }
             } else {
                 AppStoreCaptureHeader(
                     onOpenInbox: onOpenInbox,
@@ -67,6 +145,8 @@ struct CapturePanelView: View {
                         store.notification = await CodexFallback.copyAndActivate(text: text).notification
                     }
                 },
+                primaryTitle: primaryActionTitle,
+                onPrimary: performPrimary,
                 onSave: onSave,
                 onQueue: onQueue
             )
@@ -81,6 +161,206 @@ struct CapturePanelView: View {
         .compositingGroup()
         .clipShape(.rect(cornerRadius: 16))
         .animation(.easeOut(duration: reduceMotion ? 0.08 : 0.14), value: store.notification?.id)
+        .onAppear {
+            // 调试/截图用：`open FlowCue.app --args -panel -panelpicker`
+            if ProcessInfo.processInfo.arguments.contains("-panelsend") {
+                Task { @MainActor in
+                    let args = ProcessInfo.processInfo.arguments
+                    let index = args.firstIndex(of: "-panelsend") ?? 0
+                    let agentID = args.count > index + 1 ? args[index + 1] : "claude"
+                    try? await Task.sleep(for: .milliseconds(500))
+                    let sessions = (try? await AgentService.default.sessions(for: agentID, limit: 5)) ?? []
+                    guard let session = sessions.first else {
+                        try? "no sessions".write(toFile: "/tmp/flowcue-panelsend.log", atomically: true, encoding: .utf8)
+                        return
+                    }
+                    store.draftText = "面板自检：这条消息来自 FlowCue 的发送测试"
+                    destination = .agent(agentName: agentID, session: session)
+                    performPrimary()
+                }
+                return
+            }
+            guard ProcessInfo.processInfo.arguments.contains("-panelpicker") else { return }
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(700))
+                NSApp.activate(ignoringOtherApps: true)
+                NSApp.keyWindow?.makeKey()
+                loadAgentSessionsIfNeeded()
+                destinationPickerOpen = true
+            }
+        }
+    }
+
+    private func apply(destination newValue: CaptureDestination) {
+        destination = newValue
+        destinationPickerOpen = false
+        if case .codex(let id) = newValue { store.setTarget(id) }
+    }
+
+    private func loadAgentSessionsIfNeeded() {
+        guard agentSessionGroups.isEmpty, !loadingAgentSessions else { return }
+        loadingAgentSessions = true
+        Task { @MainActor in
+            let scanned = AgentDiscovery.scan()
+            var groups: [(AgentRecord, [AgentSession])] = []
+            for agent in scanned
+            where agent.capabilities.contains(.session) && agent.id != "codex" {
+                let list = (try? await AgentService.default.sessions(for: agent.id, limit: 20)) ?? []
+                groups.append((agent, list))
+            }
+            agentSessionGroups = groups
+            loadingAgentSessions = false
+            if ProcessInfo.processInfo.arguments.contains("-panelpicker") {
+                var lines = ["scanned=\(scanned.map { $0.id }.joined(separator: ","))",
+                             "groups=\(groups.map { $0.0.id + ":" + String($0.1.count) }.joined(separator: ","))"]
+                if let context = store.contexts.first {
+                    let probe = CaptureDestination.codex(context.id)
+                    lines.append("codex: title=\(destinationTitle(for: probe)) action=\(primaryActionTitle(for: probe) ?? "nil")")
+                }
+                if let dsh = groups.first(where: { $0.0.id == "dsh" }) {
+                    if let session = dsh.1.first {
+                        let probe = CaptureDestination.agent(agentName: dsh.0.displayName, session: session)
+                        lines.append("agent: title=\(destinationTitle(for: probe)) action=\(primaryActionTitle(for: probe) ?? "nil")")
+                    }
+                }
+                try? lines.joined(separator: "\n").write(toFile: "/tmp/flowcue-panel-groups.log", atomically: true, encoding: .utf8)
+            }
+        }
+    }
+
+    private func performPrimary() {
+        switch destination {
+        case .inbox:
+            onSave()
+        case .codex(let id):
+            store.setTarget(id)
+            onQueue()
+        case .agent(_, let session):
+            sendToAgent(session)
+        }
+    }
+
+    private func sendToAgent(_ session: AgentSession) {
+        let text = store.draftText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        Task { @MainActor in
+            let isSelfTest = ProcessInfo.processInfo.arguments.contains("-panelsend")
+            do {
+                try await AgentService.default.send(text, to: session)
+                store.discardActiveDraft()
+                onClose()
+                if isSelfTest {
+                    let log = "OK agent=\(session.agentID) session=\(session.id) draftEmpty=\(store.draftText.isEmpty)"
+                    try? log.write(toFile: "/tmp/flowcue-panelsend.log", atomically: true, encoding: .utf8)
+                }
+            } catch {
+                store.notification = DockNotification(kind: .error, message: L10n.text("发送失败"))
+                if isSelfTest {
+                    let log = "ERR agent=\(session.agentID) session=\(session.id) error=\(error)"
+                    try? log.write(toFile: "/tmp/flowcue-panelsend.log", atomically: true, encoding: .utf8)
+                }
+            }
+        }
+    }
+}
+
+private enum DestinationGroup: Equatable {
+    case inbox
+    case codex
+    case agent(String)
+}
+
+private struct DestinationPicker: View {
+    let contexts: [WorkContextItem]
+    let groups: [(AgentRecord, [AgentSession])]
+    let isLoading: Bool
+    let onPick: (CaptureDestination) -> Void
+
+    @State private var group: DestinationGroup = .inbox
+
+    var body: some View {
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                row(L10n.text("收件箱"), selected: group == .inbox) { group = .inbox }
+                row("Codex", selected: group == .codex) { group = .codex }
+                ForEach(groups, id: \.0.id) { agent, _ in
+                    row(agent.displayName, selected: group == .agent(agent.id)) { group = .agent(agent.id) }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(8)
+            .frame(width: 170, alignment: .topLeading)
+
+            Divider()
+
+            Group {
+                switch group {
+                case .inbox:
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(L10n.text("存到收件箱，之后再决定送到哪里。"))
+                            .font(.system(size: 10.5))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+                case .codex:
+                    if contexts.isEmpty {
+                        Text(L10n.text("还没有 Codex 会话")).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(contexts) { context in
+                                    row(context.selectionDisplayTitle, selected: false) {
+                                        onPick(.codex(context.id))
+                                    }
+                                }
+                            }
+                            .padding(6)
+                        }
+                    }
+                case .agent(let id):
+                    let sessions = groups.first { $0.0.id == id }?.1 ?? []
+                    if isLoading {
+                        ProgressView().controlSize(.small).frame(maxWidth: .infinity).padding(10)
+                    } else if sessions.isEmpty {
+                        Text(L10n.text("没有会话")).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 2) {
+                                ForEach(sessions) { session in
+                                    row(session.title, selected: false) {
+                                        let name = groups.first { $0.0.id == id }?.0.displayName ?? id
+                                        onPick(.agent(agentName: name, session: session))
+                                    }
+                                }
+                            }
+                            .padding(6)
+                        }
+                    }
+                }
+            }
+            .frame(minWidth: 190, alignment: .topLeading)
+        }
+        .frame(width: 400, height: 250)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .preferredColorScheme(.dark)
+    }
+
+    private func row(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 11))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 5)
+                .background(RoundedRectangle(cornerRadius: 7).fill(selected ? Color.white.opacity(0.08) : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -386,6 +666,8 @@ private struct CaptureFooter: View {
     let isTargetAvailable: Bool
     let notificationMessage: String?
     let onCopyAndOpenCodex: () -> Void
+    let primaryTitle: String?
+    let onPrimary: () -> Void
     let onSave: () -> Void
     let onQueue: () -> Void
 
@@ -426,21 +708,21 @@ private struct CaptureFooter: View {
                 .accessibilityLabel(L10n.text("保存想法并关闭"))
 
             if AppDistribution.supportsDirectQueue {
-                Button {
-                    onQueue()
-                } label: {
-                    if isQueueing {
-                        ProgressView()
-                            .controlSize(.small)
-                            .frame(width: 44)
-                    } else {
-                        Text(L10n.text("排到 Codex"))
+                if let primaryTitle {
+                    Button(action: onPrimary) {
+                        if isQueueing {
+                            ProgressView()
+                                .controlSize(.small)
+                                .frame(width: 44)
+                        } else {
+                            Text(primaryTitle)
+                        }
                     }
+                    .keyboardShortcut(.return, modifiers: [.command, .option])
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isDraftEmpty || isQueueing)
+                    .accessibilityLabel(primaryTitle)
                 }
-                .keyboardShortcut(.return, modifiers: [.command, .option])
-                .buttonStyle(.borderedProminent)
-                .disabled(isDraftEmpty || isQueueing || !isTargetAvailable)
-                .accessibilityLabel(isQueueing ? L10n.text("正在排到 Codex") : L10n.text("排到 Codex"))
             } else {
                 Button(L10n.text("复制并打开 Codex"), action: onQueue)
                     .keyboardShortcut(.return, modifiers: [.command, .option])

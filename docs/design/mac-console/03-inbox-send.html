@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>FlowCue · 发送到会话</title>
+<link rel="stylesheet" href="mock.css">
+</head>
+<body>
+<div class="window">
+  <div class="titlebar">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="title">FlowCue</div>
+    <div class="right"><span class="kbd">⌃⌥Space</span></div>
+  </div>
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="mark">F</div>
+      <div class="brand-name">FlowCue</div>
+    </div>
+    <span class="status-pill"><i class="dot ok"></i>DSH 已连接 · 2 待审批</span>
+    <span class="spacer"></span>
+    <div class="seg" style="width:222px; margin:0; padding:2px">
+      <span class="on">三栏</span><span>底部输入</span><span>侧栏</span>
+    </div>
+    <span class="chip ghost">设置</span>
+  </div>
+
+  <div class="inbox">
+    <div class="col">
+      <div class="col-pad" style="padding-bottom:0">
+        <div class="search">⌕　搜索想法、会话、项目</div>
+      </div>
+      <div class="filters">
+        <span class="chip on">全部 12</span>
+        <span class="chip">未处理 5</span>
+        <span class="chip">已排队 3</span>
+        <span class="chip">归档 41</span>
+      </div>
+      <div class="col-pad" style="padding-top:4px; overflow:hidden; display:flex; flex-direction:column; gap:4px; flex:1">
+        <div class="idea on">
+          <div class="row1"><span class="txt">把登录接口的错误码统一一下，顺便补两个测试</span><span class="when">刚刚</span></div>
+          <div class="meta"><span class="tag mint">Codex</span><span class="tag">auth-service</span></div>
+        </div>
+        <div class="idea">
+          <div class="row1"><span class="txt">整理桌面上的发票，按月份和供应商分类</span><span class="when">12 分</span></div>
+          <div class="meta"><span class="tag amber">已排队</span><span class="tag">Downloads</span></div>
+        </div>
+        <div class="idea">
+          <div class="row1"><span class="txt">每日设计情报：把这周的 18 条丢进日报</span><span class="when">1 小时</span></div>
+          <div class="meta"><span class="tag mint">DSH</span><span class="tag">Daily Tasks</span></div>
+        </div>
+        <div class="idea">
+          <div class="row1"><span class="txt">Upwork 项目扫描结果：新增 3 个匹配项</span><span class="when">3 小时</span></div>
+          <div class="meta"><span class="tag">Codex</span><span class="tag">Upwork</span></div>
+        </div>
+      </div>
+      <div class="list-foot">
+        <span class="btn primary" style="flex:1; justify-content:center">＋ 新想法</span>
+        <span class="btn">⌘↩</span>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="editor">
+        <div class="crumbs">
+          <span class="label">收件箱 / 想法</span>
+          <span class="spacer" style="flex:1"></span>
+          <span class="chip ghost">模板 ▾</span>
+        </div>
+        <div class="doc">把登录接口的错误码统一一下，顺便补两个测试
+
+现在 AuthController 里是字符串直接抛，AuthError 里已经有枚举但没接上。想改成全部走 AuthError，加一个 LoginTests 覆盖 401 / 409 两种情况。</div>
+        <div class="route">
+          <span class="label">来源</span>
+          <span class="chip ghost">无</span>
+          <span class="sep">·</span>
+          <span class="label">目标</span>
+          <span class="chip on">Codex</span>
+          <span class="chip">auth-service · 3 小时前</span>
+          <span class="spacer" style="flex:1"></span>
+          <span class="chip ghost">最近会话 ▾</span>
+        </div>
+        <div class="actions">
+          <span class="btn primary">保存</span>
+          <span class="btn">保存并排队</span>
+          <span class="hint">⌘↩ 保存 · ⌘⇧↩ 保存并排队 · esc 取消</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="detail">
+        <div class="block">
+          <div class="label" style="margin-bottom:9px">详情</div>
+          <div class="kv"><span>状态</span><span><i class="dot accent"></i>　草稿</span></div>
+          <div class="kv"><span>创建</span><span>今天 20:51</span></div>
+          <div class="kv"><span>更新</span><span>今天 21:04</span></div>
+          <div class="kv"><span>目标</span><span>Codex · auth-service</span></div>
+        </div>
+
+        <div class="send popwrap">
+          <span class="btn primary">发送到会话…</span>
+
+          <div class="popover">
+            <div class="ph1">发送到会话</div>
+            <div class="ph2">想法会作为一条消息进入选中的会话</div>
+
+            <div class="seg"><span class="on">Codex</span><span>DSH</span><span>Claude</span></div>
+
+            <div class="pick on">
+              <div class="agent-badge">C</div>
+              <div style="flex:1">
+                <div class="pt">修复登录接口</div>
+                <div class="ps">auth-service · 刚运行 · 12 分前</div>
+              </div>
+              <i class="dot ok"></i>
+            </div>
+            <div class="pick">
+              <div class="agent-badge">C</div>
+              <div style="flex:1">
+                <div class="pt">Upwork 项目扫描</div>
+                <div class="ps">Upwork Discovery · 3 小时前</div>
+              </div>
+              <i class="dot"></i>
+            </div>
+
+            <div class="pfoot">
+              <span class="btn primary">发送</span>
+              <span class="hint">进入当前会话，不会另开新会话</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="block">
+          <div class="label" style="margin-bottom:8px">相关会话</div>
+          <div class="rel-item"><i class="dot ok"></i>修复登录接口<span style="color:var(--text-3); margin-left:auto">12 分</span></div>
+          <div class="rel-item"><i class="dot"></i>整理设置页<span style="color:var(--text-3); margin-left:auto">昨天</span></div>
+        </div>
+
+        <div class="block" style="border-bottom:0">
+          <div class="label" style="margin-bottom:8px">提醒</div>
+          <div class="rel-item"><i class="dot warn"></i>队列结果未知，不会自动重试</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
