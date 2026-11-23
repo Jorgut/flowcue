@@ -259,6 +259,16 @@ public final class LANRemoteServer {
                 return Self.response(status: 422, body: Data("{}".utf8))
             }
             return Self.response(status: 200, body: Data("{}".utf8))
+        case ("GET", "/v1/ideas"):
+            guard let store else {
+                return Self.response(status: 503, body: Data("{}".utf8))
+            }
+            let ideas = store.captures
+                .filter { $0.status != .archived }
+                .map { RemoteIdea(id: $0.id, text: $0.text, createdAt: $0.createdAt, updatedAt: $0.updatedAt) }
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            return Self.response(status: 200, body: (try? encoder.encode(ideas)) ?? Data("[]".utf8))
         case ("POST", "/v1/ideas/delete"):
             guard let store else {
                 return Self.response(status: 503, body: Data("{}".utf8))

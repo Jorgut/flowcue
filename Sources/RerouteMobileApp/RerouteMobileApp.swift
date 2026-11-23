@@ -692,6 +692,18 @@ final class LANRemoteController {
         return resized.jpegData(compressionQuality: 0.7)
     }
 
+    /// 从 Mac 拉取全部想法（包含 Mac 上原有的历史想法），用于反向同步。
+    func pullIdeas() async -> [RemoteIdea]? {
+        guard let selected else { return nil }
+        guard let data = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "GET", path: "/v1/ideas",
+            token: pairingCode, body: nil, timeout: 20
+        ) else { return nil }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return try? decoder.decode([RemoteIdea].self, from: data)
+    }
+
     /// 手机删掉一条想法后，让 Mac 也删掉同一条（同步是单向推送，不删会留副本）。
     func deleteIdeaOnMac(_ id: UUID) async {
         guard let selected else { return }
@@ -1225,6 +1237,11 @@ private struct RootTabView: View {
         .tint(FlowCueTheme.accent)
         .task(id: remoteController.isConnected) {
             guard remoteController.isConnected else { return }
+            // 先把 Mac 上的想法拉下来合并（Mac → iPhone），再把本地推上去
+            // （iPhone → Mac）。两边按 id 对齐，updatedAt 新的赢。
+            if let pulled = await remoteController.pullIdeas() {
+                _ = store.mergePulledIdeas(pulled)
+            }
             await remoteController.pushAllIdeas(store.captures)
             while !Task.isCancelled {
                 await remoteController.refreshApprovals()

@@ -502,6 +502,42 @@ public final class IdeaDockStore {
         }
     }
 
+    /// 把从 Mac 拉下来的想法合并进本地：按 id 对齐，哪边 updatedAt 新听哪边。
+    /// 本地更新时保留本地版本——它会在随后的 pushAllIdeas 里推回 Mac。
+    @discardableResult
+    public func mergePulledIdeas(_ ideas: [RemoteIdea]) -> Int {
+        var merged = 0
+        for idea in ideas {
+            let text = idea.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty else { continue }
+            if let capture = fetchCapture(id: idea.id) {
+                guard idea.updatedAt > capture.updatedAt, capture.text != text else { continue }
+                capture.text = text
+                capture.updatedAt = idea.updatedAt
+                merged += 1
+            } else {
+                modelContext.insert(Capture(
+                    id: idea.id,
+                    text: text,
+                    createdAt: idea.createdAt,
+                    updatedAt: idea.updatedAt,
+                    status: .saved
+                ))
+                merged += 1
+            }
+        }
+        guard merged > 0 else { return 0 }
+        do {
+            try modelContext.save()
+            try reloadCaptures()
+            return merged
+        } catch {
+            modelContext.rollback()
+            try? reloadCaptures()
+            return 0
+        }
+    }
+
     @discardableResult
     public func updateRoute(
         captureID: UUID,
