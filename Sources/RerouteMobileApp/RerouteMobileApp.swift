@@ -2585,6 +2585,8 @@ private struct IdeaSwipeRow<Content: View>: View {
     @GestureState private var dragTranslation: CGFloat = 0
     /// 拖拽结束后同一帧里点击手势也会触发，用它把那次点击挡掉。
     @State private var didDrag = false
+    /// 滑开的时刻。刚滑开时到达的点击一律忽略，否则会再播一次收起动画。
+    @State private var openedAt: Date?
 
     private let actionWidth: CGFloat = 78
     private var actionsWidth: CGFloat { actionWidth * 2 }
@@ -2599,11 +2601,16 @@ private struct IdeaSwipeRow<Content: View>: View {
                 action("Delete", color: FlowCueTheme.failure, action: onDelete)
             }
             Button {
-                // 拖拽刚结束时系统仍会送来一次点击，用 didDrag 挡掉，
-                // 否则会出现「滑开立刻收起」的闪动。
+                // 拖拽刚结束时系统仍会送来一次点击，用 didDrag 挡掉。
                 guard !didDrag else { return }
                 if openOffset != 0 {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { openOffset = 0 }
+                    // 刚滑开 0.35 秒内到达的点击属于拖拽尾流，忽略，
+                    // 否则会紧接着播放一次收起动画，看起来像闪了两次。
+                    if let openedAt, Date().timeIntervalSince(openedAt) < 0.35 { return }
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                        openOffset = 0
+                        self.openedAt = nil
+                    }
                 } else {
                     onTap()
                 }
@@ -2633,9 +2640,11 @@ private struct IdeaSwipeRow<Content: View>: View {
                                 return
                             }
                             let projected = openOffset + dx
+                            let shouldOpen = projected < -actionsWidth / 2
                             withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                                openOffset = projected < -actionsWidth / 2 ? -actionsWidth : 0
+                                openOffset = shouldOpen ? -actionsWidth : 0
                             }
+                            openedAt = shouldOpen ? Date() : nil
                             // 留一点时间挡住这次抬指产生的点击。
                             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { didDrag = false }
                         }
