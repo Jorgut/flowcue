@@ -21,7 +21,9 @@ final class AgentServiceTests: XCTestCase {
 
     func testClaudeSessionsThroughService() async throws {
         let service = AgentService.default
-        let sessions = try await service.sessions(for: "claude", limit: 3)
+        guard let sessions = try? await service.sessions(for: "claude", limit: 3) else {
+            throw XCTSkip("本机没有 Claude 数据（CI 环境正常跳过）")
+        }
         try XCTSkipIf(sessions.isEmpty, "本机没有 Claude 会话")
         let messages = try await service.messages(sessions[0], limit: 5)
         XCTAssertFalse(messages.isEmpty)

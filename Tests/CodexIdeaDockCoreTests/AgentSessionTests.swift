@@ -4,7 +4,9 @@ import XCTest
 final class AgentSessionTests: XCTestCase {
     func testClaudeAdapterListsAndReads() async throws {
         let adapter = ClaudeCodeAdapter()
-        let sessions = try await adapter.listSessions(limit: 5)
+        guard let sessions = try? await adapter.listSessions(limit: 5) else {
+            throw XCTSkip("本机没有 Claude Code 数据（CI 环境正常跳过）")
+        }
         try XCTSkipIf(sessions.isEmpty, "本机没有 Claude Code 会话记录")
 
         for s in sessions {
