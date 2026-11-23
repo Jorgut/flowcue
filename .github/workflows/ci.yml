@@ -32,15 +32,8 @@ jobs:
       - name: Run tests
         run: swift test
 
-      - name: Build Mac App Store target
-        run: >-
-          xcodebuild
-          -project FlowCue.xcodeproj
-          -scheme FlowCue
-          -configuration Release
-          -destination 'generic/platform=macOS'
-          CODE_SIGNING_ALLOWED=NO
-          build
+      # macOS 只做直下发行，不上架 App Store，因此不再校验 App Store 目标。
+      # 如将来要上架，恢复这一步并先补齐 FlowCue.xcodeproj 的文件列表。
 
       - name: Build app bundle
         run: zsh Scripts/build-app.sh
