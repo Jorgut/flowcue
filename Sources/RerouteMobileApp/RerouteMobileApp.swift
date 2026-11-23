@@ -2683,21 +2683,6 @@ private struct IdeaSwipeRow<Content: View>: View {
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            if !isSelecting {
-                HStack(spacing: 0) {
-                    action("Archive", systemImage: "archivebox", color: FlowCueTheme.warning, action: onArchive)
-                    action("Delete", systemImage: "trash", color: FlowCueTheme.failure, action: onDelete)
-                }
-                // 只圆右侧两个角，左侧和行内容贴合。
-                .clipShape(
-                    UnevenRoundedRectangle(
-                        bottomTrailingRadius: FlowCueTheme.radiusInline,
-                        topTrailingRadius: FlowCueTheme.radiusInline,
-                        style: .continuous
-                    )
-                )
-                .padding(.vertical, 2)
-            }
             content
                 .background(FlowCueTheme.canvas)
                 .offset(x: isSelecting ? 0 : offsetX)
@@ -2762,6 +2747,20 @@ private struct IdeaSwipeRow<Content: View>: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { didDrag = false }
                     }
             )
+            if !isSelecting && offsetX != 0 {
+                HStack(spacing: 0) {
+                    action("Archive", systemImage: "archivebox", color: FlowCueTheme.warning, action: onArchive)
+                    action("Delete", systemImage: "trash", color: FlowCueTheme.failure, action: onDelete)
+                }
+                .clipShape(
+                    UnevenRoundedRectangle(
+                        bottomTrailingRadius: FlowCueTheme.radiusInline,
+                        topTrailingRadius: FlowCueTheme.radiusInline,
+                        style: .continuous
+                    )
+                )
+                .padding(.vertical, 2)
+            }
         }
         .clipped()
     }

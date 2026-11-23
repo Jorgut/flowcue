@@ -62,4 +62,39 @@ final class IdeasUITests: XCTestCase {
         // 不该跳进详情：详情页有 Save 按钮
         XCTAssertFalse(app.buttons["Save"].exists, "左滑误跳到了详情页")
     }
+
+    /// 左滑后点 Delete 必须真的生效（不只是按钮存在）。
+    func testSwipeDeleteActuallyWorks() {
+        let top = app.staticTexts["UITest idea 20"]
+        XCTAssertTrue(top.waitForExistence(timeout: 10))
+        top.swipeLeft()
+        snap("06-before-delete-tap")
+
+        let deleteButton = app.buttons["Delete"].firstMatch
+        XCTAssertTrue(deleteButton.waitForExistence(timeout: 3))
+        deleteButton.tap()
+        snap("07-after-delete-tap")
+
+        // 删除有确认弹窗：先确认，再判断这一行是否消失。
+        let confirm = app.buttons["删除"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 3), "点 Delete 后没有出现确认弹窗")
+        confirm.tap()
+        snap("08-after-confirm")
+
+        XCTAssertTrue(top.waitForNonExistence(timeout: 5), "确认后这一行还在")
+    }
+
+    /// Me 页面必须有 Trash 入口。
+    func testTrashEntryExistsInMe() {
+        XCTAssertTrue(app.staticTexts["UITest idea 20"].waitForExistence(timeout: 10))
+        app.buttons["Me"].firstMatch.tap()
+        snap("08-me-page")
+
+        let trash = app.staticTexts["Trash"]
+        if !trash.waitForExistence(timeout: 3) {
+            app.swipeUp()
+            snap("09-me-scrolled")
+        }
+        XCTAssertTrue(app.staticTexts["Trash"].exists, "Me 页面找不到 Trash 入口")
+    }
 }
