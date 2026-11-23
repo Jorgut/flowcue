@@ -259,6 +259,16 @@ public final class LANRemoteServer {
                 return Self.response(status: 422, body: Data("{}".utf8))
             }
             return Self.response(status: 200, body: Data("{}".utf8))
+        case ("POST", "/v1/ideas/delete"):
+            guard let store else {
+                return Self.response(status: 503, body: Data("{}".utf8))
+            }
+            struct DeleteRequest: Decodable { let id: UUID }
+            guard let payload = try? JSONDecoder().decode(DeleteRequest.self, from: request.body) else {
+                return Self.response(status: 400, body: Data("{}".utf8))
+            }
+            _ = store.delete(payload.id)
+            return Self.response(status: 200, body: Data("{}".utf8))
         case ("POST", "/v1/push/token"):
             // 手机的 APNs device token。Mac 用它直接向苹果推送，不需要服务端。
             struct PushToken: Decodable {

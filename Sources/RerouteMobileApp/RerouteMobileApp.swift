@@ -692,6 +692,17 @@ final class LANRemoteController {
         return resized.jpegData(compressionQuality: 0.7)
     }
 
+    /// 手机删掉一条想法后，让 Mac 也删掉同一条（同步是单向推送，不删会留副本）。
+    func deleteIdeaOnMac(_ id: UUID) async {
+        guard let selected else { return }
+        struct Body: Encodable { let id: String }
+        guard let body = try? JSONEncoder().encode(Body(id: id.uuidString)) else { return }
+        _ = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "POST",
+            path: "/v1/ideas/delete", token: pairingCode, body: body, timeout: 15
+        )
+    }
+
     func refreshDSHQuestions() async {
         guard let selected else { return }
         guard let data = try? await LANHTTP.request(
@@ -2083,6 +2094,15 @@ private struct InboxView: View {
                         HomeIdeaRow(capture: idea)
                     }
                     .buttonStyle(.plain)
+                    // 长按也能删，不用先点进详情。
+                    .contextMenu {
+                        Button("删除", role: .destructive) {
+                            Task {
+                                await remoteController.deleteIdeaOnMac(idea.id)
+                                store.delete(idea.id)
+                            }
+                        }
+                    }
                     Rectangle()
                         .fill(FlowCueTheme.hairline)
                         .frame(height: 1)
@@ -2782,6 +2802,7 @@ private struct IdeaDetailView: View {
     @State private var text: String
     @State private var isSaving = false
     @State private var showingSend = false
+    @State private var showingDelete = false
     @State private var sentNote: String?
     @Environment(\.dismiss) private var dismiss
 
@@ -2850,19 +2871,36 @@ private struct IdeaDetailView: View {
                     .disabled(!canSave)
             }
             ToolbarItem(placement: .bottomBar) {
-                if isArchived {
-                    Button("Restore") {
-                        store.undoArchive(capture.id)
-                        dismiss()
+                HStack(spacing: 18) {
+                    if isArchived {
+                        Button("Restore") {
+                            store.undoArchive(capture.id)
+                            dismiss()
+                        }
+                    } else {
+                        Button("Archive", role: .destructive) {
+                            _ = save(force: true)
+                            store.archive(capture.id)
+                            dismiss()
+                        }
                     }
-                } else {
-                    Button("Archive", role: .destructive) {
-                        _ = save(force: true)
-                        store.archive(capture.id)
-                        dismiss()
+                    Button("Delete", role: .destructive) {
+                        showingDelete = true
                     }
                 }
             }
+        }
+        .confirmationDialog("删除这条想法？", isPresented: $showingDelete, titleVisibility: .visible) {
+            Button("删除", role: .destructive) {
+                Task {
+                    await remoteController.deleteIdeaOnMac(capture.id)
+                    store.delete(capture.id)
+                    dismiss()
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("手机上删掉，Mac 上的同一条也会删掉。这个操作不能撤销。")
         }
         .sheet(isPresented: $showingSend) {
             SendIdeaSheet(controller: remoteController, text: text) { target in

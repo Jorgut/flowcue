@@ -731,6 +731,24 @@ public final class IdeaDockStore {
         return try? modelContext.fetch(descriptor).max { $0.updatedAt < $1.updatedAt }
     }
 
+    /// 彻底删掉一条想法（不只是归档）。Mac 端接收手机的删除请求也走这里。
+    @discardableResult
+    public func delete(_ captureID: UUID) -> Bool {
+        guard let capture = fetchCapture(id: captureID) else { return false }
+        modelContext.delete(capture)
+        do {
+            try modelContext.save()
+            try reloadCaptures()
+            notification = DockNotification(kind: .success, message: "已删除。")
+            return true
+        } catch {
+            modelContext.rollback()
+            try? reloadCaptures()
+            notification = DockNotification(kind: .error, message: "删除失败。")
+            return false
+        }
+    }
+
     private func fetchCapture(id: UUID) -> Capture? {
         var descriptor = FetchDescriptor<Capture>(
             predicate: #Predicate { $0.id == id }
