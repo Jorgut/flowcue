@@ -1796,6 +1796,7 @@ private struct InboxView: View {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.2), value: captureFocused)
             .background { FlowCueScreenBackground() }
             .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
             .navigationDestination(isPresented: $showingSearch) {
                 SearchView(store: store, remoteController: remoteController, startVoice: startSearchVoice)
             }
@@ -2244,6 +2245,7 @@ private struct SearchView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
         .onAppear(perform: prepare)
         .onDisappear { dictation.stop() }
         .alert(
@@ -3321,6 +3323,7 @@ private struct AgentsView: View {
             }
             .background { FlowCueScreenBackground() }
             .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
             .navigationDestination(isPresented: $showingRemote) {
                 RemoteDeviceView(controller: controller, tab: $tab)
             }
@@ -4252,6 +4255,7 @@ private struct RemoteDeviceView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 10) {
                 if isOnline {
@@ -4971,6 +4975,7 @@ private struct CodexAgentView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
         .task { network.start() }
         .onDisappear { network.stop() }
         .sheet(isPresented: $showingNewSession) {
@@ -5117,6 +5122,7 @@ private struct DSHAgentView: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
         .task { network.start() }
         .onDisappear { network.stop() }
         .sheet(isPresented: $showingNewSession) {
@@ -5409,6 +5415,7 @@ private struct ChatScreen: View {
         }
         .background { FlowCueScreenBackground() }
         .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
         .task { network.start() }
         .onDisappear { network.stop() }
         .task(id: target.id) { await runChat() }
@@ -5906,6 +5913,36 @@ private struct ChatMessageBubble: View {
             Spacer(minLength: 32)
         }
     }
+}
+
+/// 左边缘拖拽返回。系统自带的交互式返回在这里会被 TabView 的翻页手势抢走，
+/// 所以用一个高优先级手势兜住：只有从最左 24pt 起手、横向拖过 90pt 才触发。
+private struct EdgeSwipeBackModifier: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+    @State private var startX: CGFloat?
+
+    func body(content: Content) -> some View {
+        content.highPriorityGesture(
+            DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                .onChanged { value in
+                    if startX == nil { startX = value.startLocation.x }
+                }
+                .onEnded { value in
+                    let start = startX
+                    startX = nil
+                    guard let start, start < 24 else { return }
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    guard dx > 90, abs(dy) < abs(dx) else { return }
+                    dismiss()
+                }
+        )
+    }
+}
+
+extension View {
+    /// 给推入的页面加上「从左边缘右拖返回」。
+    func edgeSwipeBack() -> some View { modifier(EdgeSwipeBackModifier()) }
 }
 
 private struct ChatPendingBubble: View {
@@ -6768,6 +6805,7 @@ private struct MeView: View {
             }
             .background { FlowCueScreenBackground() }
             .toolbar(.hidden, for: .navigationBar)
+        .edgeSwipeBack()
             .task { network.start() }
             .onDisappear { network.stop() }
             .fullScreenCover(isPresented: $showingPaywall) {
