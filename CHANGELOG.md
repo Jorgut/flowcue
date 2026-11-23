@@ -4,6 +4,10 @@
 
 ## 1.1.2 — 通用 Agent 层
 
+> **发布状态（2026-11-23）**：已上传 TestFlight，`1.1.2 (92)`，Delivery UUID `2f546992-5d8f-4746-a7c7-6e3bb15c9371`。
+> 导出产物内 `aps-environment = production`（已核验）。
+
+
 ### 新增
 
 - **通用 Agent 接口**：`/v1/agents`、`/sessions`、`/messages`、`/send`，三个 Agent（Codex / Claude Code / DSH）走同一套路由。新增 Agent 只需 Mac 侧加适配器，iOS 零改动。
