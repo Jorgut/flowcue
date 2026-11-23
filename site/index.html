@@ -73,42 +73,6 @@
   .proof .card h3 { margin: 0 0 6px; font-size: 15px; }
   .proof .card p { font-size: 13px; margin: 0; }
 
-  .founding {
-    margin-top: 88px; display: grid; grid-template-columns: 1.05fr .95fr; gap: 36px; align-items: center;
-    background:
-      radial-gradient(700px 320px at 18% 0%, rgba(126,132,255,.16), transparent 70%),
-      var(--surface);
-    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
-    border-radius: 20px; padding: 30px;
-  }
-  @media (max-width: 860px) { .founding { grid-template-columns: 1fr; gap: 22px; padding: 22px; } }
-  .founding h2 { font-size: 28px; letter-spacing: -0.025em; margin: 0 0 10px; }
-  .founding p { font-size: 14.5px; }
-  .founding ul { margin: 14px 0 0; padding-left: 18px; }
-  .founding li { font-size: 13.5px; margin-bottom: 5px; }
-  .founding .fine a { color: var(--muted); text-decoration-color: color-mix(in srgb, var(--muted) 45%, transparent); text-underline-offset: 2px; }
-  .founding .fine a:hover { color: var(--text); }
-  .founding .counter { display: flex; align-items: baseline; gap: 8px; }
-  .founding .counter strong { font-size: 42px; line-height: 1; letter-spacing: -0.04em; }
-  .founding .counter span { font-size: 13px; color: var(--muted); }
-  .founding .meter { height: 8px; border-radius: 999px; background: #20202a; overflow: hidden; margin: 14px 0 18px; }
-  .founding .meter span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--mint)); transition: width .45s ease; }
-  .founding form { display: flex; gap: 10px; }
-  .founding input {
-    flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--border); color: var(--text);
-    border-radius: 10px; padding: 11px 13px; font: inherit; font-size: 14px;
-  }
-  .founding input:focus { outline: 2px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 1px; border-color: var(--accent); }
-  .founding button {
-    background: var(--accent); color: #0b0b12; border: 0; border-radius: 10px; padding: 11px 16px;
-    font: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
-  }
-  .founding button:disabled { opacity: .5; cursor: default; }
-  .founding .tier-line { display: flex; align-items: baseline; gap: 6px; margin: 0 0 10px; }
-  .founding .tier-line strong { color: var(--text); font-size: 15px; }
-  .founding .fine { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
-  .founding .fine + .fine { margin-top: 4px; }
-
   .pricing { margin-top: 88px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   @media (max-width: 860px) { .pricing { grid-template-columns: 1fr; } }
   .plan { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; }
@@ -229,7 +193,7 @@
     <div class="card"><h3 data-i18n="p3.t">Small and signed</h3><p data-i18n="p3.b">5.4 MB, runs in the menu bar, signed with Developer ID and notarized by Apple.</p></div>
   </section>
 
-  <!-- Founding seats paused until Paddle checkout is live. Restore from git history when ready. -->
+  <!-- Paddle checkout is not wired yet; see git history. -->
 
   <section class="pricing" id="pricing">
     <div class="plan">
@@ -327,21 +291,6 @@ const I18N = {
     "p3.t":"Small and signed","p3.b":"5.4 MB, runs in the menu bar, signed with Developer ID and notarized by Apple.",
     "pr.free":"Free","pr.1":"Menu bar capture and the inbox","pr.2":"Local agent detection",
     "pr.3":"LAN pairing with iPhone","pr.4":"Universal build, signed and notarized",
-    "fd.badge":"Founding Mac Pro","fd.eyebrow":"1,999 seats · from $9.9",
-    "fd.t":"The first 999 get $9.9.",
-    "fd.b":"Mac Pro lifetime, one-time. Seats 1–999 are $9.9; seats 1,000–1,999 are $19.9. After 1,999, Mac Pro is $29. Reserve now — checkout opens before launch.",
-    "fd.1":"Seats 1–999: $9.9 once","fd.2":"Seats 1,000–1,999: $19.9 once",
-    "fd.3":"Send to agents, parallel dispatch, favorites and search","fd.4":"Mobile Pro is a separate subscription",
-    "fd.of":"/ 1,999 reserved","fd.cta":"Reserve my seat","fd.privacy":"Email only. No account, no card.",
-    "fd.nextLabel":"Next seat","fd.note":"Reservation only — no payment today. We'll email your checkout link at the reserved price before launch.",
-    "fd.msg.success":"You're reserved at #{n} — ${p}. We'll email the checkout link before launch.",
-    "fd.msg.dup":"You're already reserved at #{n} — ${p}.",
-    "fd.msg.full":"All 1,999 founding seats are reserved.",
-    "fd.msg.invalid":"Enter a valid email address.",
-    "fd.msg.rate":"Too many claims from this network. Try again later.",
-    "fd.msg.error":"Couldn't claim right now. Please try again.",
-    "fd.msg.loading":"Reading seats…",
-    "fd.msg.unavailable":"The counter is unavailable right now.",
     "pr.ios":"iPhone Beta","pr.proprice":"TestFlight <small>invite only</small>",
     "pr.p1":"Every agent from your Mac","pr.p2":"Approvals and questions on the go",
     "pr.p3":"Themes, widgets and Live Activities","pr.p4":"Free during the beta",
@@ -393,21 +342,6 @@ const I18N = {
     "p3.t":"小，且已签名","p3.b":"5.4 MB，住在菜单栏，Developer ID 签名并通过 Apple 公证。",
     "pr.free":"免费","pr.1":"菜单栏捕获与收件箱","pr.2":"本机 agent 检测",
     "pr.3":"与 iPhone 局域网配对","pr.4":"通用二进制，已签名公证",
-    "fd.badge":"创始 Mac Pro","fd.eyebrow":"1,999 个席位 · 起价 $9.9",
-    "fd.t":"前 999 个，$9.9。",
-    "fd.b":"Mac Pro 终身授权，一次性买断。1–999 名 $9.9，1,000–1,999 名 $19.9；1,999 之后 $29。现在预约，结账在发布前开放。",
-    "fd.1":"1–999 名：一次性 $9.9","fd.2":"1,000–1,999 名：一次性 $19.9",
-    "fd.3":"发消息、并行分发、收藏与搜索","fd.4":"手机 Pro 是另一项订阅",
-    "fd.of":"/ 1,999 已预约","fd.cta":"预约席位","fd.privacy":"只收邮箱，不用账号，不用绑卡。",
-    "fd.nextLabel":"下一档","fd.note":"只是预约，今天不付款。发布前会按你锁定的价格把结账链接发到这个邮箱。",
-    "fd.msg.success":"已为你保留第 {n} 位，价格 ${p}。发布前会把结账链接发到这个邮箱。",
-    "fd.msg.dup":"你已经在名单里，第 {n} 位，价格 ${p}。",
-    "fd.msg.full":"1,999 个创始席位已经预约满了。",
-    "fd.msg.invalid":"请输入有效的邮箱地址。",
-    "fd.msg.rate":"这个网络领取太频繁了，稍后再试。",
-    "fd.msg.error":"现在没能领上，请再试一次。",
-    "fd.msg.loading":"正在读取席位…",
-    "fd.msg.unavailable":"名额暂时读不出来。",
     "pr.ios":"iPhone Beta","pr.proprice":"TestFlight <small>邀请制</small>",
     "pr.p1":"Mac 上所有 agent","pr.p2":"随时审批与提问",
     "pr.p3":"主题、小组件与实况活动","pr.p4":"beta 期间免费",
@@ -428,7 +362,6 @@ function applyLanguage(lang) {
   document.querySelectorAll("[data-i18n-html]").forEach(el => { const v = dict[el.dataset.i18nHtml]; if (v) el.innerHTML = v; });
   document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
   try { localStorage.setItem("flowcue.lang", lang); } catch (e) {}
-  if (window.__fcFounding) window.__fcFounding.relocalize();
 }
 (function () {
   const q = new URLSearchParams(location.search).get("lang");
@@ -438,84 +371,5 @@ function applyLanguage(lang) {
   applyLanguage(lang);
   document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => applyLanguage(b.dataset.lang)));
 })();
-</script>
-<script>
-(function () {
-  const API = "https://flowcue-founding.honaler.workers.dev";
-  const countEl = document.getElementById("founding-count");
-  const meterEl = document.getElementById("founding-meter");
-  const priceEl = document.getElementById("founding-price");
-  const form = document.getElementById("founding-form");
-  const input = document.getElementById("founding-email");
-  const msg = document.getElementById("founding-msg");
-  if (!form || !countEl) return;
-  const button = form.querySelector("button");
-  let state = { claimed: null, open: true, next: null };
-  let last = { key: "fd.msg.loading", values: {} };
-  function dict() { return (I18N[document.documentElement.lang === "zh-Hans" ? "zh" : "en"] || I18N.en); }
-  function setMessage(key, values) {
-    last = { key: key, values: values || {} };
-    let text = dict()[key] || key;
-    Object.keys(last.values).forEach(function (k) {
-      text = text.split("{" + k + "}").join(String(last.values[k]));
-    });
-    msg.textContent = text;
-  }
-  function paint() {
-    if (state.claimed == null) { countEl.textContent = "—"; return; }
-    countEl.textContent = String(state.claimed);
-    meterEl.style.width = Math.min(100, (state.claimed / 1999) * 100) + "%";
-    if (state.next && state.next.price != null) {
-      priceEl.textContent = "$" + state.next.price;
-    } else {
-      priceEl.textContent = "—";
-    }
-    if (!state.open) { button.disabled = true; setMessage("fd.msg.full"); }
-  }
-  window.__fcFounding = { relocalize: function () { setMessage(last.key, last.values); } };
-
-  fetch(API + "/api/founding/status", { cache: "no-store" })
-    .then(function (r) { return r.json(); })
-    .then(function (data) {
-      if (!data.ok) throw new Error("bad status");
-      state = { claimed: data.claimed, open: data.open, next: data.next };
-      paint();
-      if (data.open) { msg.textContent = ""; } else { setMessage("fd.msg.full"); }
-    })
-    .catch(function () { countEl.textContent = "—"; if (priceEl) priceEl.textContent = "—"; setMessage("fd.msg.unavailable"); });
-
-  form.addEventListener("submit", async function (e) {
-    e.preventDefault();
-    const email = input.value.trim();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { setMessage("fd.msg.invalid"); input.focus(); return; }
-    button.disabled = true;
-    try {
-      const res = await fetch(API + "/api/founding/claim", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        state = { claimed: data.claimed, open: data.open, next: data.next };
-        paint();
-        setMessage(data.duplicate ? "fd.msg.dup" : "fd.msg.success", { n: data.seat, p: data.price });
-        input.value = "";
-      } else if (data.error === "full") {
-        state = { claimed: 1999, open: false, next: { tier: 0, price: null } };
-        paint();
-        setMessage("fd.msg.full");
-      } else if (data.error === "rate_limited") {
-        setMessage("fd.msg.rate");
-      } else {
-        setMessage("fd.msg.invalid");
-      }
-    } catch (e) {
-      setMessage("fd.msg.error");
-    }
-    button.disabled = !state.open;
-  });
-})();
-</script>
-</body>
+</script></body>
 </html>
