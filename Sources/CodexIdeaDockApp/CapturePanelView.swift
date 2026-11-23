@@ -163,6 +163,23 @@ struct CapturePanelView: View {
         .animation(.easeOut(duration: reduceMotion ? 0.08 : 0.14), value: store.notification?.id)
         .onAppear {
             // 调试/截图用：`open FlowCue.app --args -panel -panelpicker`
+            if ProcessInfo.processInfo.arguments.contains("-panelsend") {
+                Task { @MainActor in
+                    let args = ProcessInfo.processInfo.arguments
+                    let index = args.firstIndex(of: "-panelsend") ?? 0
+                    let agentID = args.count > index + 1 ? args[index + 1] : "claude"
+                    try? await Task.sleep(for: .milliseconds(500))
+                    let sessions = (try? await AgentService.default.sessions(for: agentID, limit: 5)) ?? []
+                    guard let session = sessions.first else {
+                        try? "no sessions".write(toFile: "/tmp/flowcue-panelsend.log", atomically: true, encoding: .utf8)
+                        return
+                    }
+                    store.draftText = "面板自检：这条消息来自 FlowCue 的发送测试"
+                    destination = .agent(agentName: agentID, session: session)
+                    performPrimary()
+                }
+                return
+            }
             guard ProcessInfo.processInfo.arguments.contains("-panelpicker") else { return }
             Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(700))
@@ -227,12 +244,21 @@ struct CapturePanelView: View {
         let text = store.draftText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else { return }
         Task { @MainActor in
+            let isSelfTest = ProcessInfo.processInfo.arguments.contains("-panelsend")
             do {
                 try await AgentService.default.send(text, to: session)
                 store.discardActiveDraft()
                 onClose()
+                if isSelfTest {
+                    let log = "OK agent=\(session.agentID) session=\(session.id) draftEmpty=\(store.draftText.isEmpty)"
+                    try? log.write(toFile: "/tmp/flowcue-panelsend.log", atomically: true, encoding: .utf8)
+                }
             } catch {
                 store.notification = DockNotification(kind: .error, message: L10n.text("发送失败"))
+                if isSelfTest {
+                    let log = "ERR agent=\(session.agentID) session=\(session.id) error=\(error)"
+                    try? log.write(toFile: "/tmp/flowcue-panelsend.log", atomically: true, encoding: .utf8)
+                }
             }
         }
     }
