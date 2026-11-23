@@ -1,14 +1,17 @@
 # Founding users worker
 
-Backs the **999 founding users** counter and claim form on the landing page.
+Backs the **999 founding seats** counter and reservation form on the landing page.
 Static site stays on Cloudflare Pages; this Worker owns the write path.
+
+This is a **reservation list**, not a payment flow yet. Checkout (Paddle) and
+license issuance are added separately; until then no money changes hands.
 
 ## Endpoints
 
 | Method | Path | Body | Result |
 |---|---|---|---|
 | GET | `/api/founding/status` | — | `{ok, claimed, remaining, limit, open}` |
-| POST | `/api/founding/claim` | `{"email":"..."}` | `{ok, seat, claimed, remaining, open}`; `duplicate: true` if the email already claimed |
+| POST | `/api/founding/claim` | `{"email":"..."}` | `{ok, seat, claimed, remaining, open}`; `duplicate: true` if the email already reserved |
 
 Errors: `invalid_email` (400), `full` (409), `rate_limited` (429), `bad_json` (400).
 
@@ -53,7 +56,8 @@ npx wrangler d1 execute flowcue-founding --remote --command \
 ## Boundaries
 
 - No email is sent by the Worker. The list is exported before launch and
-  licenses are issued manually until an email provider is wired in.
+  checkout links / licenses are sent manually until Paddle + an email provider
+  are wired in.
 - No account, no password, no payment. One seat per normalized email.
 - Rate limit: 3 claims per hashed IP per 10 minutes. This is a spam guard,
   not identity verification.

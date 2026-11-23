@@ -231,29 +231,30 @@
   <section class="founding" id="founding">
     <div>
       <div class="eyebrow">
-        <span class="badge" data-i18n="fd.badge">Founding users</span>
-        <span data-i18n="fd.eyebrow">999 seats · free for life</span>
+        <span class="badge" data-i18n="fd.badge">Founding Mac Pro</span>
+        <span data-i18n="fd.eyebrow">999 seats · $9.9 once</span>
       </div>
-      <h2 data-i18n="fd.t">The first 999 keep it free.</h2>
-      <p data-i18n="fd.b">Claim a founding seat and FlowCue for Mac stays free for life, updates included. When the 999 seats are gone, new licenses become paid.</p>
+      <h2 data-i18n="fd.t">Mac Pro for $9.9, once.</h2>
+      <p data-i18n="fd.b">The first 999 people can reserve Mac Pro for a one-time $9.9: sending to agents, parallel dispatch, favorites and search on the Mac. Checkout opens before launch — reserving costs nothing today.</p>
       <ul>
-        <li data-i18n="fd.1">A free lifetime license for Mac</li>
-        <li data-i18n="fd.2">One seat per email address</li>
-        <li data-i18n="fd.3">No account, no card, no subscription</li>
-        <li data-i18n="fd.4">We only email you about the license and the launch</li>
+        <li data-i18n="fd.1">Mac Pro lifetime license — $9.9 once</li>
+        <li data-i18n="fd.2">Send to agents, parallel dispatch, favorites and search</li>
+        <li data-i18n="fd.3">One seat per email; $29 after seat 999</li>
+        <li data-i18n="fd.4">Mobile Pro is a separate subscription</li>
       </ul>
     </div>
     <div>
       <div class="counter">
         <strong id="founding-count">—</strong>
-        <span data-i18n="fd.of">/ 999 claimed</span>
+        <span data-i18n="fd.of">/ 999 reserved</span>
       </div>
       <div class="meter" aria-hidden="true"><span id="founding-meter"></span></div>
       <form id="founding-form" novalidate>
         <input id="founding-email" type="email" required autocomplete="email" placeholder="you@example.com" aria-label="Email address">
-        <button type="submit" data-i18n="fd.cta">Claim my seat</button>
+        <button type="submit" data-i18n="fd.cta">Reserve my seat</button>
       </form>
       <p class="fine" id="founding-msg" role="status" aria-live="polite"></p>
+      <p class="fine" data-i18n="fd.note">Reservation only — no payment today. We'll email your $9.9 checkout link before launch.</p>
       <p class="fine"><a href="/privacy" data-i18n="fd.privacy">Email only. No account, no card.</a></p>
     </div>
   </section>
@@ -267,6 +268,7 @@
         <li data-i18n="pr.2">Local agent detection</li>
         <li data-i18n="pr.3">LAN pairing with iPhone</li>
         <li data-i18n="pr.4">Universal build, signed and notarized</li>
+        <li data-i18n="pr.pro">Mac Pro upgrade: $9.9 founding</li>
       </ul>
     </div>
     <div class="plan highlight">
@@ -354,16 +356,17 @@ const I18N = {
     "p2.t":"Read, never write","p2.b":"It opens ~/.claude, ~/.codex and ~/.dsh to show sessions. It does not edit your configuration.",
     "p3.t":"Small and signed","p3.b":"5.4 MB, runs in the menu bar, signed with Developer ID and notarized by Apple.",
     "pr.free":"Free","pr.1":"Menu bar capture and the inbox","pr.2":"Local agent detection",
-    "pr.3":"LAN pairing with iPhone","pr.4":"Universal build, signed and notarized",
-    "fd.badge":"Founding users","fd.eyebrow":"999 seats · free for life",
-    "fd.t":"The first 999 keep it free.",
-    "fd.b":"Claim a founding seat and FlowCue for Mac stays free for life, updates included. When the 999 seats are gone, new licenses become paid.",
-    "fd.1":"A free lifetime license for Mac","fd.2":"One seat per email address",
-    "fd.3":"No account, no card, no subscription","fd.4":"We only email you about the license and the launch",
-    "fd.of":"/ 999 claimed","fd.cta":"Claim my seat","fd.privacy":"Email only. No account, no card.",
-    "fd.msg.success":"You're #{n}. We'll email your license before paid launch.",
-    "fd.msg.dup":"You're already in at #{n}.",
-    "fd.msg.full":"All 999 founding seats are taken.",
+    "pr.3":"LAN pairing with iPhone","pr.4":"Universal build, signed and notarized","pr.pro":"Mac Pro upgrade: $9.9 founding",
+    "fd.badge":"Founding Mac Pro","fd.eyebrow":"999 seats · $9.9 once",
+    "fd.t":"Mac Pro for $9.9, once.",
+    "fd.b":"The first 999 people can reserve Mac Pro for a one-time $9.9: sending to agents, parallel dispatch, favorites and search on the Mac. Checkout opens before launch — reserving costs nothing today.",
+    "fd.1":"Mac Pro lifetime license — $9.9 once","fd.2":"Send to agents, parallel dispatch, favorites and search",
+    "fd.3":"One seat per email; $29 after seat 999","fd.4":"Mobile Pro is a separate subscription",
+    "fd.of":"/ 999 reserved","fd.cta":"Reserve my seat","fd.privacy":"Email only. No account, no card.",
+    "fd.note":"Reservation only — no payment today. We'll email your $9.9 checkout link before launch.",
+    "fd.msg.success":"You're reserved at #{n}. We'll email the $9.9 checkout link before launch.",
+    "fd.msg.dup":"You're already reserved at #{n}.",
+    "fd.msg.full":"All 999 founding seats are reserved.",
     "fd.msg.invalid":"Enter a valid email address.",
     "fd.msg.rate":"Too many claims from this network. Try again later.",
     "fd.msg.error":"Couldn't claim right now. Please try again.",
@@ -419,16 +422,17 @@ const I18N = {
     "p2.t":"只读，不写","p2.b":"它会打开 ~/.claude、~/.codex 与 ~/.dsh 来显示会话，但不会修改你的配置。",
     "p3.t":"小，且已签名","p3.b":"5.4 MB，住在菜单栏，Developer ID 签名并通过 Apple 公证。",
     "pr.free":"免费","pr.1":"菜单栏捕获与收件箱","pr.2":"本机 agent 检测",
-    "pr.3":"与 iPhone 局域网配对","pr.4":"通用二进制，已签名公证",
-    "fd.badge":"创始用户","fd.eyebrow":"999 个席位 · 终身免费",
-    "fd.t":"前 999 个，永久免费。",
-    "fd.b":"领取创始席位，Mac 版终身免费，包含后续更新。999 个席位领完后，新授权开始收费。",
-    "fd.1":"Mac 版终身免费授权","fd.2":"一个邮箱一个席位",
-    "fd.3":"不用账号、不用绑卡、不是订阅","fd.4":"只会因为授权和发布给你发邮件",
-    "fd.of":"/ 999 已领取","fd.cta":"领取席位","fd.privacy":"只收邮箱，不用账号，不用绑卡。",
-    "fd.msg.success":"你是第 {n} 位。正式收费前会把授权发到这个邮箱。",
+    "pr.3":"与 iPhone 局域网配对","pr.4":"通用二进制，已签名公证","pr.pro":"Mac Pro 升级：$9.9 创始价",
+    "fd.badge":"创始 Mac Pro","fd.eyebrow":"999 个席位 · 一次性 $9.9",
+    "fd.t":"Mac Pro，$9.9 买断。",
+    "fd.b":"前 999 个可以按一次性 $9.9 预约 Mac Pro：解锁 Mac 上的发消息、并行分发、收藏与搜索。结账在发布前开放，现在预约不收费。",
+    "fd.1":"Mac Pro 终身授权——一次性 $9.9","fd.2":"发消息、并行分发、收藏与搜索",
+    "fd.3":"一个邮箱一个席位；第 1000 个起 $29","fd.4":"手机 Pro 是另一项订阅",
+    "fd.of":"/ 999 已预约","fd.cta":"预约席位","fd.privacy":"只收邮箱，不用账号，不用绑卡。",
+    "fd.note":"只是预约，今天不付款。发布前会把 $9.9 结账链接发到这个邮箱。",
+    "fd.msg.success":"已为你保留第 {n} 位。发布前会把 $9.9 结账链接发到这个邮箱。",
     "fd.msg.dup":"你已经在名单里，第 {n} 位。",
-    "fd.msg.full":"999 个创始席位已经领完了。",
+    "fd.msg.full":"999 个创始席位已经预约满了。",
     "fd.msg.invalid":"请输入有效的邮箱地址。",
     "fd.msg.rate":"这个网络领取太频繁了，稍后再试。",
     "fd.msg.error":"现在没能领上，请再试一次。",
