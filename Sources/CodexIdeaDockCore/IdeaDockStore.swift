@@ -507,6 +507,14 @@ public final class IdeaDockStore {
     }
 
     #if DEBUG
+    /// 仅用于测试：直接改状态，避免在单测里驱动整个队列流程。
+    public func setStatusForTesting(captureID: UUID, status: CaptureStatus) {
+        guard let capture = fetchCapture(id: captureID) else { return }
+        capture.status = status
+        try? modelContext.save()
+        try? reloadCaptures()
+    }
+
     /// 仅用于 UI 测试：插入几条可预测的想法，方便断言列表行为。
     public func seedUIIdeasIfNeeded() {
         let prefix = "UITest idea"
@@ -584,6 +592,12 @@ public final class IdeaDockStore {
         let remoteTime = max(idea.updatedAt, idea.deletedAt ?? .distantPast)
 
         if let capture = fetchCapture(id: idea.id) {
+            // 正在排队/投递中的想法不能被另一台设备覆盖：
+            // 正文和状态都以本机为准，否则队列会和实际发送的内容对不上。
+            if capture.status == .queued || capture.status == .queueing,
+               idea.deletedAt == nil {
+                return .unchanged
+            }
             guard remoteTime > capture.updatedAt else { return .unchanged }
             capture.updatedAt = remoteTime
             if let deletedAt = idea.deletedAt {

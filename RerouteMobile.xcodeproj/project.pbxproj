@@ -54,6 +54,7 @@
 		E3D2B745D159CD2847A60ED1 /* MobileAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = C00000000000000000000001 /* MobileAssets.xcassets */; };
 		F20929B4D1D262F0885B36DD /* FlowCueWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 290A387167079A39C313F1B3 /* FlowCueWidgets.swift */; };
 		AA000000000000000000000A /* IdeasUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000009 /* IdeasUITests.swift */; };
+		D000000000000000000000FF /* DSHBridgeClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A000000000000000000000FF /* DSHBridgeClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -137,6 +138,7 @@
 		FB8E35A98922C72F05B0BFD1 /* FlowCueLiveActivityView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FlowCueLiveActivityView.swift; sourceTree = "<group>"; };
 		AA0000000000000000000009 /* IdeasUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IdeasUITests.swift; sourceTree = "<group>"; };
 		AA0000000000000000000008 /* RerouteMobileUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RerouteMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		A000000000000000000000FF /* DSHBridgeClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DSHBridgeClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -207,6 +209,7 @@
 		007000000000000000000000 /* CodexIdeaDockCore */ = {
 			isa = PBXGroup;
 			children = (
+				A000000000000000000000FF /* DSHBridgeClient.swift */,
 				A00000000000000000000001 /* CaptureHostPolicy.swift */,
 				A00000000000000000000002 /* CodexBridging.swift */,
 				A00000000000000000000003 /* IdeaDockStore.swift */,
@@ -466,6 +469,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D000000000000000000000FF /* DSHBridgeClient.swift in Sources */,
 				D00000000000000000000001 /* CaptureHostPolicy.swift in Sources */,
 				D00000000000000000000002 /* CodexBridging.swift in Sources */,
 				D00000000000000000000003 /* IdeaDockStore.swift in Sources */,
@@ -595,7 +599,7 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueMobile.entitlements;
 				APS_ENVIRONMENT = development;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 89;
+				CURRENT_PROJECT_VERSION = 90;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -626,7 +630,7 @@
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueMobile.entitlements;
 				APS_ENVIRONMENT = production;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 89;
+				CURRENT_PROJECT_VERSION = 90;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -657,7 +661,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 89;
+				CURRENT_PROJECT_VERSION = 90;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -688,7 +692,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/Widgets/FlowCueWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 89;
+				CURRENT_PROJECT_VERSION = 90;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -719,7 +723,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/Widgets/FlowCueWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 89;
+				CURRENT_PROJECT_VERSION = 90;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;
@@ -751,7 +755,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_ENTITLEMENTS = Sources/RerouteMobileApp/ShareExtension/FlowCueShareExtension.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 89;
+				CURRENT_PROJECT_VERSION = 90;
 				DEAD_CODE_STRIPPING = YES;
 				DEVELOPMENT_TEAM = GB38532D8G;
 				GENERATE_INFOPLIST_FILE = NO;

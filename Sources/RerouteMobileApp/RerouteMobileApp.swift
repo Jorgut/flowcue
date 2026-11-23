@@ -274,104 +274,6 @@ final class SubscriptionManager {
 
 // MARK: - LAN remote continuation
 
-struct DSHRemoteApproval: Codable, Identifiable, Hashable {
-    let id: String
-    let sessionId: String?
-    let toolName: String?
-    let callId: String?
-    let reason: String?
-    let displayReason: String?
-    let createdAt: String?
-
-    private enum CodingKeys: String, CodingKey {
-        case id, sessionId, toolName, callId, reason, displayReason, createdAt
-    }
-
-    init(
-        id: String,
-        sessionId: String? = nil,
-        toolName: String? = nil,
-        callId: String? = nil,
-        reason: String? = nil,
-        displayReason: String? = nil,
-        createdAt: String? = nil
-    ) {
-        self.id = id
-        self.sessionId = sessionId
-        self.toolName = toolName
-        self.callId = callId
-        self.reason = reason
-        self.displayReason = displayReason
-        self.createdAt = createdAt
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
-        sessionId = try? container.decode(String.self, forKey: .sessionId)
-        toolName = try? container.decode(String.self, forKey: .toolName)
-        callId = try? container.decode(String.self, forKey: .callId)
-        createdAt = try? container.decode(String.self, forKey: .createdAt)
-        reason = Self.text(from: container, forKey: .reason)
-        displayReason = Self.text(from: container, forKey: .displayReason)
-    }
-
-    /// Auto review 会把原因写成多语言对象；旧版是字符串。两种都要能解。
-    private static func text(from container: KeyedDecodingContainer<CodingKeys>, forKey key: CodingKeys) -> String? {
-        if let value = try? container.decode(String.self, forKey: key) {
-            return value
-        }
-        if let localized = try? container.decode([String: String].self, forKey: key) {
-            return localized["zh"] ?? localized["en"] ?? localized.values.first
-        }
-        return nil
-    }
-
-    var title: String { displayReason ?? reason ?? toolName ?? "DSH approval" }
-}
-
-struct DSHRemoteDecision: Codable {
-    let id: String
-    let decision: String
-}
-
-struct DSHRemoteApprovalsResponse: Codable {
-    let available: Bool
-    let pending: [DSHRemoteApproval]
-}
-
-/// 一次提问（可能包含多个问题），对应 DSH 的 user-questions/request。
-struct DSHRemoteQuestionBatch: Codable, Identifiable, Hashable {
-    struct Question: Codable, Hashable, Identifiable {
-        struct Option: Codable, Hashable {
-            let label: String
-            let detail: String?
-        }
-
-        let id: String
-        let title: String
-        let detail: String?
-        let multiSelect: Bool
-        let options: [Option]
-    }
-
-    let id: String
-    let createdAt: String?
-    let sessionId: String?
-    let questions: [Question]
-}
-
-struct DSHQuestionAnswer: Codable {
-    struct Item: Codable {
-        let id: String
-        let selected: [String]
-        let custom: String?
-    }
-
-    let id: String
-    let answers: [Item]
-}
-
 /// `GET /v1/ping` 的响应。旧版 Mac 只返回 name/version，所以全部可选。
 struct MacHandshake: Decodable {
     let name: String?
@@ -6141,13 +6043,20 @@ private struct ChatMessageBubble: View {
                         .multilineTextAlignment(.leading)
                 }
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 10)
+            // 纯图片消息不要气泡底：气泡色和图片边缘不一致时会出现白边/色块。
+            .padding(.horizontal, imageOnly ? 0 : 13)
+            .padding(.vertical, imageOnly ? 0 : 10)
             .background(
                 RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
-                    .fill(FlowCueTheme.accent)
+                    .fill(imageOnly ? Color.clear : FlowCueTheme.accent)
             )
         }
+    }
+
+    /// 只有图片、没有文字：此时不应该画气泡背景。
+    private var imageOnly: Bool {
+        let hasImages = !(message.images?.isEmpty ?? true)
+        return hasImages && message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private var assistantBubble: some View {
@@ -6160,15 +6069,15 @@ private struct ChatMessageBubble: View {
                     MarkdownMessageView(text: message.text)
                 }
             }
-            .padding(.horizontal, 13)
-            .padding(.vertical, 10)
+            .padding(.horizontal, imageOnly ? 0 : 13)
+            .padding(.vertical, imageOnly ? 0 : 10)
             .background(
                 RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
-                    .fill(FlowCueTheme.surface)
+                    .fill(imageOnly ? Color.clear : FlowCueTheme.surface)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
-                    .strokeBorder(FlowCueTheme.hairline.opacity(0.6))
+                    .strokeBorder(imageOnly ? Color.clear : FlowCueTheme.hairline.opacity(0.6))
             )
             Spacer(minLength: 32)
         }

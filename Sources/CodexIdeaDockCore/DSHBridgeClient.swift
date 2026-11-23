@@ -104,6 +104,17 @@ public struct DSHQuestionAnswer: Codable, Sendable {
     public let answers: [Item]
 }
 
+/// `GET /v1/dsh/approvals` 的响应，供手机端解码。
+public struct DSHRemoteApprovalsResponse: Codable, Sendable {
+    public let available: Bool
+    public let pending: [DSHRemoteApproval]
+
+    public init(available: Bool, pending: [DSHRemoteApproval]) {
+        self.available = available
+        self.pending = pending
+    }
+}
+
 /// Decision payload sent back to the DSH bridge.
 public struct DSHRemoteDecision: Codable, Sendable {
     public let id: String

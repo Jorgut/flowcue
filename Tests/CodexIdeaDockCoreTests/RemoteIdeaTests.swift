@@ -152,4 +152,67 @@ final class RemoteIdeaTests: XCTestCase {
         )]), 1)
         XCTAssertEqual(store.captures.first?.status, .saved)
     }
+
+    // MARK: - 同步边界
+
+    func testQueuedIdeaIsNotOverwrittenByRemote() throws {
+        let store = try makeStore()
+        let now = Date()
+        let id = UUID()
+        XCTAssertTrue(store.upsertRemoteIdea(RemoteIdea(
+            id: id, text: "要排队发送的", createdAt: now, updatedAt: now
+        )))
+        // 直接把状态置为排队中（等价于本机队列的状态）
+        store.setStatusForTesting(captureID: id, status: .queued)
+        XCTAssertEqual(store.captures.first?.status, .queued)
+
+        // 另一台设备（更晚的时间）推来不同正文
+        XCTAssertEqual(store.mergePulledIdeas([RemoteIdea(
+            id: id, text: "远端改过的正文", createdAt: now, updatedAt: now.addingTimeInterval(60)
+        )]), 0)
+        XCTAssertEqual(store.captures.first?.text, "要排队发送的", "排队中的正文被覆盖了")
+        XCTAssertEqual(store.captures.first?.status, .queued)
+    }
+
+    func testNewerRemoteTextWins() throws {
+        let store = try makeStore()
+        let now = Date()
+        let id = UUID()
+        XCTAssertTrue(store.upsertRemoteIdea(RemoteIdea(
+            id: id, text: "旧正文", createdAt: now, updatedAt: now
+        )))
+        XCTAssertEqual(store.mergePulledIdeas([RemoteIdea(
+            id: id, text: "新正文", createdAt: now, updatedAt: now.addingTimeInterval(30)
+        )]), 1)
+        XCTAssertEqual(store.captures.first?.text, "新正文")
+    }
+
+    func testOlderRemoteTextIsIgnored() throws {
+        let store = try makeStore()
+        let now = Date()
+        let id = UUID()
+        XCTAssertTrue(store.upsertRemoteIdea(RemoteIdea(
+            id: id, text: "本地最新", createdAt: now, updatedAt: now.addingTimeInterval(60)
+        )))
+        XCTAssertEqual(store.mergePulledIdeas([RemoteIdea(
+            id: id, text: "远端旧文", createdAt: now, updatedAt: now
+        )]), 0)
+        XCTAssertEqual(store.captures.first?.text, "本地最新")
+    }
+
+    func testRestoreFromTrashSyncsBack() throws {
+        let store = try makeStore()
+        let now = Date()
+        let id = UUID()
+        XCTAssertTrue(store.upsertRemoteIdea(RemoteIdea(
+            id: id, text: "删了又恢复", createdAt: now, updatedAt: now
+        )))
+        XCTAssertTrue(store.delete(id))
+        XCTAssertTrue(store.captures.isEmpty)
+        XCTAssertTrue(store.restore(id))
+        XCTAssertEqual(store.captures.count, 1)
+        // 快照里不能再有墓碑，否则对端会继续把它当删除
+        let snapshot = store.syncSnapshot().first { $0.id == id }
+        XCTAssertNil(snapshot?.deletedAt)
+    }
 }
