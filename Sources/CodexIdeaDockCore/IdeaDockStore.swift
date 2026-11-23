@@ -30,6 +30,8 @@ public final class IdeaDockStore {
 
     public private(set) var contexts: [WorkContextItem]
     public private(set) var captures: [CaptureItem]
+    /// 已删除、还在垃圾箱里的想法（可恢复）。
+    public private(set) var trashedCaptures: [CaptureItem] = []
     public private(set) var sourceThreadID: String?
     public private(set) var targetThreadID: String?
     public var searchText: String
@@ -501,6 +503,40 @@ public final class IdeaDockStore {
             modelContext.rollback()
             try? reloadCaptures()
             return 0
+        }
+    }
+
+    /// 从垃圾箱恢复：清掉墓碑，恢复时间往前走，让对端也跟着恢复。
+    @discardableResult
+    public func restore(_ captureID: UUID) -> Bool {
+        guard let capture = fetchCapture(id: captureID) else { return false }
+        capture.deletedAt = nil
+        capture.updatedAt = Date.now
+        do {
+            try modelContext.save()
+            try reloadCaptures()
+            notification = DockNotification(kind: .success, message: "已恢复。")
+            return true
+        } catch {
+            modelContext.rollback()
+            try? reloadCaptures()
+            return false
+        }
+    }
+
+    /// 彻底删除（清空垃圾箱用）。对端已持有墓碑，不会再把它当新想法插回来。
+    @discardableResult
+    public func deletePermanently(_ captureID: UUID) -> Bool {
+        guard let capture = fetchCapture(id: captureID) else { return false }
+        modelContext.delete(capture)
+        do {
+            try modelContext.save()
+            try reloadCaptures()
+            return true
+        } catch {
+            modelContext.rollback()
+            try? reloadCaptures()
+            return false
         }
     }
 
@@ -1070,10 +1106,18 @@ public final class IdeaDockStore {
     }
 
     private func reloadCaptures() throws {
-        captures = try modelContext.fetch(FetchDescriptor<Capture>())
+        let all = try modelContext.fetch(FetchDescriptor<Capture>())
+        captures = all
             .filter { $0.deletedAt == nil }
             .sorted { $0.updatedAt > $1.updatedAt }
             .map(\.item)
+        trashedCaptures = all
+            .compactMap { capture -> (Capture, Date)? in
+                guard let deletedAt = capture.deletedAt else { return nil }
+                return (capture, deletedAt)
+            }
+            .sorted { $0.1 > $1.1 }
+            .map(\.0.item)
     }
 
 }

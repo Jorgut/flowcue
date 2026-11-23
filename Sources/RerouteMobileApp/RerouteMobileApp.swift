@@ -1798,6 +1798,8 @@ private struct InboxView: View {
     @State private var hasCompletedInitialSync = false
     @State private var pendingDelete: CaptureItem?
     @State private var openIdea: CaptureItem?
+    @State private var isSelecting = false
+    @State private var selectedIDs: Set<UUID> = []
     @FocusState private var captureFocused: Bool
     @ScaledMetric(relativeTo: .caption) private var searchHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .caption) private var chipHeight: CGFloat = 26
@@ -1860,7 +1862,7 @@ private struct InboxView: View {
                 }
                 Button("取消", role: .cancel) { pendingDelete = nil }
             } message: { _ in
-                Text("手机上删掉，Mac 上的同一条也会删掉。这个操作不能撤销。")
+                Text("会移到垃圾箱（Me → Trash），可以随时恢复。Mac 上同一条也会一起移走。")
             }
             .task { network.start() }
             .onChange(of: syncController.isSyncing) { _, isSyncing in
@@ -2147,7 +2149,20 @@ private struct InboxView: View {
                             }
                         },
                         onDelete: { pendingDelete = idea },
-                        onTap: { openIdea = idea }
+                        onTap: {
+                            if isSelecting {
+                                toggleSelection(idea.id)
+                            } else {
+                                openIdea = idea
+                            }
+                        },
+                        onLongPress: {
+                            guard !isSelecting else { return }
+                            isSelecting = true
+                            selectedIDs = [idea.id]
+                        },
+                        isSelecting: isSelecting,
+                        isSelected: selectedIDs.contains(idea.id)
                     ) {
                         HomeIdeaRow(capture: idea)
                     }
@@ -2164,6 +2179,71 @@ private struct InboxView: View {
         .scrollDismissesKeyboard(.interactively)
         .onPreferenceChange(HomeScrollOffsetKey.self) { offset in
             updateChipVisibility(offset)
+        }
+        .overlay(alignment: .bottom) {
+            if isSelecting { selectionBar }
+        }
+    }
+
+    /// 批量选择时底部的操作条。
+    private var selectionBar: some View {
+        HStack(spacing: 10) {
+            Text("\(selectedIDs.count) selected")
+                .flowCueFont(11, relativeTo: .caption, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+            Spacer(minLength: 0)
+            Button("Archive") { archiveSelected() }
+                .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .disabled(selectedIDs.isEmpty)
+            Button("Delete") { deleteSelected() }
+                .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.failure)
+                .disabled(selectedIDs.isEmpty)
+            Button("Cancel") {
+                isSelecting = false
+                selectedIDs.removeAll()
+            }
+            .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+            .foregroundStyle(FlowCueTheme.accent)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(.ultraThinMaterial)
+        .overlay(alignment: .top) {
+            Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+        }
+        .padding(.bottom, 4)
+    }
+
+    private func toggleSelection(_ id: UUID) {
+        if selectedIDs.contains(id) {
+            selectedIDs.remove(id)
+            if selectedIDs.isEmpty { isSelecting = false }
+        } else {
+            selectedIDs.insert(id)
+        }
+    }
+
+    private func archiveSelected() {
+        let ids = selectedIDs
+        isSelecting = false
+        selectedIDs.removeAll()
+        for id in ids {
+            store.archive(id)
+            if let updated = store.captures.first(where: { $0.id == id }) {
+                Task { await remoteController.pushIdea(updated) }
+            }
+        }
+    }
+
+    private func deleteSelected() {
+        let ids = selectedIDs
+        isSelecting = false
+        selectedIDs.removeAll()
+        for id in ids { store.delete(id) }
+        Task {
+            for id in ids { await remoteController.deleteIdeaOnMac(id) }
         }
     }
 
@@ -2582,6 +2662,9 @@ private struct IdeaSwipeRow<Content: View>: View {
     let onArchive: () -> Void
     let onDelete: () -> Void
     let onTap: () -> Void
+    let onLongPress: () -> Void
+    let isSelecting: Bool
+    let isSelected: Bool
     @ViewBuilder var content: Content
 
     @State private var offsetX: CGFloat = 0
@@ -2593,13 +2676,23 @@ private struct IdeaSwipeRow<Content: View>: View {
 
     var body: some View {
         ZStack(alignment: .trailing) {
-            HStack(spacing: 0) {
-                action("Archive", color: FlowCueTheme.warning, action: onArchive)
-                action("Delete", color: FlowCueTheme.failure, action: onDelete)
+            if !isSelecting {
+                HStack(spacing: 0) {
+                    action("Archive", color: FlowCueTheme.warning, action: onArchive)
+                    action("Delete", color: FlowCueTheme.failure, action: onDelete)
+                }
             }
             content
                 .background(FlowCueTheme.canvas)
-                .offset(x: offsetX)
+                .offset(x: isSelecting ? 0 : offsetX)
+                .overlay(alignment: .leading) {
+                    if isSelecting {
+                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(isSelected ? FlowCueTheme.accent : FlowCueTheme.textSecondary)
+                            .padding(.leading, 2)
+                    }
+                }
                 .contentShape(Rectangle())
                 // 单击：滑开时收起，否则进详情。用 simultaneousGesture，
                 // 避免独占点击手势拖住列表滚动（.onTapGesture 曾经这么干过）。
@@ -2618,16 +2711,15 @@ private struct IdeaSwipeRow<Content: View>: View {
                 .simultaneousGesture(
                     LongPressGesture(minimumDuration: 0.45)
                         .onEnded { _ in
-                            guard offsetX == 0 else { return }
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
-                                offsetX = -actionsWidth
-                            }
+                            guard !isSelecting else { return }
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            onLongPress()
                         }
                 )
                 .simultaneousGesture(
                 DragGesture(minimumDistance: 20)
                     .onChanged { value in
+                        guard !isSelecting else { return }
                         if dragStart == nil {
                             dragStart = offsetX
                             didDrag = true
@@ -2639,6 +2731,7 @@ private struct IdeaSwipeRow<Content: View>: View {
                         offsetX = min(0, max(-actionsWidth, base + dx))
                     }
                     .onEnded { value in
+                        guard !isSelecting else { return }
                         let base = dragStart ?? 0
                         dragStart = nil
                         let dx = value.translation.width
@@ -3047,7 +3140,7 @@ private struct IdeaDetailView: View {
             }
             Button("取消", role: .cancel) {}
         } message: {
-            Text("手机上删掉，Mac 上的同一条也会删掉。这个操作不能撤销。")
+            Text("会移到垃圾箱（Me → Trash），可以随时恢复。Mac 上同一条也会一起移走。")
         }
         .sheet(isPresented: $showingSend) {
             SendIdeaSheet(controller: remoteController, text: text) { target in
@@ -6905,7 +6998,6 @@ private struct MeView: View {
     @State private var showingAppearance = MePreview.state == "appearance"
     @State private var showingLanguage = MePreview.state == "language"
     @State private var showingPro = MePreview.state == "pro"
-    @State private var showingArchive = MePreview.state == "archive"
     @State private var showingAbout = MePreview.state == "about"
     @State private var showingFeedback = MePreview.state == "feedback"
     @State private var showingWidgets = MePreview.state == "widgets"
@@ -6981,9 +7073,6 @@ private struct MeView: View {
             }
             .navigationDestination(isPresented: $showingAppearance) {
                 AppearanceView(showsDone: false)
-            }
-            .navigationDestination(isPresented: $showingArchive) {
-                ArchiveView(store: store, remoteController: remoteController)
             }
             .navigationDestination(isPresented: $showingAbout) {
                 AboutView(showOnboarding: showOnboarding)
@@ -7139,6 +7228,18 @@ private struct MeView: View {
                 ArchiveView(store: store, remoteController: remoteController)
             } label: {
                 MeRowLabel(title: "Archive")
+            }
+            .buttonStyle(.plain)
+
+            divider
+
+            NavigationLink {
+                TrashView(store: store, remoteController: remoteController)
+            } label: {
+                MeRowLabel(
+                    title: "Trash",
+                    value: store.trashedCaptures.isEmpty ? nil : "\(store.trashedCaptures.count)"
+                )
             }
             .buttonStyle(.plain)
 
@@ -8084,6 +8185,121 @@ private struct ProStatusSheet: View {
 }
 
 // MARK: - Archive
+
+/// 垃圾箱：删除的想法先放这里，可以恢复，也可以彻底清掉。
+private struct TrashView: View {
+    @Bindable var store: IdeaDockStore
+    @Bindable var remoteController: LANRemoteController
+    @State private var showingEmptyConfirmation = false
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if store.trashedCaptures.isEmpty {
+                    VStack(spacing: 10) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 26))
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                        Text("Trash is empty")
+                            .flowCueFont(14, relativeTo: .subheadline)
+                            .foregroundStyle(FlowCueTheme.textPrimary)
+                        Text("Deleted ideas stay here so you can restore them.")
+                            .flowCueFont(11, relativeTo: .caption)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 60)
+                    .padding(.horizontal, 32)
+                } else {
+                    Text("\(store.trashedCaptures.count) IN TRASH")
+                        .flowCueFont(10, relativeTo: .caption2)
+                        .tracking(1.0)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 16)
+
+                    VStack(spacing: 0) {
+                        ForEach(store.trashedCaptures) { capture in
+                            row(capture)
+                            Rectangle()
+                                .fill(FlowCueTheme.hairline)
+                                .frame(height: 1)
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.top, 2)
+
+                    Text("Ideas deleted here are kept on this iPhone until you empty the trash.")
+                        .flowCueFont(10, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                        .padding(.horizontal, 18)
+                        .padding(.top, 14)
+                }
+            }
+            .padding(.bottom, 32)
+        }
+        .background { FlowCueScreenBackground() }
+        .navigationTitle("Trash")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            if !store.trashedCaptures.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Empty", role: .destructive) { showingEmptyConfirmation = true }
+                }
+            }
+        }
+        .confirmationDialog("清空垃圾箱？", isPresented: $showingEmptyConfirmation, titleVisibility: .visible) {
+            Button("全部彻底删除", role: .destructive) {
+                for capture in store.trashedCaptures {
+                    store.deletePermanently(capture.id)
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: {
+            Text("清空后这些想法无法再恢复。")
+        }
+    }
+
+    private func row(_ capture: CaptureItem) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(capture.text)
+                .flowCueFont(13, relativeTo: .subheadline)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .lineLimit(2)
+            HStack(spacing: 10) {
+                Button {
+                    Task {
+                        if store.restore(capture.id),
+                           let restored = store.captures.first(where: { $0.id == capture.id }) {
+                            await remoteController.pushIdea(restored)
+                        }
+                    }
+                } label: {
+                    Label("恢复", systemImage: "arrow.uturn.backward")
+                        .flowCueFont(11, relativeTo: .caption, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.accent)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    store.deletePermanently(capture.id)
+                } label: {
+                    Label("彻底删除", systemImage: "trash.slash")
+                        .flowCueFont(11, relativeTo: .caption, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.failure)
+                }
+                .buttonStyle(.plain)
+
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(.vertical, 10)
+    }
+}
 
 private struct ArchiveView: View {
     @Bindable var store: IdeaDockStore
