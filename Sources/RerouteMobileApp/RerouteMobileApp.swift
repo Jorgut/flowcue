@@ -2597,20 +2597,35 @@ private struct IdeaSwipeRow<Content: View>: View {
                 action("Archive", color: FlowCueTheme.warning, action: onArchive)
                 action("Delete", color: FlowCueTheme.failure, action: onDelete)
             }
-            Button {
-                guard !didDrag else { return }
-                if offsetX != 0 {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { offsetX = 0 }
-                } else {
-                    onTap()
-                }
-            } label: {
-                content
-            }
-            .buttonStyle(.plain)
-            .background(FlowCueTheme.canvas)
-            .offset(x: offsetX)
-            .simultaneousGesture(
+            content
+                .background(FlowCueTheme.canvas)
+                .offset(x: offsetX)
+                .contentShape(Rectangle())
+                // 单击：滑开时收起，否则进详情。用 simultaneousGesture，
+                // 避免独占点击手势拖住列表滚动（.onTapGesture 曾经这么干过）。
+                .simultaneousGesture(
+                    TapGesture().onEnded {
+                        guard !didDrag else { return }
+                        if offsetX != 0 {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { offsetX = 0 }
+                        } else {
+                            onTap()
+                        }
+                    }
+                )
+                // 长按：直接滑出操作。放在这里而不是 Button 上，
+                // Button 的手势优先级高，长按永远轮不到。
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.45)
+                        .onEnded { _ in
+                            guard offsetX == 0 else { return }
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                                offsetX = -actionsWidth
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                )
+                .simultaneousGesture(
                 DragGesture(minimumDistance: 20)
                     .onChanged { value in
                         if dragStart == nil {
@@ -2636,13 +2651,6 @@ private struct IdeaSwipeRow<Content: View>: View {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { didDrag = false }
                     }
             )
-            // 长按走 onLongPressGesture 而不是 contextMenu：
-            // 后者会挂系统菜单识别器，拖慢列表滚动。
-            .onLongPressGesture(minimumDuration: 0.45) {
-                guard offsetX == 0 else { return }
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { offsetX = -actionsWidth }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            }
         }
         .clipped()
     }
