@@ -2588,18 +2588,18 @@ private struct IdeaSwipeRow<Content: View>: View {
                 action("Archive", color: FlowCueTheme.warning, action: onArchive)
                 action("Delete", color: FlowCueTheme.failure, action: onDelete)
             }
-            Button {
-                if openOffset != 0 {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { openOffset = 0 }
-                } else {
-                    onTap()
+            content
+                .background(FlowCueTheme.canvas)
+                .offset(x: offset)
+                // 用点击手势而不是 Button：Button 会在拖拽结束后仍然触发，
+                // 那时 openOffset 刚被设为滑开状态，于是「刚出现就收起」。
+                .onTapGesture {
+                    if openOffset != 0 {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) { openOffset = 0 }
+                    } else {
+                        onTap()
+                    }
                 }
-            } label: {
-                content
-            }
-            .buttonStyle(.plain)
-            .background(FlowCueTheme.canvas)
-            .offset(x: offset)
                 // 用 simultaneousGesture：ScrollView 的滚动手势会抢走普通 gesture，
                 // 同时识别才能拿到横向拖拽；再用「横向为主才跟手」避免影响上下滚动。
                 .simultaneousGesture(
