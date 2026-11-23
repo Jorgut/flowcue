@@ -3804,6 +3804,34 @@ private struct AgentsView: View {
                 .buttonStyle(.plain)
                 .padding(.top, 12)
 
+                // 断连与重新配对放在设备卡片正下方：
+                // 之前在「设备详情 → 底部」里，连着的时候根本找不到，
+                // 也进不去配对面板（它只在未连接状态可打开）。
+                HStack(spacing: 14) {
+                    Button {
+                        controller.disconnect()
+                    } label: {
+                        Label("断连", systemImage: "bolt.horizontal.circle")
+                            .flowCueFont(11.5, relativeTo: .caption, weight: .semibold)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        controller.disconnect()
+                        showingPairing = true
+                    } label: {
+                        Label("更换配对码", systemImage: "number.circle")
+                            .flowCueFont(11.5, relativeTo: .caption, weight: .semibold)
+                            .foregroundStyle(FlowCueTheme.accent)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, AgentsLayout.margin)
+                .padding(.top, 10)
+
                 AgentsSectionHeader(title: "AGENTS ON THIS MAC")
                     .padding(.top, 16)
 
