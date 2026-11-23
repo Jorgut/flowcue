@@ -62,7 +62,18 @@ public struct DSHAgentAdapter: AgentAdapter {
     }
 
     public func messages(in session: AgentSession, limit: Int = 80) async throws -> [AgentMessage] {
-        throw AgentAdapterError.unsupported
+        // 桥只暴露待审/发消息/决策，对话内容从本机会话日志读。
+        let reader = DSHSessionReader()
+        let raw = reader.messages(sessionID: session.locator, limit: limit)
+        guard !raw.isEmpty else { throw AgentAdapterError.notFound }
+        return raw.enumerated().map { index, message in
+            AgentMessage(
+                id: message.id.isEmpty ? "\(session.id)-\(index)" : message.id,
+                role: AgentMessage.Role(rawValue: message.role) ?? .assistant,
+                text: message.text,
+                timestamp: message.timestamp
+            )
+        }
     }
 
     public func send(_ text: String, to session: AgentSession) async throws {

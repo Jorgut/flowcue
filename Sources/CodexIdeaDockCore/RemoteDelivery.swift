@@ -535,3 +535,59 @@ public final class RemoteContinuationService {
         }
     }
 }
+
+
+// MARK: - 通用 Agent 远程模型
+//
+// 手机端不依赖 Mac 内部的 AgentSession/AgentMessage，用这层 DTO 走网络。
+// 新增一个 Agent 时，Mac 侧加适配器即可，手机端不需要改模型。
+
+public struct RemoteAgentInfo: Codable, Identifiable, Hashable, Sendable {
+    public let id: String
+    public let displayName: String
+    /// 该 Agent 的会话总数与涉及的项目目录数。
+    public let sessionCount: Int
+    public let projectCount: Int
+    /// 是否能从手机发消息。
+    public let canSend: Bool
+
+    public init(id: String, displayName: String, sessionCount: Int, projectCount: Int, canSend: Bool) {
+        self.id = id
+        self.displayName = displayName
+        self.sessionCount = sessionCount
+        self.projectCount = projectCount
+        self.canSend = canSend
+    }
+}
+
+public struct RemoteAgentSession: Codable, Identifiable, Hashable, Sendable {
+    public let id: String
+    public let agentID: String
+    public let title: String
+    public let projectPath: String?
+    public let updatedAt: Date
+    public let messageCount: Int?
+
+    public init(id: String, agentID: String, title: String, projectPath: String?, updatedAt: Date, messageCount: Int?) {
+        self.id = id
+        self.agentID = agentID
+        self.title = title
+        self.projectPath = projectPath
+        self.updatedAt = updatedAt
+        self.messageCount = messageCount
+    }
+}
+
+public struct RemoteAgentMessage: Codable, Identifiable, Hashable, Sendable {
+    public let id: String
+    public let role: String
+    public let text: String
+    public let timestamp: Date?
+
+    public init(id: String, role: String, text: String, timestamp: Date?) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.timestamp = timestamp
+    }
+}

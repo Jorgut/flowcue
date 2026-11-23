@@ -137,18 +137,130 @@ public final class LANRemoteServer {
     public static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
+    /// 通用 Agent 接口用的编码器（日期走 ISO8601，和手机端一致）。
+    private static let encoder: JSONEncoder = {
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }()
+
     /// 最近一次收到请求的客户端版本（nil 表示对方没带）。
     public private(set) static var lastClientVersion: String?
+    /// 通用 Agent 层：所有 Agent 走同一套 list/messages/send。
+    private let agentService = AgentService.default
+    /// 会话/项目计数的缓存（列会话要读各家目录，不能每次请求都扫）。
+    private var agentSummaryCache: [String: RemoteAgentInfo] = [:]
+    private var agentSummaryCacheAt: Date?
     /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——
     /// 这个接口只有手机会调，本机测试不会干扰计数。
     private var phonePollCount = 0
     private var lastPhonePollAt: Date?
+
+    /// 装上且被支持的 Agent，附会话数与项目数（60 秒缓存）。
+    private func agentSummaries() async -> [RemoteAgentInfo] {
+        if let at = agentSummaryCacheAt, Date().timeIntervalSince(at) < 60, !agentSummaryCache.isEmpty {
+            return agentSummaryCache.values.sorted { $0.displayName < $1.displayName }
+        }
+        var result: [String: RemoteAgentInfo] = [:]
+        let supported = Set(agentService.supportedAgentIDs)
+        for record in AgentDiscovery.scan() where supported.contains(record.id) {
+            let sessions = (try? await agentService.sessions(for: record.id)) ?? []
+            let projects = Set(sessions.compactMap { $0.projectPath }.filter { !$0.isEmpty })
+            result[record.id] = RemoteAgentInfo(
+                id: record.id,
+                displayName: record.displayName,
+                sessionCount: sessions.count,
+                projectCount: projects.count,
+                canSend: record.capabilities.contains(.drive)
+            )
+        }
+        // 支持的适配器即使没被目录扫到，也列出来（例如 DSH 靠桥接）
+        for id in supported where result[id] == nil {
+            let sessions = (try? await agentService.sessions(for: id)) ?? []
+            let projects = Set(sessions.compactMap { $0.projectPath }.filter { !$0.isEmpty })
+            result[id] = RemoteAgentInfo(
+                id: id,
+                displayName: id.capitalized,
+                sessionCount: sessions.count,
+                projectCount: projects.count,
+                canSend: true
+            )
+        }
+        agentSummaryCache = result
+        agentSummaryCacheAt = Date()
+        return result.values.sorted { $0.displayName < $1.displayName }
+    }
+
+    private static func remoteSession(_ session: AgentSession) -> RemoteAgentSession {
+        RemoteAgentSession(
+            id: session.id,
+            agentID: session.agentID,
+            title: session.title,
+            projectPath: session.projectPath,
+            updatedAt: session.updatedAt,
+            messageCount: session.messageCount
+        )
+    }
+
+    private static func remoteMessage(_ message: AgentMessage) -> RemoteAgentMessage {
+        RemoteAgentMessage(
+            id: message.id,
+            role: message.role.rawValue,
+            text: message.text,
+            timestamp: message.timestamp
+        )
+    }
 
     private func respond(to request: HTTPRequest) async throws -> Data {
         if request.path == "/v1/dsh/approvals" {
             phonePollCount += 1
             lastPhonePollAt = Date()
         }
+        // MARK: 通用 Agent 接口
+        if request.method == "GET", request.path == "/v1/agents" {
+            let agents = await agentSummaries()
+            return Self.response(status: 200, body: (try? Self.encoder.encode(agents)) ?? Data("[]".utf8))
+        }
+
+        if request.path.hasPrefix("/v1/agents/") {
+            let rest = String(request.path.dropFirst("/v1/agents/".count))
+            let parts = rest.split(separator: "/").map(String.init)
+            if parts.count >= 2, parts[1] == "sessions" {
+                let agentID = parts[0].removingPercentEncoding ?? parts[0]
+                if parts.count == 2 {
+                    // GET /v1/agents/{id}/sessions
+                    let sessions = (try? await agentService.sessions(for: agentID)) ?? []
+                    return Self.response(status: 200, body: (try? Self.encoder.encode(sessions.map(Self.remoteSession))) ?? Data("[]".utf8))
+                }
+                if parts.count >= 4 {
+                    let sessionID = parts[2].removingPercentEncoding ?? parts[2]
+                    let action = parts[3]
+                    let sessions = (try? await agentService.sessions(for: agentID)) ?? []
+                    guard let session = sessions.first(where: { $0.id == sessionID }) else {
+                        return Self.response(status: 404, body: Data("{}".utf8))
+                    }
+                    if action == "messages", request.method == "GET" {
+                        let messages = (try? await agentService.messages(session)) ?? []
+                        return Self.response(status: 200, body: (try? Self.encoder.encode(messages.map(Self.remoteMessage))) ?? Data("[]".utf8))
+                    }
+                    if action == "send", request.method == "POST" {
+                        struct SendBody: Decodable { let text: String }
+                        guard let body = try? JSONDecoder().decode(SendBody.self, from: request.body),
+                              !body.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                            return Self.response(status: 400, body: Data("{}".utf8))
+                        }
+                        do {
+                            try await agentService.send(body.text, to: session)
+                            return Self.response(status: 200, body: Data("{}".utf8))
+                        } catch {
+                            return Self.response(status: 409, body: Data("{}".utf8))
+                        }
+                    }
+                }
+            }
+            return Self.response(status: 404, body: Data("{}".utf8))
+        }
+
         if request.path == "/v1/ping" {
             // `version` 保留给旧客户端；`protocol` 与 `appVersion` 给新客户端做版本握手
             let payload: [String: String] = [
