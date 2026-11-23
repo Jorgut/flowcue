@@ -44,6 +44,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         configureDockIconPolicy()
         NotificationService.shared.start()
         installQuitShortcutMonitor()
+        // 仅用于本地验证：带这个参数启动时自动打开收件箱窗口。
+        if ProcessInfo.processInfo.arguments.contains("--flowcue-open-inbox") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.showInbox()
+            }
+        }
         NotificationService.shared.onOpenSession = { [weak self] agentID, sessionID in
             self?.unreadReplies.markRead(agentID: agentID, sessionID: sessionID)
             self?.showAgents()

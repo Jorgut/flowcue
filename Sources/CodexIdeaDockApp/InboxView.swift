@@ -81,6 +81,8 @@ struct InboxView: View {
     @State private var sourceFilter: RouteFilter = .all
     @State private var targetFilter: RouteFilter = .all
     @State private var isRemoteStatusPresented = false
+    @State private var showingTrash = ProcessInfo.processInfo.arguments.contains("--flowcue-open-trash")
+    @State private var confirmingEmptyTrash = false
 
     private var visibleCaptures: [CaptureItem] {
         store.filteredCaptures.filter { capture in
@@ -325,10 +327,14 @@ struct InboxView: View {
                 sidebarPane.frame(width: 200)
                 .frame(maxHeight: .infinity, alignment: .top)
                 Divider()
-                listPane.frame(width: 300)
+                // 垃圾箱模式下没有详情栏，让列表吃掉剩余宽度，避免留下大片空白。
+                listPane.frame(width: showingTrash ? nil : 300)
+                .frame(minWidth: 300, maxWidth: showingTrash ? .infinity : 300)
                 .frame(maxHeight: .infinity, alignment: .top)
-                Divider()
-                detailPane.frame(maxWidth: .infinity, maxHeight: .infinity)
+                if !showingTrash {
+                    Divider()
+                    detailPane.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
             }
         }
     }
@@ -337,14 +343,26 @@ struct InboxView: View {
         VStack(spacing: 0) {
             listHeader
             Divider()
-            InboxCaptureList(
-                captures: visibleCaptures,
-                selection: $selectedCaptureID,
-                onQueue: queueCapture,
-                onArchive: archiveCapture,
-                onRestore: restoreCapture,
-                onCopyAndOpenCodex: copyAndOpenCodex
-            )
+            if showingTrash {
+                MacTrashList(
+                    captures: store.trashedCaptures,
+                    onRestore: { id in
+                        _ = store.restore(id)
+                    },
+                    onPurge: { id in
+                        _ = store.deletePermanently(id)
+                    }
+                )
+            } else {
+                InboxCaptureList(
+                    captures: visibleCaptures,
+                    selection: $selectedCaptureID,
+                    onQueue: queueCapture,
+                    onArchive: archiveCapture,
+                    onRestore: restoreCapture,
+                    onCopyAndOpenCodex: copyAndOpenCodex
+                )
+            }
             Spacer(minLength: 0)
         }
         .frame(maxHeight: .infinity, alignment: .top)
@@ -584,6 +602,7 @@ struct InboxView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     sidebarRow(title: L10n.text("全部想法"), count: visibleCaptures.count, filter: .all)
+                    trashRow
                     Divider().padding(.vertical, 6).padding(.horizontal, 10)
                     ForEach(store.contexts) { context in
                         sidebarRow(title: context.title,
@@ -599,6 +618,7 @@ struct InboxView: View {
 
     private func sidebarRow(title: String, count: Int?, filter: RouteFilter) -> some View {
         Button {
+            showingTrash = false
             sourceFilter = filter
         } label: {
             HStack(spacing: 6) {
@@ -610,6 +630,32 @@ struct InboxView: View {
             }
             .padding(.horizontal, 10).padding(.vertical, 5)
             .background(sourceFilter == filter ? FlowCueDesktopTheme.accent.opacity(0.16) : .clear,
+                        in: RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
+    }
+
+    /// 侧栏里的垃圾箱入口。
+    private var trashRow: some View {
+        Button {
+            showingTrash = true
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "trash")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(L10n.text("垃圾箱")).font(.callout).lineLimit(1)
+                Spacer(minLength: 0)
+                if !store.trashedCaptures.isEmpty {
+                    Text("\(store.trashedCaptures.count)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.horizontal, 10).padding(.vertical, 5)
+            .background(showingTrash ? FlowCueDesktopTheme.accent.opacity(0.16) : .clear,
                         in: RoundedRectangle(cornerRadius: FlowCueMetrics.radiusInline, style: .continuous))
             .contentShape(Rectangle())
         }
@@ -1946,5 +1992,56 @@ private extension CaptureStatus {
 private extension String {
     var nonEmpty: String? {
         isEmpty ? nil : self
+    }
+}
+
+/// Mac 端的垃圾箱列表：删除的想法留在这里，可以恢复或彻底删除。
+private struct MacTrashList: View {
+    let captures: [CaptureItem]
+    let onRestore: (UUID) -> Void
+    let onPurge: (UUID) -> Void
+
+    var body: some View {
+        if captures.isEmpty {
+            VStack(spacing: 8) {
+                Image(systemName: "trash")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.secondary)
+                Text(L10n.text("垃圾箱是空的"))
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                Text(L10n.text("删掉的想法会先放在这里，可以恢复。"))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(captures) { capture in
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(capture.text)
+                                .font(.callout)
+                                .lineLimit(2)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            HStack(spacing: 12) {
+                                Button(L10n.text("恢复")) { onRestore(capture.id) }
+                                    .buttonStyle(.plain)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(FlowCueDesktopTheme.accent)
+                                Button(L10n.text("彻底删除")) { onPurge(capture.id) }
+                                    .buttonStyle(.plain)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.red)
+                                Spacer(minLength: 0)
+                            }
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        Divider()
+                    }
+                }
+            }
+        }
     }
 }
