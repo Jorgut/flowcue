@@ -604,6 +604,66 @@ final class LANRemoteController {
         return resized.jpegData(compressionQuality: 0.7)
     }
 
+    // MARK: - 通用 Agent
+    private(set) var agentInfos: [RemoteAgentInfo] = []
+
+    func refreshAgents() async {
+        guard let selected else { return }
+        guard let data = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "GET", path: "/v1/agents",
+            token: pairingCode, body: nil, timeout: 20
+        ) else { return }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        if let agents = try? decoder.decode([RemoteAgentInfo].self, from: data) {
+            agentInfos = agents
+        }
+    }
+
+    func agentSessions(_ agentID: String) async -> [RemoteAgentSession] {
+        guard let selected else { return [] }
+        guard let data = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "GET",
+            path: "/v1/agents/\(agentID)/sessions",
+            token: pairingCode, body: nil, timeout: 25
+        ) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode([RemoteAgentSession].self, from: data)) ?? []
+    }
+
+    func agentMessages(agentID: String, sessionID: String) async -> [RemoteAgentMessage] {
+        guard let selected else { return [] }
+        let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? sessionID
+        guard let data = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "GET",
+            path: "/v1/agents/\(agentID)/sessions/\(encoded)/messages",
+            token: pairingCode, body: nil, timeout: 25
+        ) else { return [] }
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        return (try? decoder.decode([RemoteAgentMessage].self, from: data)) ?? []
+    }
+
+    @discardableResult
+    func sendAgent(agentID: String, sessionID: String, text: String) async -> Bool {
+        guard let selected else { return false }
+        let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? sessionID
+        struct Body: Encodable { let text: String }
+        guard let body = try? JSONEncoder().encode(Body(text: text)) else { return false }
+        do {
+            _ = try await LANHTTP.request(
+                endpoint: selected.endpoint, method: "POST",
+                path: "/v1/agents/\(agentID)/sessions/\(encoded)/send",
+                token: pairingCode, body: body, timeout: 30
+            )
+            return true
+        } catch {
+            lastError = "发送失败。"
+            return false
+        }
+    }
+
     /// 从 Mac 拉取全部想法（包含 Mac 上原有的历史想法），用于反向同步。
     func pullIdeas() async -> [RemoteIdea]? {
         guard let selected else { return nil }
@@ -1167,6 +1227,7 @@ private struct RootTabView: View {
             while !Task.isCancelled {
                 await remoteController.refreshApprovals()
                 await remoteController.refreshDSHQuestions()
+                await remoteController.refreshAgents()
                 try? await Task.sleep(for: .seconds(3))
             }
         }
@@ -3700,35 +3761,22 @@ private struct AgentsView: View {
                     .padding(.top, 16)
 
                 VStack(spacing: 0) {
-                    NavigationLink {
-                        CodexAgentView(controller: controller, tab: $tab)
-                    } label: {
-                        AgentsAgentRow(
-                            title: "Codex",
-                            meta: codexMeta,
-                            isActive: !isOffline && !controller.threads.isEmpty
-                        )
+                    ForEach(controller.agentInfos) { agent in
+                        NavigationLink {
+                            AgentSessionsView(controller: controller, tab: $tab, agent: agent)
+                        } label: {
+                            AgentsAgentRow(
+                                title: agent.displayName,
+                                meta: agentMeta(agent),
+                                isActive: !isOffline && agent.sessionCount > 0
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        Rectangle()
+                            .fill(FlowCueTheme.hairline)
+                            .frame(height: 1)
+                            .accessibilityHidden(true)
                     }
-                    .buttonStyle(.plain)
-                    Rectangle()
-                        .fill(FlowCueTheme.hairline)
-                        .frame(height: 1)
-                        .accessibilityHidden(true)
-
-                    NavigationLink {
-                        DSHAgentView(controller: controller, tab: $tab)
-                    } label: {
-                        AgentsAgentRow(
-                            title: "DSH",
-                            meta: dshMeta,
-                            isActive: !isOffline && controller.dshBridgeAvailable
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    Rectangle()
-                        .fill(FlowCueTheme.hairline)
-                        .frame(height: 1)
-                        .accessibilityHidden(true)
 
                     Button {
                         showingAddAgent = true
@@ -3743,6 +3791,13 @@ private struct AgentsView: View {
             .padding(.bottom, 28)
         }
         .refreshable { await controller.refresh() }
+    }
+
+    /// Agents 页每行的副标题：会话数 · 项目数。
+    private func agentMeta(_ agent: RemoteAgentInfo) -> String {
+        let sessions = "\(agent.sessionCount) sessions"
+        guard agent.projectCount > 0 else { return sessions }
+        return "\(sessions) · \(agent.projectCount) projects"
     }
 
     private var codexMeta: String {
@@ -9670,5 +9725,309 @@ final class FlowCuePushRegistration {
     func handleFailure(_ error: Error) {
         // 模拟器或未开推送能力时会到这里；不当作致命错误。
         UserDefaults.standard.set(error.localizedDescription, forKey: errorKey)
+    }
+}
+
+// MARK: - 通用 Agent 会话列表（按项目分组、可折叠、可切换 Agent）
+
+private struct AgentSessionsView: View {
+    @Bindable var controller: LANRemoteController
+    @Binding var tab: FlowCueTab
+    let agent: RemoteAgentInfo
+
+    @State private var sessions: [RemoteAgentSession] = []
+    @State private var loading = true
+    @State private var collapsed: Set<String> = []
+    @State private var switchedAgent: RemoteAgentInfo?
+    @State private var resume: RemoteAgentSession?
+
+    private var collapsedKey: String { "FlowCue.agentCollapsed.\(agent.id)" }
+    private var lastKey: String { "FlowCue.agentLast.\(agent.id)" }
+
+    private var groups: [(project: String, sessions: [RemoteAgentSession])] {
+        Dictionary(grouping: sessions) { session in
+            guard let path = session.projectPath, !path.isEmpty else { return "未关联项目" }
+            return (path as NSString).lastPathComponent
+        }
+        .map { (project: $0.key, sessions: $0.value.sorted { $0.updatedAt > $1.updatedAt }) }
+        .sorted { lhs, rhs in
+            // 未关联项目固定排最后
+            if lhs.project == "未关联项目" { return false }
+            if rhs.project == "未关联项目" { return true }
+            return (lhs.sessions.first?.updatedAt ?? .distantPast) > (rhs.sessions.first?.updatedAt ?? .distantPast)
+        }
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if loading {
+                    SessionsSkeleton()
+                } else if sessions.isEmpty {
+                    SessionsEmptyState(agent: agent.displayName)
+                } else {
+                    if let resume {
+                        NavigationLink {
+                            AgentChatView(controller: controller, agent: agent, session: resume)
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "arrow.uturn.backward")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(FlowCueTheme.accent)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("继续上次：\(resume.title.isEmpty ? "未命名会话" : resume.title)")
+                                        .flowCueFont(12.5, relativeTo: .caption, weight: .semibold)
+                                        .foregroundStyle(FlowCueTheme.textPrimary)
+                                        .lineLimit(1)
+                                    Text(FlowCueLinkFormat.relative(resume.updatedAt))
+                                        .flowCueFont(10.5, relativeTo: .caption2)
+                                        .foregroundStyle(FlowCueTheme.textSecondary)
+                                }
+                                Spacer(minLength: 0)
+                                Text("进入")
+                                    .flowCueFont(11, relativeTo: .caption2, weight: .semibold)
+                                    .foregroundStyle(FlowCueTheme.accent)
+                            }
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 11)
+                            .background(
+                                RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
+                                    .fill(FlowCueTheme.accent.opacity(0.12))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
+                                    .strokeBorder(FlowCueTheme.accent.opacity(0.35))
+                            )
+                            .padding(.horizontal, AgentsLayout.margin)
+                            .padding(.top, 12)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    ForEach(groups, id: \.project) { group in
+                        projectHeader(group.project, count: group.sessions.count)
+                        if !collapsed.contains(group.project) {
+                            ForEach(group.sessions) { session in
+                                NavigationLink {
+                                    AgentChatView(controller: controller, agent: agent, session: session)
+                                } label: {
+                                    sessionRow(session)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.bottom, 24)
+        }
+        .background { FlowCueScreenBackground() }
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Menu {
+                    ForEach(controller.agentInfos) { other in
+                        Button {
+                            guard other.id != agent.id else { return }
+                            switchedAgent = other
+                        } label: {
+                            if other.id == agent.id {
+                                Label(other.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(other.displayName)
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(agent.displayName)
+                            .flowCueFont(16, relativeTo: .headline, weight: .semibold)
+                            .foregroundStyle(FlowCueTheme.textPrimary)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                    }
+                }
+            }
+        }
+        .navigationDestination(item: $switchedAgent) { next in
+            AgentSessionsView(controller: controller, tab: $tab, agent: next)
+        }
+        .task {
+            collapsed = Set(UserDefaults.standard.stringArray(forKey: collapsedKey) ?? [])
+            await reload()
+        }
+    }
+
+    private func projectHeader(_ project: String, count: Int) -> some View {
+        Button {
+            if collapsed.contains(project) {
+                collapsed.remove(project)
+            } else {
+                collapsed.insert(project)
+            }
+            UserDefaults.standard.set(Array(collapsed), forKey: collapsedKey)
+        } label: {
+            HStack(spacing: 8) {
+                Text(project.uppercased())
+                    .flowCueFont(10, relativeTo: .caption2, weight: .semibold)
+                    .tracking(1.0)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text("\(count)")
+                    .flowCueFont(10, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                Image(systemName: collapsed.contains(project) ? "chevron.down" : "chevron.up")
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+            }
+            .padding(.horizontal, AgentsLayout.margin)
+            .padding(.top, 16)
+            .padding(.bottom, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func sessionRow(_ session: RemoteAgentSession) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(session.title.isEmpty ? "未命名会话" : session.title)
+                .flowCueFont(14, relativeTo: .subheadline)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 8) {
+                Text(FlowCueLinkFormat.relative(session.updatedAt))
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                if let count = session.messageCount, count > 0 {
+                    Text("·")
+                        .flowCueFont(11, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                    Text("\(count) 条消息")
+                        .flowCueFont(11, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
+                }
+            }
+        }
+        .padding(.horizontal, AgentsLayout.margin)
+        .padding(.vertical, 11)
+        .overlay(alignment: .bottom) {
+            Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func reload() async {
+        loading = true
+        sessions = await controller.agentSessions(agent.id)
+        loading = false
+        // 记住上次位置，供切换器显示「上次：xxx」
+        if let id = UserDefaults.standard.string(forKey: lastKey),
+           let match = sessions.first(where: { $0.id == id }) {
+            resume = match
+        }
+    }
+}
+
+/// 通用 Agent 对话页：消息 + 输入框，发送走 /v1/agents/.../send。
+private struct AgentChatView: View {
+    @Bindable var controller: LANRemoteController
+    let agent: RemoteAgentInfo
+    let session: RemoteAgentSession
+
+    @State private var messages: [RemoteAgentMessage] = []
+    @State private var text = ""
+    @State private var sending = false
+    @State private var loading = true
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 10) {
+                        ForEach(messages) { message in
+                            bubble(message)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+                .onChange(of: messages.count) { _, _ in
+                    if let last = messages.last {
+                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
+                    }
+                }
+            }
+            composer
+        }
+        .background { FlowCueScreenBackground() }
+        .navigationTitle(session.title.isEmpty ? agent.displayName : session.title)
+        .navigationBarTitleDisplayMode(.inline)
+        .task { await load() }
+    }
+
+    @ViewBuilder
+    private func bubble(_ message: RemoteAgentMessage) -> some View {
+        let isUser = message.role == "user"
+        HStack {
+            if isUser { Spacer(minLength: 40) }
+            Text(message.text)
+                .flowCueFont(13.5, relativeTo: .subheadline)
+                .foregroundStyle(isUser ? FlowCueTheme.onAccent : FlowCueTheme.textPrimary)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
+                        .fill(isUser ? FlowCueTheme.accent : FlowCueTheme.surface)
+                )
+                .id(message.id)
+            if !isUser { Spacer(minLength: 40) }
+        }
+    }
+
+    private var composer: some View {
+        HStack(spacing: 8) {
+            TextField("发消息…", text: $text, axis: .vertical)
+                .lineLimit(1...4)
+                .flowCueFont(13.5, relativeTo: .footnote)
+                .padding(.horizontal, 13)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
+                        .fill(FlowCueTheme.surface)
+                )
+            Button {
+                let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !value.isEmpty, !sending else { return }
+                text = ""
+                sending = true
+                Task {
+                    _ = await controller.sendAgent(agentID: agent.id, sessionID: session.id, text: value)
+                    await load()
+                    sending = false
+                }
+            } label: {
+                Image(systemName: "arrow.up")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(FlowCueTheme.onAccent)
+                    .frame(width: 38, height: 38)
+                    .background(Circle().fill(FlowCueTheme.accent))
+            }
+            .buttonStyle(.plain)
+            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(FlowCueTheme.canvas)
+    }
+
+    private func load() async {
+        loading = true
+        messages = await controller.agentMessages(agentID: agent.id, sessionID: session.id)
+        loading = false
+        UserDefaults.standard.set(session.id, forKey: "FlowCue.agentLast.\(agent.id)")
     }
 }
