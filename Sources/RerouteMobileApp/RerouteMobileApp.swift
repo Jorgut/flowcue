@@ -3252,25 +3252,11 @@ private struct SendIdeaSheet: View {
 
     private var targetList: some View {
         List {
-            if !controller.threads.isEmpty {
-                Section("Codex") {
-                    ForEach(controller.threads) { thread in
-                        row(
-                            id: "codex-\(thread.id)",
-                            title: thread.title.isEmpty ? "Untitled session" : thread.title,
-                            subtitle: thread.projectDirectory ?? ""
-                        ) {
-                            await controller.send(to: thread, text: trimmedText)
-                        } onSuccess: {
-                            onSent("Codex · \(thread.title)")
-                        }
-                    }
-                }
-            }
-
+            // DSH 的实时会话排在最前：Codex 那边可能有几十条历史任务，
+            // 放前面会把真正想发过去的会话挤到列表底部（用户只看得到 Codex）。
             let sessions = controller.dshSessions.filter { !$0.isSubagent }
             if !sessions.isEmpty {
-                Section("DSH") {
+                Section("DSH · live sessions") {
                     ForEach(sessions) { session in
                         row(
                             id: "dsh-\(session.id)",
@@ -3281,6 +3267,28 @@ private struct SendIdeaSheet: View {
                         } onSuccess: {
                             onSent("DSH · \(session.title)")
                         }
+                    }
+                }
+            }
+
+            if !controller.threads.isEmpty {
+                Section {
+                    ForEach(Array(controller.threads.prefix(12))) { thread in
+                        row(
+                            id: "codex-\(thread.id)",
+                            title: thread.title.isEmpty ? "Untitled session" : thread.title,
+                            subtitle: thread.projectDirectory ?? ""
+                        ) {
+                            await controller.send(to: thread, text: trimmedText)
+                        } onSuccess: {
+                            onSent("Codex · \(thread.title)")
+                        }
+                    }
+                } header: {
+                    Text("Codex · recent")
+                } footer: {
+                    if controller.threads.count > 12 {
+                        Text("只显示最近 12 个，共 \(controller.threads.count) 个会话。")
                     }
                 }
             }

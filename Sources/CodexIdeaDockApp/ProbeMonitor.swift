@@ -21,6 +21,8 @@ final class ProbeMonitor {
     /// 当成基线吞掉，既不推手机也不弹桌面通知。
     private var hasSeededApprovals = false
     private var knownQuestions: Set<String> = []
+    /// sessionId → 会话标题，用来在锁屏上显示「游方 app 有问题需要答复」。
+    private var sessionTitles: [String: String] = [:]
     private var hasSeededQuestions = false
 
     /// 待审批数量变化（喂给菜单栏角标）
@@ -39,6 +41,7 @@ final class ProbeMonitor {
             while !Task.isCancelled {
                 // 审批每 3 秒查一次：这是本机回环请求，几乎不花钱，
                 // 但决定了审批推到手机的快慢。其它探测仍保持 15 秒。
+                await self?.refreshSessionTitles()
                 await self?.pollApprovals()
                 await self?.pollQuestions()
                 if tick % 5 == 0 { await self?.pollClaude() }
@@ -73,6 +76,17 @@ final class ProbeMonitor {
         }
     }
 
+    /// 缓存会话标题，让推送能说清「是哪个任务」。
+    private func refreshSessionTitles() async {
+        let sessions = dshReader.sessions()
+        guard !sessions.isEmpty else { return }
+        var map: [String: String] = [:]
+        for session in sessions where !session.title.isEmpty {
+            map[session.id] = session.title
+        }
+        if !map.isEmpty { sessionTitles = map }
+    }
+
     /// 有人在等你回答问题时推一条（和审批分开，方便区别对待）。
     private func pollQuestions() async {
         guard bridge.isConfigured, let batches = try? await bridge.questions() else { return }
@@ -92,9 +106,11 @@ final class ProbeMonitor {
         let environment = UserDefaults.standard.string(forKey: "FlowCue.pushEnvironment")
         let sender = settings.sender(environmentOverride: environment)
         guard sender.isConfigured else { return }
+        let project = sessionTitles[first.sessionId ?? ""]
+        let title = project.map { "\($0) 有问题需要答复" } ?? "有任务在等你回答"
         try? await sender.send(
             deviceToken: deviceToken,
-            title: "有任务在等你回答",
+            title: title,
             body: question.title,
             threadID: "dsh-questions"
         )
@@ -111,9 +127,11 @@ final class ProbeMonitor {
         let sender = settings.sender(environmentOverride: environment)
         guard sender.isConfigured else { return }
         let title = fresh.count > 1 ? "\(fresh.count) 个 DSH 待审批" : "DSH 待审批"
+        let project = sessionTitles[first.sessionId ?? ""]
+        let pushTitle = project.map { "\($0) 需要确认" } ?? title
         try? await sender.send(
             deviceToken: deviceToken,
-            title: title,
+            title: pushTitle,
             body: first.title,
             threadID: "dsh-approvals"
         )
