@@ -39,6 +39,18 @@
   <p class="updated" data-i18n="subtitle">What changed, and when.</p>
 
   <div class="entry">
+    <h2>iPhone 1.1.6 <span class="tag" data-i18n="tag.beta">TestFlight</span></h2>
+    <div class="when">2026-11-23 · iOS 17+ · invite only</div>
+    <ul>
+      <li data-i18n="i6.1">Disconnect and change the pairing code directly from the Agents page.</li>
+      <li data-i18n="i6.2">Official brand icons for Codex, Claude Code and DSH.</li>
+      <li data-i18n="i6.3">Session counts are no longer truncated, and the Agents page no longer flashes empty.</li>
+      <li data-i18n="i6.4">Sessions group by project, with emoji icons and a collapsible list.</li>
+      <li data-i18n="i6.5">Claude Code sessions join Codex and DSH on the phone.</li>
+    </ul>
+  </div>
+
+  <div class="entry">
     <h2>0.1.5 <span class="tag" data-i18n="tag.latest">latest</span></h2>
     <div class="when">2026-11-19 · macOS 14+ · Universal</div>
     <ul>
@@ -105,6 +117,8 @@
   <footer>
     <span>© 2026 FlowCue</span>
     <a href="/mac" data-i18n="nav.mac">Mac</a>
+    <a href="/iphone" data-i18n="nav.iphone">iPhone</a>
+    <a href="/support" data-i18n="nav.support">Support</a>
     <a href="/privacy" data-i18n="nav.privacy">Privacy</a>
   </footer>
 </div>
@@ -112,9 +126,14 @@
 <script>
 const I18N = {
   en: {
-    "nav.mac":"Mac","nav.privacy":"Privacy","title":"Changelog","subtitle":"What changed, and when.",
+    "nav.mac":"Mac","nav.iphone":"iPhone","nav.support":"Support","nav.privacy":"Privacy","title":"Changelog","subtitle":"What changed, and when.",
     "tag.first":"first public build",
-    "tag.latest":"latest",
+    "tag.latest":"latest","tag.beta":"TestFlight",
+    "i6.1":"Disconnect and change the pairing code directly from the Agents page.",
+    "i6.2":"Official brand icons for Codex, Claude Code and DSH.",
+    "i6.3":"Session counts are no longer truncated, and the Agents page no longer flashes empty.",
+    "i6.4":"Sessions group by project, with emoji icons and a collapsible list.",
+    "i6.5":"Claude Code sessions join Codex and DSH on the phone.",
     "v5.1":"Clicking an approval notification opens the pending-approvals panel directly.",
     "v5.2":"The menu bar badge now counts pending approvals plus unread replies.",
     "v5.3":"The DSH bridge ships with the app — install, update or remove it from Settings → Integrations.",
@@ -139,9 +158,14 @@ const I18N = {
     "v1.6":"Signed with Developer ID and notarized by Apple."
   },
   zh: {
-    "nav.mac":"Mac","nav.privacy":"隐私","title":"更新日志","subtitle":"改了哪些，什么时候。",
+    "nav.mac":"Mac","nav.iphone":"iPhone","nav.support":"支持","nav.privacy":"隐私","title":"更新日志","subtitle":"改了哪些，什么时候。",
     "tag.first":"首个公开版本",
-    "tag.latest":"最新",
+    "tag.latest":"最新","tag.beta":"TestFlight",
+    "i6.1":"Agents 页直接断连、更换配对码。",
+    "i6.2":"Codex、Claude Code、DSH 使用官方品牌图标。",
+    "i6.3":"会话统计不再被截断，Agents 页不再空白几秒。",
+    "i6.4":"会话按项目分组，带 emoji 图标，可折叠。",
+    "i6.5":"Claude Code 会话也上了手机，与 Codex、DSH 并列。",
     "v5.1":"点击待审批通知会直接打开「DSH 待审批」面板。",
     "v5.2":"菜单栏角标改为待审批 + 未读回复合计。",
     "v5.3":"DSH 桥随 app 分发——在 设置 → 集成 里安装 / 更新 / 卸载。",

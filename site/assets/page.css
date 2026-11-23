@@ -30,3 +30,10 @@ code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:13px; 
 .card p:last-child { margin-bottom:0; }
 footer { margin-top:64px; padding-top:20px; border-top:1px solid var(--border); font-size:13px; color:var(--muted); display:flex; gap:20px; flex-wrap:wrap; }
 footer a { color:var(--muted); }
+
+@media (max-width: 700px) {
+  header { flex-wrap: wrap; row-gap: 12px; }
+  .nav { margin-left: 0; width: 100%; flex-wrap: wrap; gap: 10px 16px; }
+  .nav a { font-size: 13px; }
+  .lang { order: 99; }
+}

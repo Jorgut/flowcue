@@ -8,6 +8,8 @@
 site/
 ├── index.html            → / 主页
 ├── mac/index.html        → /mac 下载页
+├── iphone/index.html     → /iphone iPhone beta（TestFlight 邀请制）
+├── support/index.html    → /support 支持
 ├── privacy/index.html    → /privacy 隐私政策
 ├── changelog/index.html  → /changelog 更新日志
 ├── assets/               → 图标 + 共享样式 page.css
@@ -15,7 +17,7 @@ site/
 └── downloads/            → 发布脚本放 DMG 在这里（不入库）
 ```
 
-三个页面都内置 EN / 中文切换，共用 `assets/page.css`。
+所有页面都内置 EN / 中文切换，共用 `assets/page.css`。`/iphone` 与 `/support` 只描述 TestFlight beta，不承诺 App Store 上架或订阅价格。
 
 ## 下载页怎么更新
 

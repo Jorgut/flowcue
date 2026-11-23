@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support — FlowCue</title>
+<link rel="canonical" href="https://flowcue.altn.vision/support/">
+<meta property="og:title" content="Support — FlowCue">
+<meta property="og:description" content="Help with FlowCue for Mac and the iPhone beta: pairing, downloads, privacy and bug reports.">
+<meta property="og:url" content="https://flowcue.altn.vision/support/">
+<meta property="og:type" content="website">
+<link rel="stylesheet" href="../assets/page.css">
+<style>
+  .wrap p a, .wrap li a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="../assets/icon-512.png" alt="FlowCue">
+    <span class="brand"><a href="/">FlowCue</a></span>
+    <nav class="nav">
+      <a href="/mac" data-i18n="nav.mac">Mac</a>
+      <a href="/iphone" data-i18n="nav.iphone">iPhone</a>
+      <a href="/privacy" data-i18n="nav.privacy">Privacy</a>
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+      </div>
+    </nav>
+  </header>
+
+  <h1 data-i18n="title">Support</h1>
+  <p class="updated" data-i18n="intro">FlowCue for Mac and the iPhone beta. Pick the section that matches your issue.</p>
+
+  <div class="card">
+    <p data-i18n="quick">Most pairing problems are fixed by making sure the Mac is awake, FlowCue is running, and both devices are on the same Wi-Fi.</p>
+  </div>
+
+  <h2 data-i18n="h.pair">Pairing a Mac</h2>
+  <ul>
+    <li data-i18n="pair.1">On the Mac, open FlowCue and choose iPhone to show the six-digit code.</li>
+    <li data-i18n="pair.2">On iPhone, open Agents → Pair a Mac and type the code.</li>
+    <li data-i18n="pair.3">Both devices must be on the same local network. VPNs and guest Wi-Fi can block discovery.</li>
+    <li data-i18n="pair.4">If discovery fails, choose Connect manually and enter the Mac's address shown in the app.</li>
+  </ul>
+
+  <h2 data-i18n="h.beta">iPhone beta</h2>
+  <ul>
+    <li data-i18n="beta.1">The iPhone app is in TestFlight by invitation; there is no App Store version yet.</li>
+    <li data-i18n="beta.2">To request an invite, email hello@altn.vision with the subject “FlowCue TestFlight invite”.</li>
+    <li data-i18n="beta.3">The beta needs a Mac running FlowCue 0.1.5 or later on the same network.</li>
+    <li data-i18n="beta.4">Pro, iCloud sync and pricing are not part of the beta yet.</li>
+  </ul>
+
+  <h2 data-i18n="h.mac">Mac version</h2>
+  <ul>
+    <li data-i18n="mac.1">FlowCue for Mac is a free, notarized download for macOS 14 or later, Apple silicon and Intel.</li>
+    <li data-i18n="mac.2">It reads local agent files and needs access outside the Mac App Sandbox, so it ships as a DMG rather than through the Mac App Store.</li>
+    <li data-i18n="mac.3">If macOS blocks the first launch, open System Settings → Privacy &amp; Security and allow FlowCue.</li>
+    <li data-i18n="mac.4">Read the <a href="/changelog">changelog</a> to check which version you are running.</li>
+  </ul>
+
+  <h2 data-i18n="h.data">Data and privacy</h2>
+  <ul>
+    <li data-i18n="data.1">Ideas are stored locally. Nothing is uploaded unless you turn on an optional sync.</li>
+    <li data-i18n="data.2">There is no FlowCue account and no analytics SDK.</li>
+    <li data-i18n="data.3">Read the full <a href="/privacy">privacy policy</a>.</li>
+  </ul>
+
+  <h2 data-i18n="h.bug">Report a bug</h2>
+  <p data-i18n="bug.1">Use GitHub Issues for reproducible bugs and feature requests. Include the app version, iOS or macOS version, expected behavior, and actual behavior.</p>
+  <p data-i18n="bug.2">Please do not post idea text, pairing codes, local file paths, or raw agent logs in a public issue. Security-sensitive reports go through the private process in SECURITY.md.</p>
+
+  <h2 data-i18n="h.contact">Contact</h2>
+  <p><span data-i18n="contact.1">Questions or feedback:</span> <a href="mailto:hello@altn.vision">hello@altn.vision</a></p>
+  <p data-i18n="disclaimer">FlowCue is an independent third-party app, not affiliated with or endorsed by any agent provider.</p>
+
+  <footer>
+    <span>© 2026 FlowCue</span>
+    <a href="/mac" data-i18n="nav.mac">Mac</a>
+    <a href="/iphone" data-i18n="nav.iphone">iPhone</a>
+    <a href="/privacy" data-i18n="nav.privacy">Privacy</a>
+    <a href="/changelog" data-i18n="nav.changelog">Changelog</a>
+  </footer>
+</div>
+
+<script>
+const I18N = {
+  en: {
+    "nav.mac":"Mac","nav.iphone":"iPhone","nav.privacy":"Privacy","nav.changelog":"Changelog",
+    "title":"Support","intro":"FlowCue for Mac and the iPhone beta. Pick the section that matches your issue.",
+    "quick":"Most pairing problems are fixed by making sure the Mac is awake, FlowCue is running, and both devices are on the same Wi-Fi.",
+    "h.pair":"Pairing a Mac",
+    "pair.1":"On the Mac, open FlowCue and choose iPhone to show the six-digit code.",
+    "pair.2":"On iPhone, open Agents → Pair a Mac and type the code.",
+    "pair.3":"Both devices must be on the same local network. VPNs and guest Wi-Fi can block discovery.",
+    "pair.4":"If discovery fails, choose Connect manually and enter the Mac's address shown in the app.",
+    "h.beta":"iPhone beta",
+    "beta.1":"The iPhone app is in TestFlight by invitation; there is no App Store version yet.",
+    "beta.2":"To request an invite, email hello@altn.vision with the subject “FlowCue TestFlight invite”.",
+    "beta.3":"The beta needs a Mac running FlowCue 0.1.5 or later on the same network.",
+    "beta.4":"Pro, iCloud sync and pricing are not part of the beta yet.",
+    "h.mac":"Mac version",
+    "mac.1":"FlowCue for Mac is a free, notarized download for macOS 14 or later, Apple silicon and Intel.",
+    "mac.2":"It reads local agent files and needs access outside the Mac App Sandbox, so it ships as a DMG rather than through the Mac App Store.",
+    "mac.3":"If macOS blocks the first launch, open System Settings → Privacy & Security and allow FlowCue.",
+    "mac.4":"Read the changelog to check which version you are running.",
+    "h.data":"Data and privacy",
+    "data.1":"Ideas are stored locally. Nothing is uploaded unless you turn on an optional sync.",
+    "data.2":"There is no FlowCue account and no analytics SDK.",
+    "data.3":"Read the full privacy policy.",
+    "h.bug":"Report a bug",
+    "bug.1":"Use GitHub Issues for reproducible bugs and feature requests. Include the app version, iOS or macOS version, expected behavior, and actual behavior.",
+    "bug.2":"Please do not post idea text, pairing codes, local file paths, or raw agent logs in a public issue. Security-sensitive reports go through the private process in SECURITY.md.",
+    "h.contact":"Contact","contact.1":"Questions or feedback:",
+    "disclaimer":"FlowCue is an independent third-party app, not affiliated with or endorsed by any agent provider."
+  },
+  zh: {
+    "nav.mac":"Mac","nav.iphone":"iPhone","nav.privacy":"隐私","nav.changelog":"更新日志",
+    "title":"支持","intro":"FlowCue Mac 版与 iPhone beta。选择与你问题对应的部分。",
+    "quick":"多数配对问题只需确认 Mac 已唤醒、FlowCue 正在运行，并且两台设备在同一个 Wi-Fi。",
+    "h.pair":"配对 Mac",
+    "pair.1":"在 Mac 上打开 FlowCue，选择 iPhone，显示六位配对码。",
+    "pair.2":"在 iPhone 上进入 Agents → Pair a Mac，输入配对码。",
+    "pair.3":"两台设备必须在同一局域网。VPN 和访客 Wi-Fi 可能阻止发现。",
+    "pair.4":"如果发现失败，改用 Connect manually，输入 App 里显示的 Mac 地址。",
+    "h.beta":"iPhone beta",
+    "beta.1":"iPhone 版目前在 TestFlight 邀请测试，还没有 App Store 版本。",
+    "beta.2":"申请邀请请发邮件到 hello@altn.vision，标题写「FlowCue TestFlight invite」。",
+    "beta.3":"beta 需要同一网络里有一台运行 FlowCue 0.1.5 或更高版本的 Mac。",
+    "beta.4":"Pro、iCloud 同步和定价暂不属于这一版 beta。",
+    "h.mac":"Mac 版",
+    "mac.1":"FlowCue for Mac 免费、已公证，支持 macOS 14 或更高，Apple 芯片与 Intel。",
+    "mac.2":"它需要读取本机 agent 文件并离开 Mac App Sandbox，所以以 DMG 分发，不通过 Mac App Store。",
+    "mac.3":"如果 macOS 阻止首次启动，到系统设置 → 隐私与安全性中允许 FlowCue。",
+    "mac.4":"查看更新日志确认你正在运行的版本。",
+    "h.data":"数据与隐私",
+    "data.1":"想法保存在本地。未开启可选的同步时不会上传。",
+    "data.2":"没有 FlowCue 账号，也没有统计 SDK。",
+    "data.3":"阅读完整的隐私政策。",
+    "h.bug":"报告问题",
+    "bug.1":"可复现的问题和功能建议请用 GitHub Issues，并附上 App 版本、iOS 或 macOS 版本、预期行为和实际行为。",
+    "bug.2":"请不要在公开 issue 里贴想法正文、配对码、本地路径或原始 agent 日志。安全问题请按 SECURITY.md 的私下流程报告。",
+    "h.contact":"联系","contact.1":"问题或反馈：",
+    "disclaimer":"FlowCue 是独立第三方 App，与任何 agent 提供方无隶属或背书关系。"
+  }
+};
+function applyLanguage(lang) {
+  const dict = I18N[lang] || I18N.en;
+  document.documentElement.lang = lang === "zh" ? "zh-Hans" : "en";
+  document.querySelectorAll("[data-i18n]").forEach(el => { const v = dict[el.dataset.i18n]; if (v) el.textContent = v; });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => { const v = dict[el.dataset.i18nHtml]; if (v) el.innerHTML = v; });
+  document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+  try { localStorage.setItem("flowcue.lang", lang); } catch (e) {}
+}
+(function () {
+  const q = new URLSearchParams(location.search).get("lang");
+  let stored = null;
+  try { stored = localStorage.getItem("flowcue.lang"); } catch (e) {}
+  const lang = q || stored || ((navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en");
+  applyLanguage(lang);
+  document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => applyLanguage(b.dataset.lang)));
+})();
+</script>
+</body>
+</html>

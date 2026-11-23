@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FlowCue for iPhone</title>
+<link rel="canonical" href="https://flowcue.altn.vision/iphone/">
+<meta property="og:title" content="FlowCue for iPhone">
+<meta property="og:description" content="Your Mac's coding agents, in your pocket. Now in TestFlight.">
+<meta property="og:url" content="https://flowcue.altn.vision/iphone/">
+<meta property="og:type" content="website">
+<meta name="description" content="Your Mac's coding agents, in your pocket. FlowCue for iPhone is in TestFlight.">
+<link rel="stylesheet" href="../assets/page.css">
+<style>
+  .wrap { max-width: 820px; }
+  .hero { padding: 20px 0 8px; }
+  .status {
+    display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mint);
+    border: 1px solid color-mix(in srgb, var(--mint) 35%, var(--border));
+    background: color-mix(in srgb, var(--mint) 10%, transparent);
+    padding: 4px 10px; border-radius: 999px; margin-bottom: 18px;
+  }
+  .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--mint); }
+  h1 { font-size: 44px; line-height: 1.08; letter-spacing: -0.03em; margin: 0 0 16px; }
+  h1 span { color: var(--accent); }
+  .lede { font-size: 18px; max-width: 36em; margin: 0 0 26px; }
+  .cta { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .button {
+    display: inline-flex; align-items: center; gap: 9px; background: var(--accent); color: #0b0b12;
+    font-weight: 600; font-size: 15px; padding: 12px 20px; border-radius: 11px; text-decoration: none;
+  }
+  .button.secondary { background: transparent; color: var(--text); border: 1px solid var(--border); }
+  .fine { font-size: 13px; color: var(--muted); }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 52px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .grid .card { margin: 0; }
+  .grid h3 { margin: 0 0 6px; font-size: 15px; color: var(--text); }
+  .grid p { margin: 0; font-size: 13.5px; }
+  h2 { font-size: 22px; letter-spacing: -0.02em; margin: 56px 0 10px; color: var(--text); }
+  .steps { display: grid; gap: 10px; margin: 14px 0 0; padding: 0; list-style: none; counter-reset: s; }
+  .steps li { counter-increment: s; position: relative; padding-left: 38px; color: var(--muted); }
+  .steps li::before {
+    content: counter(s); position: absolute; left: 0; top: 1px; width: 24px; height: 24px;
+    border-radius: 50%; border: 1px solid var(--border); display: grid; place-items: center;
+    font-size: 12px; color: var(--accent);
+  }
+  .notice {
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+    background: color-mix(in srgb, var(--accent) 7%, transparent);
+    border-radius: 12px; padding: 14px 16px; margin-top: 20px;
+  }
+  .notice p { margin: 0; font-size: 13.5px; }
+  .faq h3 { margin: 18px 0 4px; font-size: 15px; color: var(--text); }
+  .faq p { margin: 0; font-size: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <img src="../assets/icon-512.png" alt="FlowCue">
+    <span class="brand"><a href="/">FlowCue</a></span>
+    <nav class="nav">
+      <a href="/mac" data-i18n="nav.mac">Mac</a>
+      <a href="/support" data-i18n="nav.support">Support</a>
+      <a href="/privacy" data-i18n="nav.privacy">Privacy</a>
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+      </div>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <div class="status" data-i18n="status">TestFlight · invite only</div>
+    <h1 data-i18n-html="title">Your Mac's agents,<br>in your <span>pocket</span>.</h1>
+    <p class="lede" data-i18n="lede">The same inbox and the same agents, on iPhone. Watch Codex, Claude Code and DSH sessions from your Mac, answer a question, or approve a command without walking back to the desk.</p>
+    <div class="cta">
+      <a class="button" href="mailto:hello@altn.vision?subject=FlowCue%20TestFlight%20invite" data-i18n="cta.invite">Request a TestFlight invite</a>
+      <a class="button secondary" href="/mac" data-i18n="cta.mac">Get FlowCue for Mac</a>
+    </div>
+    <p class="fine" style="margin-top:16px" data-i18n="fine">iOS 17+ · iPhone · pairs with your Mac over the local network</p>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h3 data-i18n="f1.t">Every agent, one list</h3>
+      <p data-i18n="f1.b">Codex, Claude Code and DSH sessions from your Mac, grouped by project and searchable from the phone.</p>
+    </div>
+    <div class="card">
+      <h3 data-i18n="f2.t">Approvals find you</h3>
+      <p data-i18n="f2.b">A pending approval shows up in the app and as a notification. Allow or deny without opening the Mac.</p>
+    </div>
+    <div class="card">
+      <h3 data-i18n="f3.t">Keep the thread going</h3>
+      <p data-i18n="f3.b">Read the conversation, send the next message, and share images or links into the session.</p>
+    </div>
+  </section>
+
+  <h2 data-i18n="beta.title">In TestFlight now</h2>
+  <p data-i18n="beta.body">1.1.6 (96) is the current beta. It is invite-only; the App Store release comes after the beta.</p>
+  <ul>
+    <li data-i18n="beta.1">A Mac running FlowCue 0.1.5 or later</li>
+    <li data-i18n="beta.2">Both devices on the same local network</li>
+    <li data-i18n="beta.3">No account — pairing uses a six-digit code</li>
+    <li data-i18n="beta.4">Pro and pricing are not final during the beta</li>
+  </ul>
+
+  <h2 data-i18n="join.title">How to join</h2>
+  <ol class="steps">
+    <li data-i18n="join.1">Email hello@altn.vision with the subject “FlowCue TestFlight invite”.</li>
+    <li data-i18n="join.2">Install TestFlight and accept the invite from your phone.</li>
+    <li data-i18n="join.3">Open FlowCue, choose Agents → Pair a Mac, and enter the code shown on the Mac.</li>
+  </ol>
+  <div class="notice">
+    <p data-i18n="notice">The beta needs your Mac awake and on the same Wi-Fi. Remote pairing over the internet is not part of this beta.</p>
+  </div>
+
+  <section class="faq">
+    <h2 data-i18n="faq.title">Questions</h2>
+    <h3 data-i18n="q1">Is it on the App Store?</h3>
+    <p data-i18n="a1">Not yet. The iPhone app is in TestFlight by invitation; the App Store release comes after the beta.</p>
+    <h3 data-i18n="q2">Does it work without a Mac?</h3>
+    <p data-i18n="a2">No. The iPhone reads the agent sessions that already run on your Mac, over your local network.</p>
+    <h3 data-i18n="q3">What does it cost?</h3>
+    <p data-i18n="a3">It is free during the beta. Pricing and Pro are announced before the App Store release.</p>
+  </section>
+
+  <footer>
+    <span>© 2026 FlowCue</span>
+    <a href="/mac" data-i18n="nav.mac">Mac</a>
+    <a href="/support" data-i18n="nav.support">Support</a>
+    <a href="/privacy" data-i18n="nav.privacy">Privacy</a>
+    <a href="/changelog" data-i18n="nav.changelog">Changelog</a>
+  </footer>
+</div>
+
+<script>
+const I18N = {
+  en: {
+    "nav.mac":"Mac","nav.support":"Support","nav.privacy":"Privacy","nav.changelog":"Changelog",
+    "status":"TestFlight · invite only",
+    "title":"Your Mac's agents,<br>in your <span>pocket</span>.",
+    "lede":"The same inbox and the same agents, on iPhone. Watch Codex, Claude Code and DSH sessions from your Mac, answer a question, or approve a command without walking back to the desk.",
+    "cta.invite":"Request a TestFlight invite","cta.mac":"Get FlowCue for Mac",
+    "fine":"iOS 17+ · iPhone · pairs with your Mac over the local network",
+    "f1.t":"Every agent, one list",
+    "f1.b":"Codex, Claude Code and DSH sessions from your Mac, grouped by project and searchable from the phone.",
+    "f2.t":"Approvals find you",
+    "f2.b":"A pending approval shows up in the app and as a notification. Allow or deny without opening the Mac.",
+    "f3.t":"Keep the thread going",
+    "f3.b":"Read the conversation, send the next message, and share images or links into the session.",
+    "beta.title":"In TestFlight now",
+    "beta.body":"1.1.6 (96) is the current beta. It is invite-only; the App Store release comes after the beta.",
+    "beta.1":"A Mac running FlowCue 0.1.5 or later",
+    "beta.2":"Both devices on the same local network",
+    "beta.3":"No account — pairing uses a six-digit code",
+    "beta.4":"Pro and pricing are not final during the beta",
+    "join.title":"How to join",
+    "join.1":"Email hello@altn.vision with the subject “FlowCue TestFlight invite”.",
+    "join.2":"Install TestFlight and accept the invite from your phone.",
+    "join.3":"Open FlowCue, choose Agents → Pair a Mac, and enter the code shown on the Mac.",
+    "notice":"The beta needs your Mac awake and on the same Wi-Fi. Remote pairing over the internet is not part of this beta.",
+    "faq.title":"Questions",
+    "q1":"Is it on the App Store?","a1":"Not yet. The iPhone app is in TestFlight by invitation; the App Store release comes after the beta.",
+    "q2":"Does it work without a Mac?","a2":"No. The iPhone reads the agent sessions that already run on your Mac, over your local network.",
+    "q3":"What does it cost?","a3":"It is free during the beta. Pricing and Pro are announced before the App Store release."
+  },
+  zh: {
+    "nav.mac":"Mac","nav.support":"支持","nav.privacy":"隐私","nav.changelog":"更新日志",
+    "status":"TestFlight · 邀请制",
+    "title":"Mac 上的 agent，<br>装进 <span>口袋</span>。",
+    "lede":"同一个收件箱，同一批 agent，现在到了 iPhone 上。查看 Mac 上的 Codex、Claude Code、DSH 会话，回一个问题，或者直接批准一条命令，不用走回桌边。",
+    "cta.invite":"申请 TestFlight 邀请","cta.mac":"下载 Mac 版",
+    "fine":"iOS 17+ · iPhone · 通过局域网与 Mac 配对",
+    "f1.t":"所有 agent，一个列表",
+    "f1.b":"Mac 上的 Codex、Claude Code、DSH 会话按项目分组，在手机上也能搜索。",
+    "f2.t":"审批主动找你",
+    "f2.b":"待审批会在 App 里弹出，也会发通知。不用打开 Mac 就能允许或拒绝。",
+    "f3.t":"对话接着走",
+    "f3.b":"看对话、发下一条，把图片或链接分享进当前会话。",
+    "beta.title":"已在 TestFlight",
+    "beta.body":"当前是 1.1.6 (96)。仅限邀请，App Store 版本会在 beta 之后推出。",
+    "beta.1":"Mac 上运行 FlowCue 0.1.5 或更高版本",
+    "beta.2":"两台设备在同一局域网",
+    "beta.3":"不需要账号——用六位配对码连接",
+    "beta.4":"beta 期间 Pro 和价格尚未最终确定",
+    "join.title":"怎么加入",
+    "join.1":"发邮件到 hello@altn.vision，标题写「FlowCue TestFlight invite」。",
+    "join.2":"在手机上安装 TestFlight，接受邀请。",
+    "join.3":"打开 FlowCue，进入 Agents → Pair a Mac，输入 Mac 上显示的配对码。",
+    "notice":"beta 需要 Mac 保持唤醒并连同一个 Wi-Fi。这一版还不支持通过公网远程配对。",
+    "faq.title":"常见问题",
+    "q1":"上 App Store 了吗？","a1":"还没有。iPhone 版目前在 TestFlight 邀请测试，App Store 版本会在 beta 之后推出。",
+    "q2":"没有 Mac 能用吗？","a2":"不能。iPhone 通过局域网读取你 Mac 上已经在跑的 agent 会话。",
+    "q3":"要收费吗？","a3":"beta 期间免费。价格和 Pro 会在 App Store 发布前公布。"
+  }
+};
+function applyLanguage(lang) {
+  const dict = I18N[lang] || I18N.en;
+  document.documentElement.lang = lang === "zh" ? "zh-Hans" : "en";
+  document.querySelectorAll("[data-i18n]").forEach(el => { const v = dict[el.dataset.i18n]; if (v) el.textContent = v; });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => { const v = dict[el.dataset.i18nHtml]; if (v) el.innerHTML = v; });
+  document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+  try { localStorage.setItem("flowcue.lang", lang); } catch (e) {}
+}
+(function () {
+  const q = new URLSearchParams(location.search).get("lang");
+  let stored = null;
+  try { stored = localStorage.getItem("flowcue.lang"); } catch (e) {}
+  const lang = q || stored || ((navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en");
+  applyLanguage(lang);
+  document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => applyLanguage(b.dataset.lang)));
+})();
+</script>
+</body>
+</html>
