@@ -5922,21 +5922,23 @@ private struct EdgeSwipeBackModifier: ViewModifier {
     @State private var startX: CGFloat?
 
     func body(content: Content) -> some View {
-        content.highPriorityGesture(
-            DragGesture(minimumDistance: 12, coordinateSpace: .global)
-                .onChanged { value in
-                    if startX == nil { startX = value.startLocation.x }
-                }
-                .onEnded { value in
-                    let start = startX
-                    startX = nil
-                    guard let start, start < 24 else { return }
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    guard dx > 90, abs(dy) < abs(dx) else { return }
-                    dismiss()
-                }
-        )
+        // 只在整个视图的最左 24pt 铺一条透明触控带：不抢列表的垂直滚动，
+        // 也不影响页面中间的横向内容。
+        content.overlay(alignment: .leading) {
+            Color.clear
+                .frame(width: 24)
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                        .onEnded { value in
+                            let dx = value.translation.width
+                            let dy = value.translation.height
+                            guard dx > 90, abs(dy) < abs(dx) else { return }
+                            dismiss()
+                        }
+                )
+                .allowsHitTesting(true)
+        }
     }
 }
 
