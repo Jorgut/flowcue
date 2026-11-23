@@ -5919,26 +5919,37 @@ private struct ChatMessageBubble: View {
 /// 所以用一个高优先级手势兜住：只有从最左 24pt 起手、横向拖过 90pt 才触发。
 private struct EdgeSwipeBackModifier: ViewModifier {
     @Environment(\.dismiss) private var dismiss
-    @State private var startX: CGFloat?
+    /// 跟随手指的位移；手势结束会自动回零，配上下面的动画就是弹性回弹。
+    @GestureState private var dragOffset: CGFloat = 0
 
     func body(content: Content) -> some View {
-        // 只在整个视图的最左 24pt 铺一条透明触控带：不抢列表的垂直滚动，
-        // 也不影响页面中间的横向内容。
-        content.overlay(alignment: .leading) {
-            Color.clear
-                .frame(width: 24)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 12, coordinateSpace: .global)
-                        .onEnded { value in
-                            let dx = value.translation.width
-                            let dy = value.translation.height
-                            guard dx > 90, abs(dy) < abs(dx) else { return }
-                            dismiss()
-                        }
-                )
-                .allowsHitTesting(true)
-        }
+        content
+            // 页面跟着手指往右走，松手回弹或返回。
+            .offset(x: dragOffset)
+            .animation(.interactiveSpring(response: 0.28, dampingFraction: 0.86), value: dragOffset)
+            // 只在整个视图的最左 24pt 铺一条透明触控带：不抢列表的垂直滚动，
+            // 也不影响页面中间的横向内容。
+            .overlay(alignment: .leading) {
+                Color.clear
+                    .frame(width: 24)
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 8, coordinateSpace: .global)
+                            .updating($dragOffset) { value, state, _ in
+                                let dx = value.translation.width
+                                let dy = value.translation.height
+                                // 只在横向为主时才跟手，避免竖滑时页面乱动。
+                                state = abs(dx) > abs(dy) ? max(0, dx) : 0
+                            }
+                            .onEnded { value in
+                                let dx = value.translation.width
+                                let dy = value.translation.height
+                                guard dx > 90, abs(dy) < abs(dx) else { return }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                dismiss()
+                            }
+                    )
+            }
     }
 }
 
