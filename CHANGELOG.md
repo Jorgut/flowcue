@@ -2,6 +2,22 @@
 
 本项目遵循语义化版本号。公开发布前的构建记录在本文件中维护。
 
+## 1.1.2 — 通用 Agent 层
+
+### 新增
+
+- **通用 Agent 接口**：`/v1/agents`、`/sessions`、`/messages`、`/send`，三个 Agent（Codex / Claude Code / DSH）走同一套路由。新增 Agent 只需 Mac 侧加适配器，iOS 零改动。
+- **Claude Code 接入 iOS**：28 个会话、6 个项目，可读可发。
+- **Agents 页动态化**：每行显示「N sessions · M projects」。
+- **会话按项目分组**：项目名取 Agent 真实的工程目录名；未关联项目固定排最后；点标题折叠，折叠状态本地记忆。
+- **快速切换 Agent**：点顶部 Agent 名字弹出菜单直接切换，当前项打勾。
+- **继续上次**：会话页顶部横幅直达上次停留的对话。
+
+### 修复
+
+- `DSHAgentAdapter.messages` 之前直接 `throw .unsupported`，改为读本机会话日志（桥只暴露待审/发消息/决策）。
+- DSH 会话仍进功能完整的 `ChatScreen`，保留审批卡、提问卡、活动状态与图片。
+
 ## 1.1.1 — iOS 发布版
 
 > **发布状态（2026-11-23）**：已上传 TestFlight，`1.1.1 (90)`，Delivery UUID `27f7d132-449e-4318-bae1-21848096bb2e`。
