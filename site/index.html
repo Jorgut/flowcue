@@ -132,7 +132,6 @@
     <span class="brand"><a href="/">FlowCue</a></span>
     <nav class="nav">
       <a href="#how" data-i18n="nav.how">How it works</a>
-      <a href="#founding" data-i18n="nav.founding">Founding</a>
       <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
       <a href="/privacy" data-i18n="nav.privacy">Privacy</a>
       <div class="lang" role="group" aria-label="Language">
@@ -230,37 +229,7 @@
     <div class="card"><h3 data-i18n="p3.t">Small and signed</h3><p data-i18n="p3.b">5.4 MB, runs in the menu bar, signed with Developer ID and notarized by Apple.</p></div>
   </section>
 
-  <section class="founding" id="founding">
-    <div>
-      <div class="eyebrow">
-        <span class="badge" data-i18n="fd.badge">Founding Mac Pro</span>
-        <span data-i18n="fd.eyebrow">1,999 seats · from $9.9</span>
-      </div>
-      <h2 data-i18n="fd.t">The first 999 get $9.9.</h2>
-      <p data-i18n="fd.b">Mac Pro lifetime, one-time. Seats 1–999 are $9.9; seats 1,000–1,999 are $19.9. After 1,999, Mac Pro is $29. Reserve now — checkout opens before launch.</p>
-      <ul>
-        <li data-i18n="fd.1">Seats 1–999: $9.9 once</li>
-        <li data-i18n="fd.2">Seats 1,000–1,999: $19.9 once</li>
-        <li data-i18n="fd.3">Send to agents, parallel dispatch, favorites and search</li>
-        <li data-i18n="fd.4">Mobile Pro is a separate subscription</li>
-      </ul>
-    </div>
-    <div>
-      <div class="counter">
-        <strong id="founding-count">—</strong>
-        <span data-i18n="fd.of">/ 1,999 reserved</span>
-      </div>
-      <div class="meter" aria-hidden="true"><span id="founding-meter"></span></div>
-      <p class="fine tier-line"><span data-i18n="fd.nextLabel">Next seat</span> <strong id="founding-price">$9.9</strong></p>
-      <form id="founding-form" novalidate>
-        <input id="founding-email" type="email" required autocomplete="email" placeholder="you@example.com" aria-label="Email address">
-        <button type="submit" data-i18n="fd.cta">Reserve my seat</button>
-      </form>
-      <p class="fine" id="founding-msg" role="status" aria-live="polite"></p>
-      <p class="fine" data-i18n="fd.note">Reservation only — no payment today. We'll email your checkout link at the reserved price before launch.</p>
-      <p class="fine"><a href="/privacy" data-i18n="fd.privacy">Email only. No account, no card.</a></p>
-    </div>
-  </section>
+  <!-- Founding seats paused until Paddle checkout is live. Restore from git history when ready. -->
 
   <section class="pricing" id="pricing">
     <div class="plan">
@@ -271,7 +240,6 @@
         <li data-i18n="pr.2">Local agent detection</li>
         <li data-i18n="pr.3">LAN pairing with iPhone</li>
         <li data-i18n="pr.4">Universal build, signed and notarized</li>
-        <li data-i18n="pr.pro">Mac Pro upgrade: $9.9 founding</li>
       </ul>
     </div>
     <div class="plan highlight">
@@ -311,7 +279,6 @@
   <footer>
     <span>© 2026 FlowCue</span>
     <a href="/mac" data-i18n="nav.download">Download</a>
-    <a href="#founding" data-i18n="nav.founding">Founding</a>
     <a href="/privacy" data-i18n="nav.privacy">Privacy</a>
     <a href="/changelog" data-i18n="nav.changelog">Changelog</a>
     <a href="/iphone" data-i18n="nav.iphone">iPhone</a>
@@ -322,7 +289,7 @@
 <script>
 const I18N = {
   en: {
-    "nav.how":"How it works","nav.founding":"Founding","nav.pricing":"Pricing","nav.privacy":"Privacy","nav.download":"Download",
+    "nav.how":"How it works","nav.pricing":"Pricing","nav.privacy":"Privacy","nav.download":"Download",
     "nav.changelog":"Changelog","nav.iphone":"iPhone","nav.support":"Support",
     "hero.title":"Ideas first.<br>Agents <span>next</span>.",
     "hero.lede":"Write the thought before it disappears. FlowCue keeps it in a quiet inbox until you decide which coding agent gets it — Codex, Claude Code, or whatever you install next.",
@@ -359,7 +326,7 @@ const I18N = {
     "p2.t":"Read, never write","p2.b":"It opens ~/.claude, ~/.codex and ~/.dsh to show sessions. It does not edit your configuration.",
     "p3.t":"Small and signed","p3.b":"5.4 MB, runs in the menu bar, signed with Developer ID and notarized by Apple.",
     "pr.free":"Free","pr.1":"Menu bar capture and the inbox","pr.2":"Local agent detection",
-    "pr.3":"LAN pairing with iPhone","pr.4":"Universal build, signed and notarized","pr.pro":"Mac Pro upgrade: from $9.9",
+    "pr.3":"LAN pairing with iPhone","pr.4":"Universal build, signed and notarized",
     "fd.badge":"Founding Mac Pro","fd.eyebrow":"1,999 seats · from $9.9",
     "fd.t":"The first 999 get $9.9.",
     "fd.b":"Mac Pro lifetime, one-time. Seats 1–999 are $9.9; seats 1,000–1,999 are $19.9. After 1,999, Mac Pro is $29. Reserve now — checkout opens before launch.",
@@ -388,7 +355,7 @@ const I18N = {
     "q6":"Where is the iPhone app?","a6":"It is in TestFlight by invitation. Email hello@altn.vision with the subject “FlowCue TestFlight invite”; the App Store release comes after the beta."
   },
   zh: {
-    "nav.how":"怎么用","nav.founding":"创始名额","nav.pricing":"价格","nav.privacy":"隐私","nav.download":"下载",
+    "nav.how":"怎么用","nav.pricing":"价格","nav.privacy":"隐私","nav.download":"下载",
     "nav.changelog":"更新日志","nav.iphone":"iPhone 版","nav.support":"支持",
     "hero.title":"先记下来，<br>再交给 <span>Agent</span>。",
     "hero.lede":"趁想法还在，先写下来。FlowCue 把它放进一个安静的收件箱，等你决定交给 Codex、Claude Code，还是以后新装的任何 agent。",
@@ -425,7 +392,7 @@ const I18N = {
     "p2.t":"只读，不写","p2.b":"它会打开 ~/.claude、~/.codex 与 ~/.dsh 来显示会话，但不会修改你的配置。",
     "p3.t":"小，且已签名","p3.b":"5.4 MB，住在菜单栏，Developer ID 签名并通过 Apple 公证。",
     "pr.free":"免费","pr.1":"菜单栏捕获与收件箱","pr.2":"本机 agent 检测",
-    "pr.3":"与 iPhone 局域网配对","pr.4":"通用二进制，已签名公证","pr.pro":"Mac Pro 升级：$9.9 起",
+    "pr.3":"与 iPhone 局域网配对","pr.4":"通用二进制，已签名公证",
     "fd.badge":"创始 Mac Pro","fd.eyebrow":"1,999 个席位 · 起价 $9.9",
     "fd.t":"前 999 个，$9.9。",
     "fd.b":"Mac Pro 终身授权，一次性买断。1–999 名 $9.9，1,000–1,999 名 $19.9；1,999 之后 $29。现在预约，结账在发布前开放。",

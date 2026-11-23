@@ -75,9 +75,13 @@ push 改到 `site/**` 时，GitHub Actions（`.github/workflows/pages.yml`）
 官网只存在于 `site/landing` 分支，不随 `ios/screens`、`mac/inbox` 等应用开发分支合入；
 改动走 `site/landing` → `main` 的 PR，部署根目录为 `site/`。
 
-## 创始名额（999）
+## 创始名额（暂缓）
 
-首页 `#founding` 是 **1,999 个 Mac Pro 终身授权的预约名单**（还不是付款）：
+> 2026-11-23：Paddle 付款接通前，首页的 `#founding` 板块、导航入口、价格卡里的 Mac Pro 行已移除。
+> 页面里的 CSS/JS/i18n 键仍保留，接 Paddle 时把板块 markup 加回来即可。
+> Worker 和 D1 数据未动。
+
+首页 `#founding` 曾是 **1,999 个 Mac Pro 终身授权的预约名单**（还不是付款）：
 1–999 名 $9.9，1,000–1,999 名 $19.9；名额条和邮箱表单调用 Cloudflare Worker
 `flowcue-founding`，数据存在 D1 `flowcue-founding`。结账接入 Paddle 后再把“预约”换成“购买”。
 
