@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>FlowCue · 发送到会话 v2</title><link rel="stylesheet" href="v2.css"></head>
+<body>
+<div class="window">
+  <div class="titlebar">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="t">FlowCue</div>
+    <div></div>
+  </div>
+
+  <div class="header">
+    <div class="brand">
+      <div class="mark">F</div>
+      <div>
+        <div class="n">FlowCue</div>
+        <div class="s"><i class="dot ok"></i>这台 Mac · 12 条想法</div>
+      </div>
+    </div>
+    <div class="spacer"></div>
+    <div class="seg-icons"><span class="on">▥</span><span>▤</span><span>▯</span></div>
+    <span class="pair">123456</span>
+    <span class="btn">✎ 新想法</span>
+    <span class="btn ghost">⋯</span>
+  </div>
+
+  <div class="body">
+    <div class="side">
+      <div class="composer">
+        <span class="ph">写一条想法…</span>
+        <span class="send">↑</span>
+      </div>
+      <div class="search">搜索想法</div>
+      <div class="chips"><span class="chip on">全部</span><span class="chip">草稿</span><span class="chip">已排队</span><span class="chip">已保存</span></div>
+
+      <div class="rows">
+        <div class="row on">
+          <i class="dot accent"></i>
+          <div class="t">把登录接口的错误码统一一下，顺便补两个测试</div>
+          <div class="st queued">● 排队</div>
+          <div class="m">auth-service · 刚刚</div>
+        </div>
+        <div class="row">
+          <i class="dot warn"></i>
+          <div class="t">整理桌面上的发票，按月份和供应商分类</div>
+          <div class="st queued">● 排队</div>
+          <div class="m">Downloads · 12 分钟前</div>
+        </div>
+        <div class="row">
+          <i class="dot ok"></i>
+          <div class="t">每日设计情报：把这周的 18 条丢进日报</div>
+          <div class="st saved">✓ 已保存</div>
+          <div class="m">Daily Tasks · 1 小时前</div>
+        </div>
+        <div class="row">
+          <i class="dot ok"></i>
+          <div class="t">Upwork 项目扫描结果：新增 3 个匹配项</div>
+          <div class="st saved">✓ 已保存</div>
+          <div class="m">Upwork Discovery · 3 小时前</div>
+        </div>
+        <div class="row">
+          <i class="dot muted"></i>
+          <div class="t">重构设置页，拆出 4 个 section，测试待补</div>
+          <div class="st saved">✓ 已保存</div>
+          <div class="m">FlowCue · 昨天</div>
+        </div>
+        <div class="row">
+          <i class="dot muted"></i>
+          <div class="t">给官网的 mac 页补一张真实截图</div>
+          <div class="st saved">✓ 已保存</div>
+          <div class="m">site · 昨天</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main">
+      <h1>新想法</h1>
+      <div class="sub">先记下来，之后再决定送到哪儿。</div>
+
+      <div class="editor">把登录接口的错误码统一一下，顺便补两个测试
+
+现在 AuthController 里是字符串直接抛，AuthError 里已经有枚举但没接上。想改成全部走 AuthError，加一个 LoginTests 覆盖 401 / 409 两种情况。
+
+<span class="dim">—— 之后可以在这里接着写，或者 ⌃⌥Space 在外面随手补一句。</span></div>
+
+      <div class="foot">
+        <span class="note">🔒 草稿只保存在这台 Mac</span>
+        <span class="spacer"></span>
+        <span class="popwrap">
+          <span class="btn plain">发送到会话…</span>
+          <div class="popover">
+            <div class="h1">发送到会话</div>
+            <div class="h2">想法会作为一条消息进入选中的会话</div>
+            <div class="agents"><span class="on">Codex</span><span>DSH</span><span>Claude</span></div>
+            <div class="pick on"><div class="pt">修复登录接口<div class="ps">auth-service · 刚运行 · 12 分前</div></div><div class="spacer"></div><i class="dot ok"></i></div>
+            <div class="pick"><div class="pt">Upwork 项目扫描<div class="ps">Upwork Discovery · 3 小时前</div></div><div class="spacer"></div><i class="dot"></i></div>
+            <div class="popfoot"><span class="btn primary">发送</span><span class="note">进入当前会话，不会另开新会话</span></div>
+          </div>
+        </span>
+        <span class="route-chip">目标　<b style="font-weight:550">收件箱</b> ▾</span>
+        <span class="btn primary">保存</span>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

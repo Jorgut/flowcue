@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>FlowCue · 本机 Agent v2</title><link rel="stylesheet" href="v2.css"></head>
+<body>
+<div class="window wide">
+  <div class="titlebar">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="t">本机 Agent</div>
+    <div></div>
+  </div>
+
+  <div class="console">
+    <div class="side2">
+      <div class="node">
+        <div>
+          <div class="n">本机 Mac</div>
+          <div class="s"><i class="dot ok"></i>在线 · 3 ms</div>
+        </div>
+        <div class="spacer" style="flex:1"></div>
+        <span style="color:var(--text-3); font-size:11px">⌕</span>
+      </div>
+      <div class="search" style="margin:0">搜索会话…</div>
+
+      <div style="display:flex; gap:12px; font-size:11px; color:var(--text-3); padding:2px 2px 4px">
+        <span style="color:var(--accent)">全部</span><span>Codex</span><span>Claude</span><span>DSH</span>
+      </div>
+
+      <div class="sessions">
+        <div class="srow on">
+          <div class="t">修复登录接口 <span>刚刚</span></div>
+          <div class="m">已统一错误码，正在补两个测试…</div>
+          <div class="f"><i class="dot ok"></i>Codex · auth-service</div>
+        </div>
+        <div class="srow">
+          <div class="t">整理桌面上的发票 <span>12 分</span></div>
+          <div class="m">已识别 18 张，等你确认命名规则</div>
+          <div class="f"><i class="dot"></i>Claude Code · Downloads</div>
+        </div>
+        <div class="srow">
+          <div class="t">每日设计情报 <span>1 小时</span></div>
+          <div class="m">今日日报已生成，等待审批发布</div>
+          <div class="f"><i class="dot warn"></i>DSH · Daily Tasks</div>
+        </div>
+        <div class="srow">
+          <div class="t">Upwork 项目扫描 <span>3 小时</span></div>
+          <div class="m">新增 3 个匹配项，已写入表格</div>
+          <div class="f"><i class="dot ok"></i>Codex · Upwork</div>
+        </div>
+        <div class="srow">
+          <div class="t">重构设置页 <span>昨天</span></div>
+          <div class="m">拆出 4 个 section，测试待补</div>
+          <div class="f"><i class="dot"></i>Claude Code · FlowCue</div>
+        </div>
+      </div>
+
+      <div style="font-size:10px; color:var(--text-3); display:flex; gap:6px; align-items:center; padding-top:8px; border-top:1px solid var(--stroke)">
+        <i class="dot ok"></i>局域网 · 127.0.0.1:53160
+      </div>
+    </div>
+
+    <div class="chatpane">
+      <div class="chat-head">
+        <div>
+          <div class="t">修复登录接口</div>
+          <div class="s">Codex · auth-service · 已读 3 个文件</div>
+        </div>
+        <div class="spacer"></div>
+        <span style="font-size:10.5px; color:var(--text-2); display:flex; gap:5px; align-items:center"><i class="dot ok"></i>运行中</span>
+        <span class="btn ghost" style="height:22px">⋯</span>
+      </div>
+
+      <div class="stream">
+        <div style="text-align:center; font-size:9.5px; color:var(--text-3)">今天 20:51</div>
+
+        <div class="msg me">
+          <div class="b">把登录接口的错误码统一一下，顺便补两个测试</div>
+          <div class="time">20:51</div>
+        </div>
+
+        <div class="msg bot">
+          <div class="b">我先看现有的错误码定义，再改 AuthController.swift。</div>
+          <div class="tool"><span class="ok">✓</span>已读 3 个文件 <span class="mono" style="color:var(--text-3)">AuthController · AuthError · LoginTests</span></div>
+          <div class="time">20:52</div>
+        </div>
+
+        <div class="approval">
+          <div class="hd">⚠ 需要审批</div>
+          <div class="t1">Codex 想写入 AuthController.swift</div>
+          <div class="t2"><span class="mono">Sources/Auth/AuthController.swift</span><span>+12</span><span>−4 行</span></div>
+          <div class="acts"><span class="btn primary">允许一次</span><span class="btn">拒绝</span></div>
+        </div>
+
+        <div class="queue"><i class="dot warn"></i>已排队 · 21:04 · 等待 Codex 处理</div>
+      </div>
+
+      <div class="compose2">
+        <span class="ph">给 Codex 发消息…</span>
+        <span class="send">↑</span>
+      </div>
+    </div>
+
+    <div class="inspector2">
+      <div class="grp">
+        <div class="l">Session</div>
+        <div class="kv"><span>Agent</span><span style="color:#E2A27A">Codex</span></div>
+        <div class="kv"><span>节点</span><span>本机 Mac</span></div>
+        <div class="kv"><span>工作区</span><span class="mono">~/FlowCue/auth-service</span></div>
+        <div class="kv"><span>开始</span><span>今天 20:51</span></div>
+        <div class="kv"><span>状态</span><span><i class="dot ok"></i>　运行中</span></div>
+      </div>
+
+      <div class="grp">
+        <div class="l">这台机器上的 Agents</div>
+        <div class="arow"><div class="ab">C</div><div style="flex:1"><div class="an">Codex</div><div class="as">5 个会话 · 运行中</div></div><i class="dot ok"></i></div>
+        <div class="arow"><div class="ab" style="color:#E2A27A">✳</div><div style="flex:1"><div class="an">Claude Code</div><div class="as">3 个会话 · 空闲</div></div><i class="dot"></i></div>
+        <div class="arow"><div class="ab" style="color:var(--ok)">D</div><div style="flex:1"><div class="an">DSH</div><div class="as">2 个会话 · 等待审批</div></div><i class="dot warn"></i></div>
+      </div>
+
+      <div class="grp">
+        <div class="l">Node</div>
+        <div class="kv"><span>系统</span><span>macOS 26 · arm64</span></div>
+        <div class="kv"><span>版本</span><span>FlowCue 0.1.5</span></div>
+        <div class="kv"><span>协议</span><span>v1</span></div>
+      </div>
+
+      <div class="grp">
+        <div class="l">队列</div>
+        <div class="kv"><span>等待</span><span>1 条</span></div>
+        <div class="kv"><span>最近投递</span><span>3 小时前 · 成功</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
