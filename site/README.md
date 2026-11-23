@@ -12,9 +12,10 @@ site/
 ├── support/index.html    → /support 支持
 ├── privacy/index.html    → /privacy 隐私政策
 ├── changelog/index.html  → /changelog 更新日志
-├── assets/               → 图标 + 共享样式 page.css
+├── assets/               → 图标 + 共享样式 page.css + 截图
 ├── _headers              → 响应头（Cloudflare Pages / Netlify）
-└── downloads/            → 发布脚本放 DMG 在这里（不入库）
+├── downloads/            → 发布脚本放 DMG 在这里（不入库）
+└── workers/founding/     → 创始名额 Worker（单独部署，见该目录 README）
 ```
 
 所有页面都内置 EN / 中文切换，共用 `assets/page.css`。`/iphone` 与 `/support` 只描述 TestFlight beta，不承诺 App Store 上架或订阅价格。
@@ -73,3 +74,15 @@ push 改到 `site/**` 时，GitHub Actions（`.github/workflows/pages.yml`）
 
 官网只存在于 `site/landing` 分支，不随 `ios/screens`、`mac/inbox` 等应用开发分支合入；
 改动走 `site/landing` → `main` 的 PR，部署根目录为 `site/`。
+
+## 创始名额（999）
+
+首页 `#founding` 的名额条和邮箱表单调用 Cloudflare Worker
+`flowcue-founding`，数据存在 D1 `flowcue-founding`：
+
+- `GET /api/founding/status`：已领取数量
+- `POST /api/founding/claim`：`{email}`，每人一个席位，上限 999
+
+Worker 不在 Pages 构建里，改动后要在 `workers/founding/` 手动
+`npx wrangler deploy`。导出名单、重置测试席位等操作见
+`workers/founding/README.md`。

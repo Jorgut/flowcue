@@ -1,0 +1,8 @@
+name = "flowcue-founding"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "flowcue-founding"
+database_id = "5e6ccac5-8222-4b7f-9815-48ada553d888"
