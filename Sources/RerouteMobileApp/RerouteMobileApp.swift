@@ -9768,7 +9768,7 @@ private struct AgentSessionsView: View {
                 } else {
                     if let resume {
                         NavigationLink {
-                            AgentChatView(controller: controller, agent: agent, session: resume)
+                            sessionDestination(resume)
                         } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: "arrow.uturn.backward")
@@ -9808,7 +9808,7 @@ private struct AgentSessionsView: View {
                         if !collapsed.contains(group.project) {
                             ForEach(group.sessions) { session in
                                 NavigationLink {
-                                    AgentChatView(controller: controller, agent: agent, session: session)
+                                    sessionDestination(session)
                                 } label: {
                                     sessionRow(session)
                                 }
@@ -9857,6 +9857,26 @@ private struct AgentSessionsView: View {
         .task {
             collapsed = Set(UserDefaults.standard.stringArray(forKey: collapsedKey) ?? [])
             await reload()
+        }
+    }
+
+    /// DSH 有审批/提问/活动状态这些富功能，仍在 ChatScreen 里；
+    /// 其他 Agent 走通用对话页。
+    @ViewBuilder
+    private func sessionDestination(_ session: RemoteAgentSession) -> some View {
+        if agent.id == "dsh" {
+            ChatScreen(
+                controller: controller,
+                tab: $tab,
+                initialTarget: .dsh(DSHSessionSnapshot(
+                    id: session.id,
+                    title: session.title,
+                    projectDirectory: session.projectPath ?? "",
+                    updatedAt: session.updatedAt
+                ))
+            )
+        } else {
+            AgentChatView(controller: controller, agent: agent, session: session)
         }
     }
 
