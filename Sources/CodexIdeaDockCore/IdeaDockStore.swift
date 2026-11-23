@@ -468,7 +468,14 @@ public final class IdeaDockStore {
     /// iPhone 通过局域网推来的想法：按 id 幂等写入，重复推送不会产生副本。
     @discardableResult
     public func upsertRemoteIdea(_ idea: RemoteIdea) -> Bool {
-        guard applyRemote(idea) else { return true }
+        switch applyRemote(idea) {
+        case .rejected:
+            return false
+        case .unchanged:
+            return true
+        case .applied:
+            break
+        }
         do {
             try modelContext.save()
             try reloadCaptures()
@@ -484,7 +491,7 @@ public final class IdeaDockStore {
     @discardableResult
     public func mergePulledIdeas(_ ideas: [RemoteIdea]) -> Int {
         var merged = 0
-        for idea in ideas where applyRemote(idea) { merged += 1 }
+        for idea in ideas where applyRemote(idea) == .applied { merged += 1 }
         guard merged > 0 else { return 0 }
         do {
             try modelContext.save()
@@ -513,13 +520,19 @@ public final class IdeaDockStore {
         }
     }
 
+    private enum RemoteApplyResult {
+        case rejected   // 空内容且不是墓碑，直接拒绝
+        case unchanged  // 本地更新或内容一致，什么都不用做
+        case applied    // 已修改本地，需要保存
+    }
+
     /// 一条远端想法怎么合并：时间更新的赢；墓碑优先于正文。
-    private func applyRemote(_ idea: RemoteIdea) -> Bool {
+    private func applyRemote(_ idea: RemoteIdea) -> RemoteApplyResult {
         let text = idea.text.trimmingCharacters(in: .whitespacesAndNewlines)
         let remoteTime = max(idea.updatedAt, idea.deletedAt ?? .distantPast)
 
         if let capture = fetchCapture(id: idea.id) {
-            guard remoteTime > capture.updatedAt else { return false }
+            guard remoteTime > capture.updatedAt else { return .unchanged }
             capture.updatedAt = remoteTime
             if let deletedAt = idea.deletedAt {
                 capture.deletedAt = deletedAt
@@ -530,10 +543,10 @@ public final class IdeaDockStore {
             if let raw = idea.status, let status = CaptureStatus(rawValue: raw), capture.deletedAt == nil {
                 capture.status = status
             }
-            return true
+            return .applied
         }
 
-        guard !text.isEmpty || idea.deletedAt != nil else { return false }
+        guard !text.isEmpty || idea.deletedAt != nil else { return .rejected }
         modelContext.insert(Capture(
             id: idea.id,
             text: text,
@@ -542,7 +555,7 @@ public final class IdeaDockStore {
             status: .saved,
             deletedAt: idea.deletedAt
         ))
-        return true
+        return .applied
     }
 
     @discardableResult

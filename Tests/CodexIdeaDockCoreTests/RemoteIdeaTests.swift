@@ -43,4 +43,79 @@ final class RemoteIdeaTests: XCTestCase {
         ))
         XCTAssertTrue(store.captures.isEmpty)
     }
+
+    // MARK: - 墓碑（删除双向同步）
+
+    func testDeleteWritesTombstoneInsteadOfHardRemoval() throws {
+        let store = try makeStore()
+        let now = Date()
+        let idea = RemoteIdea(id: UUID(), text: "要删的", createdAt: now, updatedAt: now)
+        XCTAssertTrue(store.upsertRemoteIdea(idea))
+        XCTAssertEqual(store.captures.count, 1)
+
+        XCTAssertTrue(store.delete(idea.id))
+        // 列表里看不到
+        XCTAssertTrue(store.captures.isEmpty)
+        // 但同步快照里还在，并且带墓碑时间——否则对端永远收不到删除
+        let snapshot = store.syncSnapshot()
+        let tombstone = try XCTUnwrap(snapshot.first { $0.id == idea.id })
+        XCTAssertNotNil(tombstone.deletedAt)
+    }
+
+    func testRemoteTombstoneDeletesLocally() throws {
+        let store = try makeStore()
+        let now = Date()
+        let idea = RemoteIdea(id: UUID(), text: "另一端删掉的", createdAt: now, updatedAt: now)
+        XCTAssertTrue(store.upsertRemoteIdea(idea))
+        XCTAssertEqual(store.captures.count, 1)
+
+        let deletion = RemoteIdea(
+            id: idea.id,
+            text: idea.text,
+            createdAt: idea.createdAt,
+            updatedAt: now.addingTimeInterval(10),
+            deletedAt: now.addingTimeInterval(10)
+        )
+        XCTAssertEqual(store.mergePulledIdeas([deletion]), 1)
+        XCTAssertTrue(store.captures.isEmpty)
+    }
+
+    func testOlderRemoteTombstoneDoesNotDeleteNewerLocalEdit() throws {
+        let store = try makeStore()
+        let now = Date()
+        let idea = RemoteIdea(id: UUID(), text: "本地新改的", createdAt: now, updatedAt: now.addingTimeInterval(60))
+        XCTAssertTrue(store.upsertRemoteIdea(idea))
+
+        let staleDeletion = RemoteIdea(
+            id: idea.id,
+            text: "旧正文",
+            createdAt: now,
+            updatedAt: now,
+            deletedAt: now
+        )
+        XCTAssertEqual(store.mergePulledIdeas([staleDeletion]), 0)
+        XCTAssertEqual(store.captures.count, 1)
+        XCTAssertEqual(store.captures.first?.text, "本地新改的")
+    }
+
+    func testArchivedStatusTravelsThroughSync() throws {
+        let store = try makeStore()
+        let now = Date()
+        let idea = RemoteIdea(id: UUID(), text: "归档同步", createdAt: now, updatedAt: now)
+        XCTAssertTrue(store.upsertRemoteIdea(idea))
+
+        let archived = RemoteIdea(
+            id: idea.id,
+            text: idea.text,
+            createdAt: idea.createdAt,
+            updatedAt: now.addingTimeInterval(5),
+            status: CaptureStatus.archived.rawValue
+        )
+        XCTAssertEqual(store.mergePulledIdeas([archived]), 1)
+        XCTAssertEqual(store.captures.first?.status, .archived)
+
+        // 归档状态也要出现在快照里，才能传给对端
+        let snapshot = store.syncSnapshot()
+        XCTAssertEqual(snapshot.first?.status, CaptureStatus.archived.rawValue)
+    }
 }
