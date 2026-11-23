@@ -13,7 +13,11 @@
 <link rel="stylesheet" href="../assets/page.css">
 <style>
   .wrap { max-width: 820px; }
-  .hero { padding: 20px 0 8px; }
+  .hero { padding: 20px 0 8px; display: grid; grid-template-columns: 1fr; gap: 8px; }
+  @media (min-width: 780px) {
+    .hero { grid-template-columns: 1.12fr .88fr; gap: 40px; align-items: center; }
+    .phone { margin: 0 auto; width: 300px; }
+  }
   .status {
     display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--mint);
     border: 1px solid color-mix(in srgb, var(--mint) 35%, var(--border));
@@ -50,6 +54,13 @@
     border-radius: 12px; padding: 14px 16px; margin-top: 20px;
   }
   .notice p { margin: 0; font-size: 13.5px; }
+  .phone {
+    width: 280px; margin: 46px auto 0; padding: 7px; border-radius: 40px;
+    border: 1px solid var(--border); background: #08080c;
+    box-shadow: 0 30px 70px rgba(0,0,0,.5);
+  }
+  .phone img { display: block; width: 100%; border-radius: 33px; }
+  @media (max-width: 480px) { .phone { width: 238px; margin-top: 34px; } }
   .faq h3 { margin: 18px 0 4px; font-size: 15px; color: var(--text); }
   .faq p { margin: 0; font-size: 14px; }
 </style>
@@ -72,6 +83,7 @@
   </header>
 
   <section class="hero">
+    <div class="hero-copy">
     <div class="status" data-i18n="status">TestFlight · invite only</div>
     <h1 data-i18n-html="title">Your Mac's agents,<br>in your <span>pocket</span>.</h1>
     <p class="lede" data-i18n="lede">The same inbox and the same agents, on iPhone. Watch Codex, Claude Code and DSH sessions from your Mac, answer a question, or approve a command without walking back to the desk.</p>
@@ -80,6 +92,10 @@
       <a class="button secondary" href="/mac" data-i18n="cta.mac">Get FlowCue for Mac</a>
     </div>
     <p class="fine" style="margin-top:16px" data-i18n="fine">iOS 17+ · iPhone · pairs with your Mac over the local network</p>
+    </div>
+    <div class="phone">
+      <img src="../assets/shots/iphone-agents.png" alt="FlowCue Agents screen on iPhone showing Codex, Claude Code and DSH">
+    </div>
   </section>
 
   <section class="grid">
