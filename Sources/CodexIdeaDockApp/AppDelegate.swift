@@ -50,6 +50,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.showInbox()
             }
         }
+        // 本地截图/QA：`-settings -settingsPage pro`
+        if ProcessInfo.processInfo.arguments.contains("-settings") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                self?.showSettings()
+            }
+        }
         NotificationService.shared.onOpenSession = { [weak self] agentID, sessionID in
             self?.unreadReplies.markRead(agentID: agentID, sessionID: sessionID)
             self?.showAgents()

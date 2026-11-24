@@ -729,10 +729,13 @@ private struct UsageSettingsPage: View {
 private struct ProSettingsPage: View {
     @State private var isPro = ProEntitlement.isPro()
     @State private var expiry: Date? = ProEntitlement.expiry
+    @State private var license: FlowCueLicense? = ProEntitlement.license
+    @State private var licenseInput = ""
+    @State private var licenseMessage: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SettingsGroup(title: L10n.text("Pro"), footnote: L10n.text("在 iPhone 上订阅后，这台 Mac 自动解锁。")) {
+            SettingsGroup(title: L10n.text("Pro"), footnote: L10n.text("iPhone 订阅或 Mac 终身授权都可以解锁。")) {
                 SettingsRow(title: L10n.text("状态")) {
                     HStack(spacing: 6) {
                         Circle()
@@ -754,6 +757,62 @@ private struct ProSettingsPage: View {
                 SettingsRow(title: L10n.text("刷新状态")) {
                     Button(L10n.text("刷新")) { refresh() }
                         .controlSize(.small)
+                }
+            }
+
+            SettingsGroup(
+                title: L10n.text("Mac 授权"),
+                footnote: L10n.text("一次买断，永久解锁这台 Mac；手机端 Pro 仍是单独订阅。")
+            ) {
+                SettingsRow(title: L10n.text("状态")) {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(license != nil ? Color(hex: FlowCueTokens.airyDark.success)
+                                                 : Color(hex: FlowCueTokens.airyDark.textTertiary))
+                            .frame(width: 6, height: 6)
+                        Text(license != nil ? L10n.text("终身授权") : L10n.text("未激活"))
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                if let license {
+                    SettingsRow(title: L10n.text("席位")) {
+                        Text("#\(license.seat)")
+                            .font(.system(size: 11).monospacedDigit())
+                            .foregroundStyle(.secondary)
+                    }
+                    if let email = license.email {
+                        SettingsRow(title: L10n.text("授权邮箱")) {
+                            Text(email)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                SettingsRow(title: L10n.text("授权码")) {
+                    HStack(spacing: 8) {
+                        TextField(L10n.text("粘贴授权码"), text: $licenseInput)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 11, design: .monospaced))
+                            .frame(minWidth: 240)
+                        Button(L10n.text("激活")) { activateLicense() }
+                            .controlSize(.small)
+                            .disabled(licenseInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        if license != nil {
+                            Button(L10n.text("移除授权")) {
+                                ProEntitlement.deactivateLifetime()
+                                licenseInput = ""
+                                licenseMessage = nil
+                                refresh()
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+                if let licenseMessage {
+                    Text(licenseMessage)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -781,7 +840,7 @@ private struct ProSettingsPage: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .tint(Color(hex: FlowCueTokens.airyDark.accent))
-                Text(L10n.text("订阅在 App Store 完成，桌面端不使用独立付费。"))
+                Text(L10n.text("手机订阅在 App Store 完成；Mac 授权在官网购买。"))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
             }
@@ -789,9 +848,21 @@ private struct ProSettingsPage: View {
         .onAppear { refresh() }
     }
 
+    private func activateLicense() {
+        if let activated = ProEntitlement.activateLifetime(licenseInput) {
+            license = activated
+            licenseInput = ""
+            licenseMessage = L10n.text("授权已激活。")
+        } else {
+            licenseMessage = L10n.text("授权码无效。")
+        }
+        refresh()
+    }
+
     private func refresh() {
         expiry = ProEntitlement.expiry
         isPro = ProEntitlement.isPro()
+        license = ProEntitlement.license
     }
 }
 
