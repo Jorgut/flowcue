@@ -256,12 +256,14 @@ export default {
 
     // 手机用码直接配对：不需要先在同一 Wi-Fi
     if (url.pathname === "/v1/remote/pair/claim") {
-      const body = await request.clone().json<{ code: string; phonePublicKey: string }>();
+      const body = await request.clone().json<{ code?: string; codeProof?: string; phonePublicKey: string }>();
+      // 手机与 Mac 用的字段名不同，两种都接受
+      const code = body.code ?? body.codeProof ?? "";
       const resolved = await indexStub
         .fetch(new Request("https://index/resolve", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ code: body.code }),
+          body: JSON.stringify({ code }),
         }))
         .then((r) => r.json<{ macID?: string; publicKey?: string }>());
       if (!resolved.macID) {
@@ -274,14 +276,14 @@ export default {
       const result = await macStub.fetch(new Request(target.toString(), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({ codeProof: code, phonePublicKey: body.phonePublicKey }),
       }));
       // 成功就消费掉这个码，防止重复使用
       if (result.ok) {
         await indexStub.fetch(new Request("https://index/consume", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ code: body.code }),
+          body: JSON.stringify({ code }),
         }));
       }
       const payload = await result.json<Record<string, unknown>>();

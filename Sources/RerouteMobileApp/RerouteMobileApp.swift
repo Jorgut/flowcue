@@ -10858,7 +10858,9 @@ extension LANRemoteController {
         var request = URLRequest(url: createURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
+        // code 给 claim 用，codeProof 给 Mac 的 create 用；两个都发，兼容两端
         request.httpBody = try? JSONEncoder().encode([
+            "code": code,
             "codeProof": code,
             "phonePublicKey": publicKeyBase64
         ])
