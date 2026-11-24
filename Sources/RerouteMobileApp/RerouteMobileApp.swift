@@ -10654,10 +10654,12 @@ final class RemoteTunnel {
         let frame = try JSONEncoder().encode(envelope)
         try await task?.send(.data(frame))
 
+        // 发送要等 Mac 的 agent 桥接返回，20 秒不够（实测会超时被判未送达）。
+        let timeout: TimeInterval = method == "POST" ? 90 : 20
         return try await withCheckedThrowingContinuation { continuation in
             pending[request.id] = continuation
-            Task { 
-                try? await Task.sleep(for: .seconds(20))
+            Task {
+                try? await Task.sleep(for: .seconds(timeout))
                 if let waiting = pending.removeValue(forKey: request.id) {
                     waiting.resume(throwing: URLError(.timedOut))
                 }

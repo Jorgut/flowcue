@@ -224,12 +224,16 @@ public final class RemoteRelayClient: @unchecked Sendable {
                 NSLog("[FlowCue Remote] bad request payload")
                 return
             }
+            let started = Date()
             let result = await self.server.dispatchRemote(
                 method: request.method,
                 path: request.path,
                 headers: request.headers,
                 body: request.body
             )
+            NSLog("[FlowCue Remote] %@ %@ → %d (%.1fs)",
+                  request.method, request.path, result.status,
+                  Date().timeIntervalSince(started))
             let response = RemoteResponse(id: request.id, status: result.status, body: result.body)
             guard let encoded = try? JSONEncoder().encode(response),
                   var reply = try? session.seal(encoded),
