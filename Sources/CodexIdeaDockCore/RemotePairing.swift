@@ -117,6 +117,14 @@ public actor RemotePairingManager {
         revoked.contains(pairID)
     }
 
+    /// 配对状态：手机端轮询用。
+    public func status(for pairID: String) -> String? {
+        if revoked.contains(pairID) { return "revoked" }
+        if sessions[pairID] != nil { return "approved" }
+        if let item = pending[pairID] { return item.approved ? "approved" : "pending" }
+        return nil
+    }
+
     /// 已批准且未撤销的会话；中继转发前用它确认身份。
     public func session(for pairID: String) -> RemoteCryptoSession? {
         guard !revoked.contains(pairID) else { return nil }

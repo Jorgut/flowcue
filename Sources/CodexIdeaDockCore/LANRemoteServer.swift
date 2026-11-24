@@ -213,6 +213,8 @@ public final class LANRemoteServer {
         var status: String  // pending / approved / denied
     }
     private var externalApprovals: [ExternalApproval] = []
+    /// Remote 配对：6 位码、批准、撤销都在这里。
+    private let pairing = RemotePairingManager()
     /// 各 Agent 的会话列表缓存（30 秒）：手机上反复进出同一个 Agent 不必重扫。
     private var agentSessionsCache: [String: (items: [RemoteAgentSession], at: Date)] = [:]
     /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——
@@ -422,6 +424,63 @@ public final class LANRemoteServer {
             Self.lastClientVersion = clientVersion
         }
         switch (request.method, request.path) {
+        case ("POST", "/v1/remote/pair/begin"):
+            let code = await pairing.beginPairing()
+            let macKey = await pairing.publicKey
+            let macID = await pairing.macID
+            let payload: [String: String] = [
+                "code": code,
+                "macID": macID,
+                "publicKey": macKey.base64EncodedString()
+            ]
+            return Self.response(status: 200, body: try JSONEncoder().encode(payload))
+
+        case ("POST", "/v1/remote/pair/request"):
+            struct Body: Decodable {
+                let code: String
+                let phonePublicKey: String
+            }
+            guard let body = try? JSONDecoder().decode(Body.self, from: request.body),
+                  let phoneKey = Data(base64Encoded: body.phonePublicKey) else {
+                return Self.response(status: 400, body: Data("{}".utf8))
+            }
+            do {
+                let pairID = try await pairing.request(code: body.code, phonePublicKey: phoneKey)
+                return Self.response(status: 200, body: try JSONEncoder().encode(["pairID": pairID]))
+            } catch {
+                let reason = String(describing: error)
+                return Self.response(status: 409, body: try JSONEncoder().encode(["error": reason]))
+            }
+
+        case ("GET", let path) where path.hasPrefix("/v1/remote/pair/status/"):
+            let pairID = String(path.dropFirst("/v1/remote/pair/status/".count))
+            let status = await pairing.status(for: pairID) ?? "unknown"
+            return Self.response(status: 200, body: try JSONEncoder().encode(["status": status]))
+
+        case ("POST", "/v1/remote/pair/approve"):
+            struct Body: Decodable { let pairID: String }
+            guard let body = try? JSONDecoder().decode(Body.self, from: request.body) else {
+                return Self.response(status: 400, body: Data("{}".utf8))
+            }
+            _ = try? await pairing.approve(pairID: body.pairID)
+            return Self.response(status: 200, body: Data("{}".utf8))
+
+        case ("POST", "/v1/remote/pair/deny"):
+            struct Body: Decodable { let pairID: String }
+            guard let body = try? JSONDecoder().decode(Body.self, from: request.body) else {
+                return Self.response(status: 400, body: Data("{}".utf8))
+            }
+            await pairing.deny(pairID: body.pairID)
+            return Self.response(status: 200, body: Data("{}".utf8))
+
+        case ("POST", "/v1/remote/pair/revoke"):
+            struct Body: Decodable { let pairID: String }
+            guard let body = try? JSONDecoder().decode(Body.self, from: request.body) else {
+                return Self.response(status: 400, body: Data("{}".utf8))
+            }
+            await pairing.revoke(pairID: body.pairID)
+            return Self.response(status: 200, body: Data("{}".utf8))
+
         case ("GET", "/v1/threads"):
             let snapshots = try await threadSnapshots()
             return Self.response(status: 200, body: try JSONEncoder().encode(snapshots))

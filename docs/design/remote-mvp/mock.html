@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<style>
+  :root{
+    --canvas:#101014; --surface:#181820; --raised:#1B1B20; --border:#24242E;
+    --text:#F2F2F5; --secondary:#9A9AA8; --tertiary:#6E6E7C;
+    --accent:#7E84FF; --success:#5CD9B8; --warning:#F0B429;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    background:#08080A; color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",sans-serif;
+    padding:56px 48px 72px; width:1720px;
+  }
+  h1{font-size:26px; font-weight:650; letter-spacing:-0.4px;}
+  .sub{color:var(--secondary); font-size:14px; margin-top:6px;}
+  .row{display:flex; gap:44px; margin-top:44px; align-items:flex-start;}
+  .phone{
+    width:390px; height:844px; border-radius:54px; background:var(--canvas);
+    border:1px solid #22222A; position:relative; overflow:hidden;
+    box-shadow:0 30px 80px rgba(0,0,0,.55), inset 0 0 0 5px #0A0A0C;
+  }
+  .notch{
+    position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    width:112px; height:30px; border-radius:16px; background:#000; z-index:5;
+  }
+  .glow{
+    position:absolute; inset:-40% -20% auto -20%; height:520px;
+    background:radial-gradient(circle at 50% 30%, rgba(126,132,255,.16), transparent 62%);
+    pointer-events:none;
+  }
+  .screen{padding:74px 22px 28px; position:relative; height:100%; display:flex; flex-direction:column;}
+  .nav{display:flex; align-items:center; justify-content:space-between; margin-bottom:22px;}
+  .back{
+    width:38px; height:38px; border-radius:19px; background:var(--surface);
+    border:1px solid var(--border); display:grid; place-items:center; color:var(--text);
+    font-size:17px;
+  }
+  .nav-title{font-size:16px; font-weight:600;}
+  .pill{
+    display:inline-flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600;
+    padding:5px 10px; border-radius:999px; background:rgba(92,217,184,.12); color:var(--success);
+  }
+  .pill .dot{width:6px; height:6px; border-radius:3px; background:var(--success);}
+  .h1{font-size:30px; font-weight:700; letter-spacing:-0.8px; line-height:1.22; margin-bottom:4px;}
+  .h2{font-size:15px; color:var(--secondary); line-height:1.5; margin-top:10px;}
+  .card{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:20px; padding:20px;
+  }
+  .code-box{
+    margin-top:26px; background:var(--surface); border:1px solid var(--border);
+    border-radius:18px; padding:26px 20px; text-align:center;
+  }
+  .code{
+    font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:25px; font-weight:600;
+    letter-spacing:8px; padding-left:8px; white-space:nowrap;
+  }
+  .code.caret::after{content:"|"; opacity:.55; animation:none;}
+  .hint{font-size:12.5px; color:var(--tertiary); margin-top:12px; text-align:center;}
+  .divider{display:flex; align-items:center; gap:12px; margin:24px 0; color:var(--tertiary); font-size:12px;}
+  .divider::before,.divider::after{content:""; flex:1; height:1px; background:var(--border);}
+  .btn{
+    margin-top:auto; height:52px; border-radius:26px; background:var(--accent);
+    color:#fff; font-size:15px; font-weight:650; display:grid; place-items:center;
+  }
+  .btn.ghost{background:var(--surface); color:var(--text); border:1px solid var(--border); margin-top:12px;}
+  .qr-slot{
+    height:196px; border-radius:18px; border:1px dashed #3A3A48;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:14px;
+    background:linear-gradient(180deg, rgba(126,132,255,.06), transparent 70%);
+  }
+  .viewfinder{
+    position:relative; height:196px; border-radius:18px; overflow:hidden;
+    background:radial-gradient(circle at 50% 45%, #20202A, #0B0B0E 72%);
+  }
+  .vf-corner{position:absolute; width:26px; height:26px; border:2px solid var(--accent); opacity:.9;}
+  .vf-corner.tl{left:18px; top:18px; border-right:none; border-bottom:none; border-top-left-radius:8px;}
+  .vf-corner.tr{right:18px; top:18px; border-left:none; border-bottom:none; border-top-right-radius:8px;}
+  .vf-corner.bl{left:18px; bottom:18px; border-right:none; border-top:none; border-bottom-left-radius:8px;}
+  .vf-corner.br{right:18px; bottom:18px; border-left:none; border-top:none; border-bottom-right-radius:8px;}
+  .vf-hint{position:absolute; left:0; right:0; bottom:22px; text-align:center; font-size:12px; color:var(--secondary);}
+  .vf-label{position:absolute; left:0; right:0; top:50%; transform:translateY(-50%); text-align:center; font-size:13px; font-weight:600;}
+  .qr-icon{
+    width:58px; height:58px; border-radius:14px; border:1.5px solid var(--accent);
+    display:grid; place-items:center; color:var(--accent); font-size:24px;
+  }
+  .waiting{display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; gap:18px;}
+  .spinner{
+    width:38px; height:38px; border-radius:19px; border:2.5px solid rgba(126,132,255,.22);
+    border-top-color:var(--accent);
+  }
+  .device-card{
+    display:flex; align-items:center; gap:14px; padding:16px; border-radius:18px;
+    background:var(--surface); border:1px solid var(--border);
+  }
+  .avatar{
+    width:42px; height:42px; border-radius:12px; background:#1E1E28; border:1px solid var(--border);
+    display:grid; place-items:center; font-size:19px;
+  }
+  .list-row{display:flex; align-items:center; gap:12px; padding:13px 4px; border-bottom:1px solid rgba(36,36,46,.8);}
+  .list-row:last-child{border-bottom:none;}
+  .row-title{font-size:14.5px; font-weight:560;}
+  .row-sub{font-size:11.5px; color:var(--tertiary); margin-top:3px;}
+  .badge-warn{
+    margin-left:auto; font-size:10.5px; font-weight:650; color:#111;
+    background:var(--warning); border-radius:999px; padding:3px 8px;
+  }
+  .section-label{
+    font-size:11px; font-weight:650; letter-spacing:.9px; color:var(--tertiary);
+    text-transform:uppercase; margin:24px 0 10px;
+  }
+  /* Mac 面板 */
+  .mac{
+    width:1120px; margin-left:auto; margin-right:auto; margin-top:64px;
+    border-radius:16px; background:#161619; border:1px solid #26262E; overflow:hidden;
+    box-shadow:0 40px 90px rgba(0,0,0,.6);
+  }
+  .mac-bar{
+    height:38px; display:flex; align-items:center; gap:8px; padding:0 14px;
+    background:#1C1C21; border-bottom:1px solid #26262E;
+  }
+  .dot-r{width:11px;height:11px;border-radius:6px;}
+  .mac-body{display:flex; min-height:520px;}
+  .mac-side{
+    width:214px; padding:18px 14px; border-right:1px solid #23232B; background:#141417;
+  }
+  .side-item{padding:8px 10px; border-radius:8px; font-size:12.5px; color:var(--secondary); margin-bottom:2px;}
+  .side-item.active{background:#22222A; color:var(--text);}
+  .mac-main{flex:1; padding:26px 30px;}
+  .mac-title{font-size:19px; font-weight:650;}
+  .mac-sub{font-size:12.5px; color:var(--secondary); margin-top:5px;}
+  .toggle-row{display:flex; align-items:center; justify-content:space-between; padding:18px 0; border-bottom:1px solid #23232B;}
+  .switch{width:44px; height:26px; border-radius:13px; background:var(--accent); position:relative;}
+  .switch::after{content:""; position:absolute; top:3px; right:3px; width:20px; height:20px; border-radius:10px; background:#fff;}
+  .pair-area{display:flex; gap:28px; margin-top:22px;}
+  .qr-card{width:196px; height:196px; border-radius:12px; background:#fff; padding:10px;}
+  .qr{width:100%; height:100%; position:relative; overflow:hidden;
+      background:
+        repeating-linear-gradient(90deg,#000 0 5px,transparent 5px 10px),
+        repeating-linear-gradient(0deg,#000 0 5px,transparent 5px 10px);
+      background-blend-mode:multiply; opacity:.92;}
+  .finder{position:absolute; width:34px; height:34px; border:6px solid #000; background:#fff; border-radius:2px;}
+  .finder::after{content:""; position:absolute; inset:5px; background:#000; border-radius:1px;}
+  .mac-code{font-family:"SF Mono",ui-monospace,Menlo,monospace; font-size:26px; letter-spacing:8px; font-weight:600; margin-top:14px;}
+  .dev-row{display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid #23232B;}
+  .revoke{font-size:12px; color:#FF6B6B; font-weight:600;}
+  .caption{font-size:11.5px; color:var(--secondary); margin-top:10px; line-height:1.5;}
+  .annot{font-size:12.5px; color:var(--tertiary); width:390px; margin-top:14px; line-height:1.6;}
+</style>
+</head>
+<body>
+  <h1>FlowCue Remote — 配对与连接状态</h1>
+  <div class="sub">视觉稿 v1 ｜ 配色沿用 app 现有 token：canvas #101014 · surface #181820 · accent #7E84FF</div>
+
+  <div class="row">
+    <!-- 1. 入口 -->
+    <div>
+      <div class="phone">
+        <div class="notch"></div><div class="glow"></div>
+        <div class="screen">
+          <div class="nav">
+            <div class="back">‹</div>
+            <div class="nav-title">Remote</div>
+            <div style="width:38px"></div>
+          </div>
+          <div class="h1">在你的 Mac 上<br>继续这些会话</div>
+          <div class="h2">不需要同一 Wi-Fi。配对一次，之后手机自动走最近的路。</div>
+
+          <div class="card" style="margin-top:30px;">
+            <div class="viewfinder">
+              <div class="vf-corner tl"></div><div class="vf-corner tr"></div>
+              <div class="vf-corner bl"></div><div class="vf-corner br"></div>
+              <div class="vf-label">把 Mac 上的二维码放进取景框</div>
+              <div class="vf-hint">打开相机权限后自动识别</div>
+            </div>
+          </div>
+
+          <div class="divider">或</div>
+
+          <div class="code-box">
+            <div style="font-size:12px; color:var(--secondary); margin-bottom:14px;">输入 6 位配对码</div>
+            <div class="code">4 8 2 9 1 3</div>
+          </div>
+
+          <div class="btn" style="margin-top:26px;">继续</div>
+        </div>
+      </div>
+      <div class="annot">① 入口：二维码为主，6 位码兜底。两种方式都在同一屏，不用切换页面。</div>
+    </div>
+
+    <!-- 2. 等待批准 -->
+    <div>
+      <div class="phone">
+        <div class="notch"></div><div class="glow"></div>
+        <div class="screen">
+          <div class="nav">
+            <div class="back">‹</div>
+            <div class="nav-title">Remote</div>
+            <div style="width:38px"></div>
+          </div>
+          <div class="waiting">
+            <div class="spinner"></div>
+            <div style="font-size:17px; font-weight:650;">在 Mac 上确认</div>
+            <div style="font-size:13px; color:var(--secondary); text-align:center; line-height:1.6;">
+              Mac 会显示这台 iPhone 的名字，<br>点「允许」即可。
+            </div>
+            <div class="code-box" style="width:100%; margin-top:6px;">
+              <div style="font-size:11.5px; color:var(--secondary); margin-bottom:10px;">配对码</div>
+              <div class="code">4 8 2 9 1 3</div>
+            </div>
+            <div class="hint">超过 5 分钟需要重新生成</div>
+          </div>
+          <div class="btn ghost">取消</div>
+        </div>
+      </div>
+      <div class="annot">② 等待批准：手机显示同一个码，方便你核对 Mac 上弹的是不是同一次配对。</div>
+    </div>
+
+    <!-- 3. 已连接 -->
+    <div>
+      <div class="phone">
+        <div class="notch"></div><div class="glow"></div>
+        <div class="screen">
+          <div class="nav">
+            <div class="nav-title" style="font-size:20px;">FlowCue</div>
+            <div class="back">◕</div>
+          </div>
+
+          <div class="device-card">
+            <div class="avatar">▤</div>
+            <div style="flex:1">
+              <div class="row-title">MacBook Pro</div>
+              <div class="row-sub">远程 · 端到端加密</div>
+            </div>
+            <div class="pill"><span class="dot"></span>Remote</div>
+          </div>
+
+          <div class="section-label">Mac 上的 Agent</div>
+          <div class="card" style="padding:6px 16px;">
+            <div class="list-row">
+              <div class="avatar" style="width:32px;height:32px;border-radius:9px;font-size:15px;">🐋</div>
+              <div style="flex:1">
+                <div class="row-title">DeepSeek Harness</div>
+                <div class="row-sub">57 sessions · 24 projects</div>
+              </div>
+              <div style="color:var(--tertiary);">›</div>
+            </div>
+            <div class="list-row">
+              <div class="avatar" style="width:32px;height:32px;border-radius:9px;font-size:15px;color:#10A37F;">✳</div>
+              <div style="flex:1">
+                <div class="row-title">Codex</div>
+                <div class="row-sub">81 sessions · 46 projects</div>
+              </div>
+              <div style="color:var(--tertiary);">›</div>
+            </div>
+            <div class="list-row">
+              <div class="avatar" style="width:32px;height:32px;border-radius:9px;font-size:15px;color:#D97757;">✳</div>
+              <div style="flex:1">
+                <div class="row-title">Claude Code</div>
+                <div class="row-sub">28 sessions · 6 projects</div>
+              </div>
+              <div style="color:var(--tertiary);">›</div>
+            </div>
+          </div>
+
+          <div class="section-label">网络</div>
+          <div class="card">
+            <div class="list-row" style="border-bottom:1px solid var(--border);">
+              <div style="flex:1">
+                <div class="row-title">当前线路</div>
+                <div class="row-sub">Remote · 中继延迟 84 ms</div>
+              </div>
+              <div style="font-size:12.5px; color:var(--success); font-weight:600;">已加密</div>
+            </div>
+            <div class="list-row">
+              <div style="flex:1">
+                <div class="row-title">同一 Wi-Fi 时</div>
+                <div class="row-sub">自动切回直连，更快且不计流量</div>
+              </div>
+            </div>
+          </div>
+          <div class="btn ghost" style="margin-top:auto;">断开</div>
+        </div>
+      </div>
+      <div class="annot">③ 已连接：状态用文字表达（Remote / LAN），不用图标猜；延迟和加密状态直接写在卡片里。</div>
+    </div>
+  </div>
+
+  <!-- Mac -->
+  <div class="mac">
+    <div class="mac-bar">
+      <div class="dot-r" style="background:#FF5F57"></div>
+      <div class="dot-r" style="background:#FEBC2E"></div>
+      <div class="dot-r" style="background:#28C840"></div>
+    </div>
+    <div class="mac-body">
+      <div class="mac-side">
+        <div class="side-item">通用</div>
+        <div class="side-item active">Remote</div>
+        <div class="side-item">Agent</div>
+        <div class="side-item">快捷键</div>
+        <div class="side-item">隐私</div>
+      </div>
+      <div class="mac-main">
+        <div class="mac-title">Remote</div>
+        <div class="mac-sub">离开同一个 Wi-Fi 后，手机仍能控制器 Mac 上正在跑的会话。</div>
+
+        <div class="toggle-row">
+          <div>
+            <div style="font-size:13.5px; font-weight:600;">允许远程连接</div>
+            <div class="caption">只对已配对的 iPhone 开放；内容端到端加密，中继读不到。</div>
+          </div>
+          <div class="switch"></div>
+        </div>
+
+        <div class="pair-area">
+          <div class="qr-card"><div class="qr">
+              <div class="finder" style="left:8px; top:8px;"></div>
+              <div class="finder" style="right:8px; top:8px;"></div>
+              <div class="finder" style="left:8px; bottom:8px;"></div>
+            </div></div>
+          <div style="flex:1">
+            <div style="font-size:12.5px; color:var(--secondary);">在 iPhone 上扫描，或手动输入：</div>
+            <div class="mac-code">482 913</div>
+            <div class="caption">5 分钟内有效 · 一码一用</div>
+
+            <div class="section-label" style="margin-top:26px;">已配对的设备</div>
+            <div class="dev-row">
+              <div>
+                <div style="font-size:13px; font-weight:600;">Altankhuu 的 iPhone</div>
+                <div class="caption" style="margin-top:2px;">上次连接：2 分钟前 · 12 次会话</div>
+              </div>
+              <div class="revoke">撤销</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex; gap:40px; margin-top:40px; align-items:center;">
+    <div style="flex:1; color:var(--secondary); font-size:12.5px; line-height:1.8;">
+      Mac 上的批准弹窗：显示设备名与同一个配对码，<br>
+      主按钮「允许，并记住」把这次配对长期保存；<br>
+      次按钮「拒绝」只在这一次生效，不产生会话。
+    </div>
+    <div style="width:430px; border-radius:16px; background:#1E1E24; border:1px solid #2C2C36; box-shadow:0 30px 70px rgba(0,0,0,.6); padding:24px 26px;">
+      <div style="display:flex; gap:14px; align-items:flex-start;">
+        <div style="width:38px;height:38px;border-radius:10px;background:rgba(126,132,255,.14);display:grid;place-items:center;color:var(--accent);font-size:17px;">⌁</div>
+        <div>
+          <div style="font-size:14px; font-weight:650;">允许这台 iPhone 连接吗？</div>
+          <div style="font-size:12px; color:var(--secondary); margin-top:6px; line-height:1.6;">
+            Altankhuu 的 iPhone 请求通过 Remote 连接这台 Mac。<br>
+            配对码 <span style="font-family:ui-monospace; letter-spacing:3px; color:var(--text);">482 913</span>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:22px;">
+        <div style="padding:9px 18px; border-radius:9px; border:1px solid #34343E; font-size:12.5px; color:var(--secondary);">拒绝</div>
+        <div style="padding:9px 18px; border-radius:9px; background:var(--accent); font-size:12.5px; font-weight:650; color:#fff;">允许，并记住</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
