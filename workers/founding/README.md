@@ -1,65 +1,84 @@
-# Founding users worker
+# Founding Mac Pro worker
 
-Backs the **1,999 founding seats** counter and reservation form on the landing page.
-Static site stays on Cloudflare Pages; this Worker owns the write path.
+Backs the **1,999 founding seats** offer on the landing page:
 
-This is a **reservation list**, not a payment flow yet. Checkout (Paddle) and
-license issuance are added separately; until then no money changes hands.
+- 1–999: $9.9 one-time
+- 1,000–1,999: $19.9 one-time
+- after 1,999: $29 (the Worker stops selling)
+
+Paddle is the merchant of record. The site opens Paddle Checkout with a
+client-side token; this Worker verifies the webhook, stores the order, signs an
+offline Mac license, and emails it.
+
+The buy section is hidden until every required secret is set, so deploying
+this Worker without Paddle credentials is safe.
 
 ## Endpoints
 
-| Method | Path | Body | Result |
-|---|---|---|---|
-| GET | `/api/founding/status` | — | `{ok, claimed, remaining, limit, open}` |
-| POST | `/api/founding/claim` | `{"email":"..."}` | `{ok, seat, price, tier, claimed, remaining, open}`; `duplicate: true` if the email already reserved |
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/api/founding/config` | client token, environment, price IDs, success URL |
+| GET | `/api/founding/status` | sold count, remaining seats, next tier price |
+| POST | `/api/paddle/webhook` | Paddle `transaction.completed` → order + license + email |
 
-Errors: `invalid_email` (400), `full` (409), `rate_limited` (429), `bad_json` (400).
+## Secrets
+
+Set with `npx wrangler secret put <NAME>`:
+
+| Name | Where |
+|---|---|
+| `PADDLE_CLIENT_TOKEN` | Paddle → Developer tools → Client-side tokens |
+| `PADDLE_API_KEY` | Paddle → Developer tools → API keys (sandbox first) |
+| `PADDLE_WEBHOOK_SECRET` | Paddle → Notifications → destination secret |
+| `PADDLE_PRICE_USD_9` | Price ID for $9.90 |
+| `PADDLE_PRICE_USD_19` | Price ID for $19.90 |
+| `PADDLE_PRICE_CNY_69` | Price ID for ¥69 |
+| `PADDLE_PRICE_CNY_139` | Price ID for ¥139 |
+| `PADDLE_ENVIRONMENT` | `sandbox` (default) or `production` |
+| `LICENSE_PRIVATE_KEY` | Ed25519 PKCS8 base64 (already set) |
+| `RESEND_API_KEY` | Resend API key |
+| `RESEND_FROM` | verified sender, e.g. `FlowCue <hello@altn.vision>` |
+| `SITE_ORIGIN` | optional, defaults to `https://flowcue.altn.vision` |
+
+`configured` is true only when the Paddle token, webhook secret, API key, all
+four price IDs, `LICENSE_PRIVATE_KEY`, `RESEND_API_KEY` and `RESEND_FROM` are
+present.
+
+## Paddle setup (sandbox)
+
+1. Create a one-time product **FlowCue Mac Pro**.
+2. Add four prices: USD 9.90, USD 19.90, CNY 69, CNY 139.
+3. Create a client-side token; copy it.
+4. Create a notification destination for `transaction.completed`:
+   `https://flowcue-founding.honaler.workers.dev/api/paddle/webhook`
+   Copy its secret.
+5. Enable Alipay (requires Paddle approval) and WeChat Pay under
+   Checkout → Checkout configuration. Both are only shown to customers in
+   China; WeChat Pay is desktop-only.
+6. Set the secrets above and deploy.
 
 ## Storage
 
-Cloudflare D1 `flowcue-founding` (APAC), database id `5e6ccac5-8222-4b7f-9815-48ada553d888`.
+D1 `flowcue-founding` (APAC), database id `5e6ccac5-8222-4b7f-9815-48ada553d888`.
 
-```sql
-founding_users(
-  id INTEGER PRIMARY KEY AUTOINCREMENT,  -- seat number
-  email TEXT UNIQUE COLLATE NOCASE,
-  created_at TEXT,
-  ip_hash TEXT                          -- truncated SHA-256, for rate limiting only
-)
-```
+- `orders`: one row per paid Paddle transaction, unique seat, raw webhook JSON.
+- `licenses`: signed license token per order, seat/tier/email.
+- `founding_users`: legacy reservation table; no longer written. Keep for
+  history or drop after a manual export.
 
-Seats are the row id, capped at 1999. Seats 1–999 are priced at $9.9, 1,000–1999 at $19.9 in the UI; this Worker stores reservations only. Test rows must be deleted with the
-`sqlite_sequence` reset, otherwise the next real claimant gets a gap:
+## License format
 
-```bash
-npx wrangler d1 execute flowcue-founding --remote --command \
-  "DELETE FROM founding_users; DELETE FROM sqlite_sequence WHERE name='founding_users';"
-```
+`FC1-<base64url(JSON payload)>.<base64url(Ed25519 signature)>`
 
-## Deploy
+The Mac app verifies it with the raw public key in
+`Sources/CodexIdeaDockCore/License.swift`. Never rotate the signing key without
+a license migration; old licenses would stop verifying.
+
+## Test locally
 
 ```bash
-cd workers/founding
-npx wrangler d1 execute flowcue-founding --remote --file=schema.sql   # first time
-npx wrangler deploy
+npm test          # signature + license unit tests
+npx wrangler dev  # local Worker with a local D1
 ```
 
-The Pages build ignores this directory; the Worker is deployed separately.
-
-## Export the list
-
-```bash
-npx wrangler d1 execute flowcue-founding --remote --command \
-  "SELECT id, email, created_at FROM founding_users ORDER BY id" --json
-```
-
-## Boundaries
-
-- No email is sent by the Worker. The list is exported before launch and
-  checkout links / licenses are sent manually until Paddle + an email provider
-  are wired in.
-- No account, no password, no payment. One seat per normalized email.
-- Rate limit: 3 claims per hashed IP per 10 minutes. This is a spam guard,
-  not identity verification.
-- `CF-Connecting-IP` is hashed with `FOUNDING_SALT` (set a secret before
-  relying on it) and truncated to 12 bytes; the raw IP is never stored.
+The webhook needs a `Paddle-Signature` header (`ts=...;h1=HMAC-SHA256(secret, ts + ":" + rawBody)`).

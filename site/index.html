@@ -73,6 +73,39 @@
   .proof .card h3 { margin: 0 0 6px; font-size: 15px; }
   .proof .card p { font-size: 13px; margin: 0; }
 
+  .founding {
+    margin-top: 88px; display: grid; grid-template-columns: 1.05fr .95fr; gap: 36px; align-items: center;
+    background:
+      radial-gradient(700px 320px at 18% 0%, rgba(126,132,255,.16), transparent 70%),
+      var(--surface);
+    border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+    border-radius: 20px; padding: 30px;
+  }
+  .founding[hidden] { display: none; }
+  @media (max-width: 860px) { .founding { grid-template-columns: 1fr; gap: 22px; padding: 22px; } }
+  .founding h2 { font-size: 28px; letter-spacing: -0.025em; margin: 0 0 10px; }
+  .founding p { font-size: 14.5px; }
+  .founding ul { margin: 14px 0 0; padding-left: 18px; }
+  .founding li { font-size: 13.5px; margin-bottom: 5px; }
+  .founding .counter { display: flex; align-items: baseline; gap: 8px; }
+  .founding .counter strong { font-size: 42px; line-height: 1; letter-spacing: -0.04em; }
+  .founding .counter span { font-size: 13px; color: var(--muted); }
+  .founding .meter { height: 8px; border-radius: 999px; background: #20202a; overflow: hidden; margin: 14px 0 14px; }
+  .founding .meter span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--mint)); transition: width .45s ease; }
+  .founding .tier-line { display: flex; align-items: baseline; gap: 6px; margin: 0 0 12px; font-size: 12px; color: var(--muted); }
+  .founding .tier-line strong { color: var(--text); font-size: 15px; }
+  .founding .currency { display: flex; gap: 6px; margin: 0 0 12px; }
+  .founding .currency button {
+    background: transparent; border: 1px solid var(--border); color: var(--muted);
+    border-radius: 8px; padding: 5px 10px; font: inherit; font-size: 12px; cursor: pointer;
+  }
+  .founding .currency button[aria-pressed="true"] { border-color: var(--accent); color: var(--text); }
+  .founding .buy {
+    width: 100%; background: var(--accent); color: #0b0b12; border: 0; border-radius: 10px;
+    padding: 12px 16px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .founding .buy:disabled { opacity: .5; cursor: default; }
+  .founding .fine { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
   .pricing { margin-top: 88px; display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
   @media (max-width: 860px) { .pricing { grid-template-columns: 1fr; } }
   .plan { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 22px; }
@@ -195,6 +228,37 @@
 
   <!-- Paddle checkout is not wired yet; see git history. -->
 
+  <section class="founding" id="founding" hidden>
+    <div>
+      <div class="eyebrow">
+        <span class="badge" data-i18n="fd.badge">Founding Mac Pro</span>
+        <span data-i18n="fd.eyebrow">1,999 seats · from $9.9</span>
+      </div>
+      <h2 data-i18n="fd.t">The first 999 get $9.9.</h2>
+      <p data-i18n="fd.b">Mac Pro lifetime, one-time. Seats 1–999 are $9.9; seats 1,000–1,999 are $19.9. After 1,999, Mac Pro is $29.</p>
+      <ul>
+        <li data-i18n="fd.1">Mac Pro lifetime: send, broadcast, favorites and search</li>
+        <li data-i18n="fd.2">Secure checkout by Paddle</li>
+        <li data-i18n="fd.3">License delivered by email, works offline</li>
+        <li data-i18n="fd.4">Mobile Pro is a separate subscription</li>
+      </ul>
+    </div>
+    <div>
+      <div class="counter">
+        <strong id="founding-count">—</strong>
+        <span data-i18n="fd.of">/ 1,999 sold</span>
+      </div>
+      <div class="meter" aria-hidden="true"><span id="founding-meter"></span></div>
+      <div class="tier-line"><span data-i18n="fd.nextLabel">Next seat</span> <strong id="founding-price">$9.9</strong></div>
+      <div class="currency" role="group" aria-label="Currency">
+        <button type="button" data-currency="usd" aria-pressed="true">USD</button>
+        <button type="button" data-currency="cny" aria-pressed="false">CNY</button>
+      </div>
+      <button class="buy" type="button" id="founding-buy" data-i18n="fd.cta">Buy Mac Pro</button>
+      <p class="fine" data-i18n="fd.note">Checkout by Paddle. The license arrives by email.</p>
+    </div>
+  </section>
+
   <section class="pricing" id="pricing">
     <div class="plan">
       <h3>Mac</h3>
@@ -291,6 +355,15 @@ const I18N = {
     "p3.t":"Small and signed","p3.b":"5.4 MB, runs in the menu bar, signed with Developer ID and notarized by Apple.",
     "pr.free":"Free","pr.1":"Menu bar capture and the inbox","pr.2":"Local agent detection",
     "pr.3":"LAN pairing with iPhone","pr.4":"Universal build, signed and notarized",
+    "fd.badge":"Founding Mac Pro","fd.eyebrow":"1,999 seats · from $9.9",
+    "fd.t":"The first 999 get $9.9.",
+    "fd.b":"Mac Pro lifetime, one-time. Seats 1–999 are $9.9; seats 1,000–1,999 are $19.9. After 1,999, Mac Pro is $29.",
+    "fd.1":"Mac Pro lifetime: send, broadcast, favorites and search",
+    "fd.2":"Secure checkout by Paddle",
+    "fd.3":"License delivered by email, works offline",
+    "fd.4":"Mobile Pro is a separate subscription",
+    "fd.of":"/ 1,999 sold","fd.nextLabel":"Next seat","fd.cta":"Buy Mac Pro",
+    "fd.note":"Checkout by Paddle. The license arrives by email.",
     "pr.ios":"iPhone Beta","pr.proprice":"TestFlight <small>invite only</small>",
     "pr.p1":"Every agent from your Mac","pr.p2":"Approvals and questions on the go",
     "pr.p3":"Themes, widgets and Live Activities","pr.p4":"Free during the beta",
@@ -342,6 +415,15 @@ const I18N = {
     "p3.t":"小，且已签名","p3.b":"5.4 MB，住在菜单栏，Developer ID 签名并通过 Apple 公证。",
     "pr.free":"免费","pr.1":"菜单栏捕获与收件箱","pr.2":"本机 agent 检测",
     "pr.3":"与 iPhone 局域网配对","pr.4":"通用二进制，已签名公证",
+    "fd.badge":"创始 Mac Pro","fd.eyebrow":"1,999 个席位 · 起价 $9.9",
+    "fd.t":"前 999 个，$9.9。",
+    "fd.b":"Mac Pro 终身授权，一次性买断。1–999 名 $9.9，1,000–1,999 名 $19.9；1,999 之后 $29。",
+    "fd.1":"Mac Pro 终身：发消息、并行分发、收藏与搜索",
+    "fd.2":"Paddle 安全结账",
+    "fd.3":"授权发到邮箱，可离线使用",
+    "fd.4":"手机 Pro 是另一项订阅",
+    "fd.of":"/ 1,999 已售","fd.nextLabel":"下一档","fd.cta":"购买 Mac Pro",
+    "fd.note":"通过 Paddle 结账，授权会发到邮箱。",
     "pr.ios":"iPhone Beta","pr.proprice":"TestFlight <small>邀请制</small>",
     "pr.p1":"Mac 上所有 agent","pr.p2":"随时审批与提问",
     "pr.p3":"主题、小组件与实况活动","pr.p4":"beta 期间免费",
@@ -371,5 +453,85 @@ function applyLanguage(lang) {
   applyLanguage(lang);
   document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => applyLanguage(b.dataset.lang)));
 })();
-</script></body>
+</script>
+<script>
+(function () {
+  const section = document.getElementById("founding");
+  if (!section) return;
+  const countEl = document.getElementById("founding-count");
+  const meterEl = document.getElementById("founding-meter");
+  const priceEl = document.getElementById("founding-price");
+  const buy = document.getElementById("founding-buy");
+  const buttons = [...section.querySelectorAll(".currency button")];
+  const API = "https://flowcue-founding.honaler.workers.dev";
+  let config = null;
+  let status = null;
+  let currency = (navigator.language || "").toLowerCase().startsWith("zh") ? "cny" : "usd";
+  let paddleLoading = null;
+
+  function priceId() {
+    if (!config || !status || !status.next) return null;
+    const tier = status.next.tier;
+    const key = currency === "cny" ? (tier === 1 ? "69" : "139") : (tier === 1 ? "9" : "19");
+    return config.prices?.[currency]?.[key] || null;
+  }
+
+  function render() {
+    if (!config || !config.configured || !status || !status.open) {
+      section.hidden = true;
+      return;
+    }
+    section.hidden = false;
+    countEl.textContent = String(status.sold);
+    meterEl.style.width = Math.min(100, (status.sold / 1999) * 100) + "%";
+    const price = currency === "cny" ? status.next.cny : status.next.usd;
+    priceEl.textContent = currency === "cny" ? "¥" + price : "$" + price;
+    buy.disabled = !priceId();
+    buttons.forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.currency === currency)));
+  }
+
+  buttons.forEach((b) => b.addEventListener("click", () => { currency = b.dataset.currency; render(); }));
+
+  Promise.all([
+    fetch(API + "/api/founding/config", { cache: "no-store" }).then((r) => r.json()),
+    fetch(API + "/api/founding/status", { cache: "no-store" }).then((r) => r.json())
+  ]).then(([c, s]) => { config = c; status = s; render(); }).catch(() => { section.hidden = true; });
+
+  function loadPaddle() {
+    if (window.Paddle) return Promise.resolve(window.Paddle);
+    if (paddleLoading) return paddleLoading;
+    paddleLoading = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://cdn.paddle.com/paddle/v2/paddle.js";
+      script.onload = () => resolve(window.Paddle);
+      script.onerror = () => reject(new Error("paddle_load_failed"));
+      document.head.appendChild(script);
+    });
+    return paddleLoading;
+  }
+
+  buy.addEventListener("click", async () => {
+    const id = priceId();
+    if (!id) return;
+    buy.disabled = true;
+    try {
+      const Paddle = await loadPaddle();
+      if (!window.__flowcuePaddleReady) {
+        Paddle.Environment.set(config.environment === "production" ? "production" : "sandbox");
+        Paddle.Initialize({ token: config.clientToken });
+        window.__flowcuePaddleReady = true;
+      }
+      Paddle.Checkout.open({
+        items: [{ priceId: id }],
+        settings: { successUrl: config.successUrl }
+      });
+    } catch (e) {
+      section.hidden = true;
+    } finally {
+      buy.disabled = !priceId();
+    }
+  });
+})();
+</script>
+</body>
 </html>

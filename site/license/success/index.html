@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Payment received — FlowCue</title>
+<link rel="stylesheet" href="../../assets/page.css">
+<style>
+  .wrap p a, .wrap li a { color: var(--accent); }
+  .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="../../assets/icon-512.png" alt="FlowCue">
+    <span class="brand"><a href="/">FlowCue</a></span>
+    <nav class="nav">
+      <a href="/mac" data-i18n="nav.mac">Mac</a>
+      <a href="/support" data-i18n="nav.support">Support</a>
+      <div class="lang" role="group" aria-label="Language">
+        <button type="button" data-lang="en" aria-pressed="true">EN</button>
+        <button type="button" data-lang="zh" aria-pressed="false">中文</button>
+      </div>
+    </nav>
+  </header>
+
+  <h1 data-i18n="title">Payment received</h1>
+  <p class="updated" data-i18n="intro">Thanks for buying FlowCue Mac Pro. Your license is on its way to the email you used at checkout.</p>
+
+  <div class="card">
+    <h2 data-i18n="h.next">Activate it</h2>
+    <ol>
+      <li data-i18n="step.1">Open the email titled “Your FlowCue Mac Pro license”.</li>
+      <li data-i18n="step.2">Open FlowCue for Mac → Settings → License.</li>
+      <li data-i18n="step.3">Paste the license code and press Activate. It works offline.</li>
+    </ol>
+  </div>
+
+  <h2 data-i18n="h.wait">Not there yet?</h2>
+  <p data-i18n="wait.1">Paddle sends the receipt first; the license email can take a minute. Check spam, then write to hello@altn.vision with your Paddle receipt if it still hasn’t arrived.</p>
+  <p><a href="/mac" data-i18n="cta.mac">Download FlowCue for Mac</a> · <a href="/support" data-i18n="cta.support">Support</a></p>
+
+  <footer>
+    <span>© 2026 FlowCue</span>
+    <a href="/mac" data-i18n="nav.mac">Mac</a>
+    <a href="/support" data-i18n="nav.support">Support</a>
+    <a href="/privacy" data-i18n="nav.privacy">Privacy</a>
+  </footer>
+</div>
+
+<script>
+const I18N = {
+  en: {
+    "nav.mac":"Mac","nav.support":"Support","nav.privacy":"Privacy",
+    "title":"Payment received",
+    "intro":"Thanks for buying FlowCue Mac Pro. Your license is on its way to the email you used at checkout.",
+    "h.next":"Activate it",
+    "step.1":"Open the email titled “Your FlowCue Mac Pro license”.",
+    "step.2":"Open FlowCue for Mac → Settings → Pro → Mac license.",
+    "step.3":"Paste the license code and press Activate. It works offline.",
+    "h.wait":"Not there yet?",
+    "wait.1":"Paddle sends the receipt first; the license email can take a minute. Check spam, then write to hello@altn.vision with your Paddle receipt if it still hasn’t arrived.",
+    "cta.mac":"Download FlowCue for Mac","cta.support":"Support"
+  },
+  zh: {
+    "nav.mac":"Mac","nav.support":"支持","nav.privacy":"隐私",
+    "title":"付款成功",
+    "intro":"感谢购买 FlowCue Mac Pro。授权正在发往你结账时填写的邮箱。",
+    "h.next":"激活",
+    "step.1":"打开标题为「Your FlowCue Mac Pro license」的邮件。",
+    "step.2":"打开 FlowCue for Mac → 设置 → Pro → Mac 授权。",
+    "step.3":"粘贴授权码，点激活。离线也能用。",
+    "h.wait":"还没收到？",
+    "wait.1":"Paddle 会先发收据，授权邮件可能晚一分钟。先看垃圾邮件；还没到就带着 Paddle 收据发邮件到 hello@altn.vision。",
+    "cta.mac":"下载 Mac 版","cta.support":"支持"
+  }
+};
+function applyLanguage(lang) {
+  const dict = I18N[lang] || I18N.en;
+  document.documentElement.lang = lang === "zh" ? "zh-Hans" : "en";
+  document.querySelectorAll("[data-i18n]").forEach(el => { const v = dict[el.dataset.i18n]; if (v) el.textContent = v; });
+  document.querySelectorAll("[data-i18n-html]").forEach(el => { const v = dict[el.dataset.i18nHtml]; if (v) el.innerHTML = v; });
+  document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.lang === lang)));
+  try { localStorage.setItem("flowcue.lang", lang); } catch (e) {}
+}
+(function () {
+  const q = new URLSearchParams(location.search).get("lang");
+  let stored = null;
+  try { stored = localStorage.getItem("flowcue.lang"); } catch (e) {}
+  const lang = q || stored || ((navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en");
+  applyLanguage(lang);
+  document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => applyLanguage(b.dataset.lang)));
+})();
+</script>
+</body>
+</html>
