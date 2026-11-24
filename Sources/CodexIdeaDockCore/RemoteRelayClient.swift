@@ -51,7 +51,20 @@ public final class RemoteRelayClient: @unchecked Sendable {
     private func startWatchdog() {
         queue.asyncAfter(deadline: .now() + 15) { [weak self] in
             guard let self, !self.stopped else { return }
-            if self.state != .online {
+            if self.state == .online, let task = self.task {
+                // 半死连接：中继那头可能已经失效，但本地状态还是 online。
+                // 主动 ping 一次，失败就重连。
+                task.sendPing { error in
+                    guard error != nil else { return }
+                    self.queue.async {
+                        self.state = .offline(reason: "ping failed")
+                        task.cancel(with: .goingAway, reason: nil)
+                        self.task = nil
+                        self.reconnectAttempt = 0
+                        self.connect()
+                    }
+                }
+            } else {
                 self.state = .offline(reason: "watchdog")
                 self.task?.cancel(with: .goingAway, reason: nil)
                 self.task = nil
