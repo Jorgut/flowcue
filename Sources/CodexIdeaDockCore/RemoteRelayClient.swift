@@ -229,7 +229,8 @@ public final class RemoteRelayClient: @unchecked Sendable {
                 method: request.method,
                 path: request.path,
                 headers: request.headers,
-                body: request.body
+                body: request.body,
+                authenticated: true
             )
             NSLog("[FlowCue Remote] %@ %@ → %d (%.1fs)",
                   request.method, request.path, result.status,

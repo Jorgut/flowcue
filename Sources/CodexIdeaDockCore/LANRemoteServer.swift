@@ -356,8 +356,15 @@ public final class LANRemoteServer {
         method: String,
         path: String,
         headers: [String: String],
-        body: Data? = nil
+        body: Data? = nil,
+        authenticated: Bool = false
     ) async -> (status: Int, body: Data) {
+        var headers = headers
+        // 来自加密隧道的请求已经由会话密钥认证过，补上 Bearer 再走同一套路由。
+        // 远程模式下手机拿不到局域网配对码，不能依赖它。
+        if authenticated {
+            headers["authorization"] = "Bearer \(pairingCode)"
+        }
         let request = HTTPRequest(method: method, path: path, headers: headers, body: body ?? Data())
         guard let raw = try? await respond(to: request) else {
             return (500, Data("{}".utf8))
