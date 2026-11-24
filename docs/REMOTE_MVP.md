@@ -581,3 +581,6 @@ New:
 - 2026-11-24: One Mac + one iPhone in MVP; no team/multi-node.
 - 2026-11-24: Push stays Mac-direct for MVP; no relay APNs key.
 - 2026-11-24: Remote price $5.99/month, $49.99/year, 14-day trial; no lifetime at launch.
+- 2026-11-24: `RemoteCryptoSession` 落地（X25519 + HKDF-SHA256 + ChaChaPoly，
+  分方向密钥、单调 seq、64 帧重放窗口），6 项单元测试通过。中继尚未开始。
+
