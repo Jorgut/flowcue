@@ -498,7 +498,8 @@ public final class LANRemoteServer {
                         toolName: item.agent,
                         callId: nil,
                         reason: item.title,
-                        displayReason: item.detail ?? item.title,
+                        // 标题 + 参数一起给手机，否则卡片上只有一个 JSON 片段
+                        displayReason: item.detail.map { "\(item.title)\n\($0)" } ?? item.title,
                         createdAt: ISO8601DateFormatter().string(from: item.createdAt)
                     )
                 }
