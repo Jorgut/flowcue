@@ -23,6 +23,8 @@ public actor RemotePairingManager {
     }
 
     private let identity: Curve25519.KeyAgreement.PrivateKey
+    /// 身份密钥与已批准配对落盘：Mac 重启后手机不该重新配对。
+    private let storeDirectory: URL
     private let now: @Sendable () -> Date
     private let codeTTL: TimeInterval
     private let maxAttempts: Int
@@ -31,24 +33,83 @@ public actor RemotePairingManager {
     private var activeCode: (code: String, expiresAt: Date, attempts: Int)?
     private var pending: [String: PendingPair] = [:]
     private var sessions: [String: RemoteCryptoSession] = [:]
+    /// 已批准配对 → 手机公钥（落盘用）
+    private var approvedKeys: [String: Data] = [:]
     private var revoked: Set<String> = []
 
     public init(
-        identity: Curve25519.KeyAgreement.PrivateKey = Curve25519.KeyAgreement.PrivateKey(),
+        identity: Curve25519.KeyAgreement.PrivateKey? = nil,
         macID: String = UUID().uuidString,
         now: @escaping @Sendable () -> Date = Date.init,
         codeTTL: TimeInterval = 300,
-        maxAttempts: Int = 5
+        maxAttempts: Int = 5,
+        storeDirectory: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".flowcue")
     ) {
-        self.identity = identity
+        self.storeDirectory = storeDirectory
+        self.identity = identity ?? Self.loadIdentity(in: storeDirectory)
         self.macID = macID
         self.now = now
         self.codeTTL = codeTTL
         self.maxAttempts = maxAttempts
+        // 启动时恢复已批准的配对
+        for (pairID, phoneKey) in Self.loadPairs(in: storeDirectory) {
+            approvedKeys[pairID] = phoneKey.rawRepresentation
+            if let session = try? RemoteCryptoSession(
+                localPrivate: self.identity,
+                peerPublic: phoneKey,
+                pairID: pairID,
+                isInitiator: false
+            ) {
+                sessions[pairID] = session
+            }
+        }
     }
 
-    public var publicKey: Data {
-        identity.publicKey.rawRepresentation
+    /// Mac 的长期公钥（发给手机做密钥协商）。
+    public var publicKey: Data { identity.publicKey.rawRepresentation }
+
+    // MARK: 持久化
+
+    private static func identityURL(_ dir: URL) -> URL {
+        dir.appendingPathComponent("remote-identity.bin")
+    }
+    private static func pairsURL(_ dir: URL) -> URL {
+        dir.appendingPathComponent("remote-pairs.json")
+    }
+
+    private static func loadIdentity(in dir: URL) -> Curve25519.KeyAgreement.PrivateKey {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        if let data = try? Data(contentsOf: identityURL(dir)),
+           let key = try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: data) {
+            return key
+        }
+        let key = Curve25519.KeyAgreement.PrivateKey()
+        try? key.rawRepresentation.write(to: identityURL(dir))
+        // 私钥文件只给当前用户读写
+        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: identityURL(dir).path)
+        return key
+    }
+
+    private static func loadPairs(in dir: URL) -> [(String, Curve25519.KeyAgreement.PublicKey)] {
+        guard let data = try? Data(contentsOf: pairsURL(dir)),
+              let raw = try? JSONSerialization.jsonObject(with: data) as? [String: String] else {
+            return []
+        }
+        return raw.compactMap { pairID, base64 in
+            guard let keyData = Data(base64Encoded: base64),
+                  let key = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: keyData) else { return nil }
+            return (pairID, key)
+        }
+    }
+
+    private func persistPairs() {
+        let raw = approvedKeys.mapValues { $0.base64EncodedString() }
+        guard let data = try? JSONSerialization.data(withJSONObject: raw) else { return }
+        try? data.write(to: Self.pairsURL(storeDirectory))
+        try? FileManager.default.setAttributes(
+            [.posixPermissions: 0o600],
+            ofItemAtPath: Self.pairsURL(storeDirectory).path
+        )
     }
 
     /// 开始一次配对：返回 6 位码，显示在 Mac 上（也进 QR）。
@@ -99,8 +160,10 @@ public actor RemotePairingManager {
             isInitiator: false
         )
         sessions[pairID] = session
+        approvedKeys[pairID] = item.phonePublicKey
         item.approved = true
         pending[pairID] = item
+        persistPairs()
         return true
     }
 
@@ -111,7 +174,9 @@ public actor RemotePairingManager {
     public func revoke(pairID: String) {
         revoked.insert(pairID)
         sessions[pairID] = nil
+        approvedKeys[pairID] = nil
         pending[pairID] = nil
+        persistPairs()
     }
 
     public func isRevoked(_ pairID: String) -> Bool {
