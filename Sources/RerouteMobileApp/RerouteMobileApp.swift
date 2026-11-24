@@ -4,6 +4,7 @@ import SwiftData
 import StoreKit
 import Observation
 import UIKit
+import CryptoKit
 import Network
 import Speech
 import AVFoundation
@@ -1056,7 +1057,12 @@ private enum LANHTTP {
         body: Data?,
         timeout: TimeInterval = 10
     ) async throws -> Data {
-        try await withCheckedThrowingContinuation { continuation in
+        // 远程优先：中继隧道在线时所有 /v1 请求走加密通道，
+        // LAN 直连作为同 Wi-Fi 的后备（断线即回退）。
+        if let tunnel = await RemoteTunnel.active() {
+            return try await tunnel.request(method: method, path: path, headers: [:], body: body)
+        }
+        return try await withCheckedThrowingContinuation { continuation in
             let runner = LANHTTPRunner(endpoint: endpoint, method: method, path: path, token: token, body: body, continuation: continuation)
             runner.start()
             DispatchQueue.global().asyncAfter(deadline: .now() + timeout) {
@@ -10449,5 +10455,203 @@ private struct ScrollBottomTracking: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+// MARK: - 远程隧道
+
+/// 中继上的加密通道。配对完成后由它接管所有 `/v1` 请求。
+@MainActor
+final class RemoteTunnel {
+    private static var instance: RemoteTunnel?
+
+    /// 隧道就绪时返回它；未就绪返回 nil，调用方回退到 LAN。
+    static func active() -> RemoteTunnel? {
+        guard let instance, instance.isReady else { return nil }
+        return instance
+    }
+
+    static func install(_ tunnel: RemoteTunnel) {
+        instance = tunnel
+    }
+
+    private var task: URLSessionWebSocketTask?
+    private var session: RemoteCryptoSession?
+    private var pairID = ""
+    private var pending: [String: CheckedContinuation<Data, Error>] = [:]
+    private(set) var isReady = false
+
+    /// 连上中继并开始收帧。
+    func connect(relayURL: URL, pairID: String, pairToken: String, session: RemoteCryptoSession) {
+        self.pairID = pairID
+        self.session = session
+
+        var components = URLComponents(url: relayURL, resolvingAgainstBaseURL: false)
+        components?.scheme = relayURL.scheme == "https" ? "wss" : "ws"
+        components?.path = "/v1/remote/ws"
+        components?.queryItems = [
+            URLQueryItem(name: "role", value: "ios"),
+            URLQueryItem(name: "mac", value: UserDefaults.standard.string(forKey: "FlowCue.remoteMacID") ?? ""),
+            URLQueryItem(name: "pair", value: pairID),
+            URLQueryItem(name: "token", value: pairToken),
+        ]
+        guard let url = components?.url else { return }
+
+        let socket = URLSession.shared.webSocketTask(with: url)
+        task = socket
+        socket.resume()
+        isReady = true
+        receiveLoop()
+    }
+
+    func disconnect() {
+        isReady = false
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
+        for (_, continuation) in pending {
+            continuation.resume(throwing: URLError(.cancelled))
+        }
+        pending.removeAll()
+    }
+
+    private func receiveLoop() {
+        task?.receive { [weak self] result in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch result {
+                case .failure:
+                    self.isReady = false
+                case .success(let message):
+                    let data: Data?
+                    switch message {
+                    case .data(let value): data = value
+                    case .string(let text): data = Data(text.utf8)
+                    @unknown default: data = nil
+                    }
+                    if let data { self.handle(data) }
+                    self.receiveLoop()
+                }
+            }
+        }
+    }
+
+    private func handle(_ data: Data) {
+        // 加密信封
+        guard let envelope = try? JSONDecoder().decode(RemoteEnvelope.self, from: data),
+              var session,
+              let plaintext = try? session.open(envelope),
+              let response = try? JSONDecoder().decode(RemoteResponse.self, from: plaintext) else {
+            return
+        }
+        self.session = session
+        pending.removeValue(forKey: response.id)?.resume(returning: response.body ?? Data())
+    }
+
+    func request(method: String, path: String, headers: [String: String], body: Data?) async throws -> Data {
+        guard var session else { throw URLError(.notConnectedToInternet) }
+        let request = RemoteRequest(method: method, path: path, headers: headers, body: body)
+        let encoded = try JSONEncoder().encode(request)
+        let envelope = try session.seal(encoded)
+        self.session = session
+        let frame = try JSONEncoder().encode(envelope)
+        try await task?.send(.data(frame))
+
+        return try await withCheckedThrowingContinuation { continuation in
+            pending[request.id] = continuation
+            Task { 
+                try? await Task.sleep(for: .seconds(20))
+                if let waiting = pending.removeValue(forKey: request.id) {
+                    waiting.resume(throwing: URLError(.timedOut))
+                }
+            }
+        }
+    }
+}
+
+
+// MARK: - 远程加密（iOS 侧副本，App 不链接 CodexIdeaDockCore）
+
+struct RemoteEnvelope: Codable {
+    let v: Int
+    let pair: String
+    let seq: UInt64
+    let nonce: Data
+    let ciphertext: Data
+}
+
+struct RemoteRequest: Codable {
+    let id: String
+    let kind: String
+    let method: String
+    let path: String
+    let headers: [String: String]
+    let body: Data?
+
+    init(id: String = UUID().uuidString, method: String, path: String,
+         headers: [String: String] = [:], body: Data? = nil) {
+        self.id = id
+        self.kind = "request"
+        self.method = method
+        self.path = path
+        self.headers = headers
+        self.body = body
+    }
+}
+
+struct RemoteResponse: Codable {
+    let id: String
+    let status: Int
+    let body: Data?
+}
+
+struct RemoteCryptoSession {
+    private let sendKey: SymmetricKey
+    private let receiveKey: SymmetricKey
+    let pairID: String
+    private var sendSeq: UInt64 = 0
+    private var lastReceivedSeq: UInt64 = 0
+
+    init(localPrivate: Curve25519.KeyAgreement.PrivateKey,
+         macPublic: Curve25519.KeyAgreement.PublicKey,
+         pairID: String) throws {
+        let shared = try localPrivate.sharedSecretFromKeyAgreement(with: macPublic)
+        let master = shared.hkdfDerivedSymmetricKey(
+            using: SHA256.self,
+            salt: Data(pairID.utf8),
+            sharedInfo: Data("flowcue-remote-v1".utf8),
+            outputByteCount: 32
+        )
+        self.pairID = pairID
+        self.sendKey = HKDF<SHA256>.deriveKey(inputKeyMaterial: master, info: Data("ios2mac".utf8), outputByteCount: 32)
+        self.receiveKey = HKDF<SHA256>.deriveKey(inputKeyMaterial: master, info: Data("mac2ios".utf8), outputByteCount: 32)
+    }
+
+    mutating func seal(_ plaintext: Data) throws -> RemoteEnvelope {
+        sendSeq += 1
+        var bytes = [UInt8](repeating: 0, count: 12)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        let nonce = try ChaChaPoly.Nonce(data: Data(bytes))
+        let box = try ChaChaPoly.seal(plaintext, using: sendKey, nonce: nonce)
+        return RemoteEnvelope(
+            v: 1, pair: pairID, seq: sendSeq,
+            nonce: Data(box.nonce),
+            ciphertext: box.ciphertext + box.tag
+        )
+    }
+
+    mutating func open(_ envelope: RemoteEnvelope) throws -> Data {
+        guard envelope.seq > lastReceivedSeq,
+              envelope.ciphertext.count > 16 else {
+            throw URLError(.badServerResponse)
+        }
+        let nonce = try ChaChaPoly.Nonce(data: envelope.nonce)
+        let box = try ChaChaPoly.SealedBox(
+            nonce: nonce,
+            ciphertext: envelope.ciphertext.dropLast(16),
+            tag: envelope.ciphertext.suffix(16)
+        )
+        let plaintext = try ChaChaPoly.open(box, using: receiveKey)
+        lastReceivedSeq = envelope.seq
+        return plaintext
     }
 }

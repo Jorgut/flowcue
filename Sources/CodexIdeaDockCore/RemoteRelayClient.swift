@@ -60,7 +60,11 @@ public final class RemoteRelayClient: @unchecked Sendable {
         var request = URLRequest(url: relayURL.appendingPathComponent("v1/remote/mac/register"))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
-        request.httpBody = try? JSONEncoder().encode(["macID": macID])
+        let publicKey = await server.pairing.publicKey
+        request.httpBody = try? JSONEncoder().encode([
+            "macID": macID,
+            "publicKey": publicKey.base64EncodedString()
+        ])
         // 把 mac 放进 query
         var components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
         components?.queryItems = [URLQueryItem(name: "mac", value: macID)]

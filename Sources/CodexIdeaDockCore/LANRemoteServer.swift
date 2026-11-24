@@ -346,7 +346,9 @@ public final class LANRemoteServer {
                 "appVersion": Self.appVersion,
                 "phonePolls": String(phonePollCount),
                 "skillsRequests": String(skillsRequestCount),
-                "lastPhonePollAt": lastPhonePollAt.map { ISO8601DateFormatter().string(from: $0) } ?? ""
+                "lastPhonePollAt": lastPhonePollAt.map { ISO8601DateFormatter().string(from: $0) } ?? "",
+                // 手机远程配对时要用这个 ID 找中继上的这台 Mac
+                "remoteMacID": executorID.uuidString
             ]
             return Self.response(status: 200, body: try JSONEncoder().encode(payload))
         }

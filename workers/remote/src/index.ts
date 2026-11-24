@@ -30,6 +30,7 @@ const randomToken = () =>
 
 export class MacSession {
   private state: DurableObjectState;
+  private macID = "";
   private macSocket: WebSocket | null = null;
   private iosSockets = new Map<string, WebSocket>(); // pairID -> socket
 
@@ -42,14 +43,19 @@ export class MacSession {
 
     // 内部 HTTP：登记 / 配对
     if (url.pathname === "/register") {
-      const body = await request.json<{ macID: string }>();
+      const body = await request.json<{ macID: string; publicKey?: string }>();
+      this.macID = body.macID;
       const token = randomToken();
       await this.state.storage.put(`macToken:${body.macID}`, token);
+      if (body.publicKey) {
+        await this.state.storage.put(`macPublicKey:${body.macID}`, body.publicKey);
+      }
       return json({ macToken: token });
     }
 
     if (url.pathname === "/pair/create") {
       const body = await request.json<{ codeProof: string; phonePublicKey: string }>();
+      const macPublicKey = (await this.state.storage.get<string>(`macPublicKey:${this.macID}`)) ?? "";
       // codeProof 是手机输入的 6 位码，Mac 端用它做校验
       const pairID = randomToken();
       const pairToken = randomToken();
@@ -67,7 +73,7 @@ export class MacSession {
           code: body.codeProof,
         }),
       );
-      return json({ pairID, pairToken });
+      return json({ pairID, pairToken, macPublicKey });
     }
 
     if (url.pathname === "/pair/approve") {
