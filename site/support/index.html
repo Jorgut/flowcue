@@ -12,6 +12,50 @@
 <link rel="stylesheet" href="../assets/page.css">
 <style>
   .wrap p a, .wrap li a { color: var(--accent); }
+
+  .support-lede { font-size: 14.5px; color: var(--muted); max-width: 62ch; margin: 0 0 16px; }
+  .support-card {
+    background:
+      radial-gradient(520px 240px at 20% 0%, rgba(126,132,255,.14), transparent 70%),
+      var(--surface);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+    border-radius: 18px;
+    padding: 24px;
+    margin: 8px 0 26px;
+  }
+  .support-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .support-kicker { font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .support-count { display: flex; align-items: baseline; gap: 8px; margin-top: 6px; }
+  .support-count strong { font-size: 40px; line-height: 1; letter-spacing: -.04em; }
+  .support-count span { font-size: 13px; color: var(--muted); }
+  .support-badge {
+    font-size: 11px; color: var(--muted); border: 1px solid var(--border);
+    border-radius: 999px; padding: 4px 10px; white-space: nowrap;
+  }
+  .support-meter { height: 8px; border-radius: 999px; background: #20202a; overflow: hidden; margin: 16px 0 10px; }
+  .support-meter span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--mint)); transition: width .4s ease; }
+  .support-note { font-size: 12px; color: var(--muted); margin: 0 0 16px; }
+  .support-tiers { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .support-tier {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding: 12px 8px; border: 1px solid var(--border); border-radius: 12px;
+    background: rgba(255,255,255,.02); color: var(--text); text-decoration: none;
+  }
+  .support-tier:hover { border-color: var(--accent); }
+  .support-tier strong { font-size: 20px; letter-spacing: -.02em; }
+  .support-tier span { font-size: 11px; color: var(--muted); }
+  .support-tier.disabled, .support-cta.disabled { opacity: .55; cursor: not-allowed; }
+  .support-cta {
+    display: flex; align-items: center; justify-content: center; height: 46px;
+    border-radius: 12px; background: var(--accent); color: #0b0b12;
+    font-weight: 650; text-decoration: none; margin-top: 12px;
+  }
+  .support-fine { font-size: 11px; color: var(--muted); margin: 10px 0 0; text-align: center; }
+  .support-pending { font-size: 11px; color: var(--warn, #f0b429); margin: 8px 0 0; text-align: center; }
+  .support-wall { border-top: 1px solid var(--border); margin-top: 26px; padding-top: 18px; }
+  .support-wall h3 { font-size: 14px; margin: 0 0 6px; }
+  .support-wall p { font-size: 12.5px; color: var(--muted); margin: 0; }
+  @media (max-width: 560px) { .support-tiers { grid-template-columns: 1fr; } }
 </style>
 </head>
 <body>
@@ -38,10 +82,29 @@
   </div>
 
   <h2 data-i18n="h.support">Support FlowCue</h2>
-  <div class="card">
-    <p data-i18n="support.1">FlowCue is free. If you would like to support development, you can leave a one-time contribution. The goal is 1,999 founding supporters; it is optional and unlocks nothing extra.</p>
-    <p><a class="button" href="mailto:hello@altn.vision?subject=Support%20FlowCue" data-i18n="support.cta">Contact to support</a></p>
-    <p class="updated" data-i18n="support.note">A Stripe payment link will replace this button when it is ready.</p>
+  <p class="support-lede" data-i18n="support.lede">FlowCue is free. If you would like to help fund development, you can leave a voluntary tip. It is optional, it is not a product or service, and it unlocks nothing.</p>
+  <div class="support-card">
+    <div class="support-top">
+      <div>
+        <div class="support-kicker" data-i18n="support.kicker">FOUNDING SUPPORTERS</div>
+        <div class="support-count"><strong id="support-count">0</strong><span data-i18n="support.of">/ 1,999</span></div>
+      </div>
+      <span class="support-badge" data-i18n="support.badge">Optional</span>
+    </div>
+    <div class="support-meter" aria-hidden="true"><span id="support-meter"></span></div>
+    <p class="support-note" data-i18n="support.note">Voluntary support. Not a product or service. Non-refundable.</p>
+    <div class="support-tiers">
+      <a class="support-tier" href="#" data-amount="9"><strong>$9</strong><span data-i18n="support.tier1">Coffee</span></a>
+      <a class="support-tier" href="#" data-amount="29"><strong>$29</strong><span data-i18n="support.tier2">Boost</span></a>
+      <a class="support-tier" href="#" data-amount="99"><strong>$99</strong><span data-i18n="support.tier3">Founding</span></a>
+    </div>
+    <a class="support-cta" id="support-paypal" href="#" data-i18n="support.cta">Support with PayPal</a>
+    <p class="support-fine" data-i18n="support.fine">You will be redirected to PayPal. No license or feature is included.</p>
+    <p class="support-pending" id="support-pending" data-i18n="support.pending">Preview: add your PayPal.Me link to enable.</p>
+  </div>
+  <div class="support-wall">
+    <h3 data-i18n="support.wallTitle">Founding supporters</h3>
+    <p data-i18n="support.wallEmpty">No names yet. Supporters can opt in to be listed here.</p>
   </div>
 
   <h2 data-i18n="h.pair">Pairing a Mac</h2>
@@ -98,7 +161,15 @@ const I18N = {
     "nav.mac":"Mac","nav.iphone":"iPhone","nav.privacy":"Privacy","nav.changelog":"Changelog",
     "title":"Support","intro":"FlowCue for Mac and the iPhone beta. Pick the section that matches your issue.",
     "quick":"Most pairing problems are fixed by making sure the Mac is awake, FlowCue is running, and both devices are on the same Wi-Fi.",
-    "h.support":"Support FlowCue","support.1":"FlowCue is free. If you would like to support development, you can leave a one-time contribution. The goal is 1,999 founding supporters; it is optional and unlocks nothing extra.","support.cta":"Contact to support","support.note":"A Stripe payment link will replace this button when it is ready.","h.pair":"Pairing a Mac",
+    "h.support":"Support FlowCue",
+    "support.lede":"FlowCue is free. If you would like to help fund development, you can leave a voluntary tip. It is optional, it is not a product or service, and it unlocks nothing.",
+    "support.kicker":"FOUNDING SUPPORTERS","support.of":"/ 1,999","support.badge":"Optional",
+    "support.note":"Voluntary support. Not a product or service. Non-refundable.",
+    "support.tier1":"Coffee","support.tier2":"Boost","support.tier3":"Founding",
+    "support.cta":"Support with PayPal",
+    "support.fine":"You will be redirected to PayPal. No license or feature is included.",
+    "support.pending":"Preview: add your PayPal.Me link to enable.",
+    "support.wallTitle":"Founding supporters","support.wallEmpty":"No names yet. Supporters can opt in to be listed here.","h.pair":"Pairing a Mac",
     "pair.1":"On the Mac, open FlowCue and choose iPhone to show the six-digit code.",
     "pair.2":"On iPhone, open Agents → Pair a Mac and type the code.",
     "pair.3":"Both devices must be on the same local network. VPNs and guest Wi-Fi can block discovery.",
@@ -127,7 +198,15 @@ const I18N = {
     "nav.mac":"Mac","nav.iphone":"iPhone","nav.privacy":"隐私","nav.changelog":"更新日志",
     "title":"支持","intro":"FlowCue Mac 版与 iPhone beta。选择与你问题对应的部分。",
     "quick":"多数配对问题只需确认 Mac 已唤醒、FlowCue 正在运行，并且两台设备在同一个 Wi-Fi。",
-    "h.support":"支持 FlowCue","support.1":"FlowCue 是免费的。如果你想支持后续开发，可以自愿打赏一次。目标是 1,999 位创始支持者；完全自愿，不解锁额外功能。","support.cta":"联系支持","support.note":"Stripe 支付链接准备好后会替换这个按钮。","h.pair":"配对 Mac",
+    "h.support":"支持 FlowCue",
+    "support.lede":"FlowCue 是免费的。如果你想支持后续开发，可以自愿打赏一次。完全自愿，不是商品或服务，也不解锁任何功能。",
+    "support.kicker":"创始支持者","support.of":"/ 1,999","support.badge":"自愿",
+    "support.note":"自愿支持，不是商品或服务，不支持退款。",
+    "support.tier1":"咖啡","support.tier2":"加油","support.tier3":"创始",
+    "support.cta":"用 PayPal 支持",
+    "support.fine":"会跳转到 PayPal；不包含 License 或功能。",
+    "support.pending":"预览：填入 PayPal.Me 链接后即可启用。",
+    "support.wallTitle":"创始支持者","support.wallEmpty":"还没有名字。支持者可以选择公开列出。","h.pair":"配对 Mac",
     "pair.1":"在 Mac 上打开 FlowCue，选择 iPhone，显示六位配对码。",
     "pair.2":"在 iPhone 上进入 Agents → Pair a Mac，输入配对码。",
     "pair.3":"两台设备必须在同一局域网。VPN 和访客 Wi-Fi 可能阻止发现。",
@@ -168,6 +247,43 @@ function applyLanguage(lang) {
   const lang = q || stored || ((navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en");
   applyLanguage(lang);
   document.querySelectorAll(".lang button").forEach(b => b.addEventListener("click", () => applyLanguage(b.dataset.lang)));
+})();
+</script>
+<script>
+(function () {
+  // Put your PayPal.Me link here, e.g. "https://paypal.me/yourname".
+  const PAYPAL_ME = "";
+  const GOAL = 1999;
+  const COUNT = 0;
+
+  const countEl = document.getElementById("support-count");
+  const meterEl = document.getElementById("support-meter");
+  if (countEl) countEl.textContent = String(COUNT);
+  if (meterEl) meterEl.style.width = Math.min(100, (COUNT / GOAL) * 100) + "%";
+
+  const cta = document.getElementById("support-paypal");
+  const pending = document.getElementById("support-pending");
+  const tiers = [...document.querySelectorAll(".support-tier")];
+  const configured = /^https:\/\/paypal\.me\/[A-Za-z0-9_-]+\/?$/.test(PAYPAL_ME);
+
+  if (!configured) {
+    if (cta) {
+      cta.classList.add("disabled");
+      cta.setAttribute("aria-disabled", "true");
+      cta.addEventListener("click", (event) => event.preventDefault());
+    }
+    tiers.forEach((tier) => {
+      tier.classList.add("disabled");
+      tier.setAttribute("aria-disabled", "true");
+      tier.addEventListener("click", (event) => event.preventDefault());
+    });
+    return;
+  }
+
+  const base = PAYPAL_ME.replace(/\/$/, "");
+  tiers.forEach((tier) => { tier.href = base + "/" + tier.dataset.amount; });
+  if (cta) cta.href = base;
+  if (pending) pending.hidden = true;
 })();
 </script>
 </body>
