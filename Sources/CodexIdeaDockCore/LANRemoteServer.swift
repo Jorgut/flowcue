@@ -21,7 +21,7 @@ public final class LANRemoteServer {
     /// Codex 会话列表要拉起 app-server 再逐个读最新回复，一次 3 秒起；
     /// 手机每隔几秒就问一次，所以缓存一小段时间。
     private var threadCache: (snapshots: [RemoteThreadSnapshot], at: Date)?
-    private static let threadCacheTTL: TimeInterval = 20
+    private static let threadCacheTTL: TimeInterval = 20 // 20
     /// 固定监听端口，让手机缓存的地址在 Mac 重启后依然有效。
     public static let preferredPort: UInt16 = 47824
 
@@ -284,7 +284,7 @@ public final class LANRemoteServer {
 
     /// 装上且被支持的 Agent，附会话数与项目数（60 秒缓存 + 并发去重）。
     private func agentSummaries() async -> [RemoteAgentInfo] {
-        if let at = agentSummaryCacheAt, Date().timeIntervalSince(at) < 60, !agentSummaryCache.isEmpty {
+        if let at = agentSummaryCacheAt, Date().timeIntervalSince(at) < 120, !agentSummaryCache.isEmpty {
             return agentSummaryCache.values.sorted { $0.displayName < $1.displayName }
         }
         // 冷启动要扫三家的会话目录（约 7 秒），并发请求共享同一次计算。

@@ -1323,10 +1323,16 @@ private struct RootTabView: View {
                 _ = store.mergePulledIdeas(pulled)
             }
             await remoteController.pushAllIdeas(store.syncSnapshot())
+            // 轮询分轻重：审批/提问很便宜，3 秒一次；Agent 汇总要遍历本机
+            // 所有会话（实测 5–9 秒），远程时每 3 秒发一次会把对话请求堵死。
+            var tick = 0
             while !Task.isCancelled {
                 await remoteController.refreshApprovals()
                 await remoteController.refreshDSHQuestions()
-                await remoteController.refreshAgents()
+                if tick % 10 == 0 {
+                    await remoteController.refreshAgents()
+                }
+                tick += 1
                 await remoteController.uploadPushTokenIfNeeded()
                 await remoteController.recoverConnectionIfNeeded()
                 try? await Task.sleep(for: .seconds(3))
