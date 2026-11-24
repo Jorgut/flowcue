@@ -54,6 +54,19 @@
   .support-random-btn:hover { border-color: var(--accent); }
   .support-random-value { font-size: 13px; font-weight: 600; color: var(--accent); min-width: 44px; }
   .support-dice { font-size: 13px; }
+  .support-custom {
+    display: inline-flex; align-items: center; gap: 3px;
+    border: 1px solid var(--border); border-radius: 999px; padding: 6px 10px;
+    font-size: 12px; color: var(--muted); background: transparent;
+  }
+  .support-custom input {
+    width: 48px; border: 0; outline: 0; background: transparent; color: var(--text);
+    font: inherit; font-size: 12px; font-weight: 600; text-align: right;
+    -moz-appearance: textfield;
+  }
+  .support-custom input::-webkit-outer-spin-button,
+  .support-custom input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .support-custom input::placeholder { color: var(--muted); font-weight: 400; }
   .support-cta {
     display: flex; align-items: center; justify-content: center; height: 46px;
     border-radius: 12px; background: var(--accent); color: #0b0b12;
@@ -108,6 +121,11 @@
       <a class="support-tier" href="#" data-amount="99"><strong>$99</strong><span data-i18n="support.tier3">Founding</span></a>
     </div>
     <div class="support-random">
+      <label class="support-custom">
+        <span data-i18n="support.custom">Custom</span>
+        <span aria-hidden="true">$</span>
+        <input id="support-custom" type="number" min="5" max="999" step="1" inputmode="numeric" placeholder="25" aria-label="Custom amount">
+      </label>
       <button class="support-random-btn" type="button" id="support-random" aria-label="Pick a random amount">
         <span class="support-dice" aria-hidden="true">🎲</span>
         <span data-i18n="support.random">Random amount</span>
@@ -182,6 +200,7 @@ const I18N = {
     "support.kicker":"FOUNDING SUPPORTERS","support.of":"/ 1,999","support.badge":"Optional",
     "support.note":"Voluntary support. Not a product or service. Non-refundable.",
     "support.tier1":"Coffee","support.tier2":"Boost","support.tier3":"Founding",
+    "support.custom":"Custom",
     "support.random":"Random amount",
     "support.cta":"Support with PayPal",
     "support.fine":"You will be redirected to PayPal. No license or feature is included.",
@@ -220,6 +239,7 @@ const I18N = {
     "support.kicker":"创始支持者","support.of":"/ 1,999","support.badge":"自愿",
     "support.note":"自愿支持，不是商品或服务，不支持退款。",
     "support.tier1":"咖啡","support.tier2":"加油","support.tier3":"创始",
+    "support.custom":"自定义",
     "support.random":"随机金额",
     "support.cta":"用 PayPal 支持",
     "support.fine":"会跳转到 PayPal；不包含 License 或功能。",
@@ -284,6 +304,7 @@ function applyLanguage(lang) {
   const tiers = [...document.querySelectorAll(".support-tier")];
   const randomButton = document.getElementById("support-random");
   const randomValue = document.getElementById("support-random-value");
+  const customInput = document.getElementById("support-custom");
   const configured = /^https:\/\/paypal\.me\/[A-Za-z0-9_-]+\/?$/.test(PAYPAL_ME);
   const base = configured ? PAYPAL_ME.replace(/\/$/, "") : "";
   let selectedAmount = null;
@@ -291,6 +312,13 @@ function applyLanguage(lang) {
   function updateCTA() {
     if (!configured || !cta) return;
     cta.href = selectedAmount ? base + "/" + selectedAmount : base;
+  }
+
+  function setAmount(value) {
+    selectedAmount = value;
+    if (customInput) customInput.value = value == null ? "" : String(value);
+    if (randomValue) randomValue.textContent = value == null ? "" : "$" + value;
+    updateCTA();
   }
 
   if (!configured) {
@@ -313,9 +341,22 @@ function applyLanguage(lang) {
   if (randomButton) {
     randomButton.addEventListener("click", () => {
       const pool = [7, 13, 21, 37, 59, 99];
-      selectedAmount = pool[Math.floor(Math.random() * pool.length)];
-      if (randomValue) randomValue.textContent = "$" + selectedAmount;
+      setAmount(pool[Math.floor(Math.random() * pool.length)]);
+    });
+  }
+
+  if (customInput) {
+    customInput.addEventListener("input", () => {
+      const raw = customInput.value.trim();
+      if (!raw) { selectedAmount = null; if (randomValue) randomValue.textContent = ""; updateCTA(); return; }
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 5) { selectedAmount = null; if (randomValue) randomValue.textContent = ""; updateCTA(); return; }
+      selectedAmount = Math.min(999, Math.round(n));
+      if (randomValue) randomValue.textContent = "";
       updateCTA();
+    });
+    customInput.addEventListener("blur", () => {
+      if (customInput.value && selectedAmount != null) customInput.value = String(selectedAmount);
     });
   }
 })();

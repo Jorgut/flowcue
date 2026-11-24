@@ -82,6 +82,56 @@
   .plan li { font-size: 13px; }
   .plan.highlight { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); }
 
+  .support-home {
+    margin-top: 88px; display: grid; grid-template-columns: 1.05fr .95fr; gap: 28px; align-items: center;
+    background:
+      radial-gradient(520px 260px at 18% 0%, rgba(126,132,255,.14), transparent 70%),
+      var(--surface);
+    border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+    border-radius: 20px; padding: 28px;
+  }
+  .support-home .eyebrow { font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin-bottom: 10px; }
+  .support-home h2 { font-size: 26px; letter-spacing: -.03em; margin: 0 0 10px; }
+  .support-home p { font-size: 13.5px; color: var(--muted); max-width: 56ch; }
+  .support-home .progress { margin-top: 18px; }
+  .support-home .progress strong { font-size: 28px; letter-spacing: -.04em; }
+  .support-home .progress span { font-size: 12px; color: var(--muted); }
+  .support-home .bar { height: 7px; border-radius: 999px; background: #20202a; overflow: hidden; margin-top: 8px; }
+  .support-home .bar span { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), var(--mint)); }
+  .support-home .panel { background: rgba(0,0,0,.2); border: 1px solid var(--border); border-radius: 14px; padding: 16px; }
+  .support-home .amounts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .support-home .amount {
+    border: 1px solid var(--border); background: transparent; color: var(--text);
+    border-radius: 10px; padding: 9px 4px; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer;
+  }
+  .support-home .amount:hover { border-color: var(--accent); }
+  .support-home .amount.selected { border-color: var(--accent); color: var(--accent); }
+  .support-home .custom {
+    display: flex; align-items: center; gap: 6px; margin-top: 9px;
+    border: 1px solid var(--border); border-radius: 10px; padding: 6px 9px; color: var(--muted); font-size: 12px;
+  }
+  .support-home .custom input {
+    width: 62px; border: 0; outline: 0; background: transparent; color: var(--text);
+    font: inherit; font-size: 13px; font-weight: 600; text-align: right;
+    -moz-appearance: textfield;
+  }
+  .support-home .custom input::-webkit-outer-spin-button,
+  .support-home .custom input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .support-home .dice {
+    margin-left: auto; border: 0; background: transparent; color: var(--muted);
+    font-size: 15px; cursor: pointer; padding: 0 2px;
+  }
+  .support-home .dice:hover { color: var(--accent); }
+  .support-home .pay {
+    display: flex; align-items: center; justify-content: center; height: 42px;
+    margin-top: 10px; border-radius: 10px; background: var(--accent); color: #0b0b12;
+    font-size: 13px; font-weight: 650; text-decoration: none;
+  }
+  .support-home .micro { font-size: 10.5px; color: var(--muted); text-align: center; margin: 8px 0 0; }
+  .support-home .more { display: inline-block; margin-top: 9px; font-size: 11px; color: var(--muted); text-decoration: none; }
+  .support-home .more:hover { color: var(--text); }
+  @media (max-width: 860px) { .support-home { grid-template-columns: 1fr; padding: 22px; } }
+
   .faq { margin-top: 88px; }
   .faq details { border-bottom: 1px solid var(--border); padding: 14px 0; }
   .faq summary { cursor: pointer; font-size: 15px; color: var(--text); font-weight: 500; }
@@ -97,6 +147,7 @@
     <nav class="nav">
       <a href="#how" data-i18n="nav.how">How it works</a>
       <a href="#pricing" data-i18n="nav.pricing">Pricing</a>
+      <a href="#support" data-i18n="nav.support">Support</a>
       <a href="/privacy" data-i18n="nav.privacy">Privacy</a>
       <div class="lang" role="group" aria-label="Language">
         <button type="button" data-lang="en" aria-pressed="true">EN</button>
@@ -216,6 +267,34 @@
     </div>
   </section>
 
+  <section class="support-home" id="support">
+    <div>
+      <div class="eyebrow" data-i18n="support.homeEyebrow">SUPPORT FLOWCUE</div>
+      <h2 data-i18n="support.homeTitle">Free for everyone. Optional support.</h2>
+      <p data-i18n="support.homeBody">FlowCue is free. If you would like to help fund development, you can leave a voluntary tip. The goal is 1,999 founding supporters; it is optional, not a product, and it unlocks nothing.</p>
+      <div class="progress">
+        <strong id="home-support-count">0</strong><span data-i18n="support.homeGoal"> / 1,999 founding supporters</span>
+        <div class="bar" aria-hidden="true"><span id="home-support-meter"></span></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="amounts">
+        <button type="button" class="amount" data-amount="9">$9</button>
+        <button type="button" class="amount" data-amount="29">$29</button>
+        <button type="button" class="amount" data-amount="99">$99</button>
+      </div>
+      <div class="custom">
+        <label for="home-support-custom" data-i18n="support.custom">Custom</label>
+        <span aria-hidden="true">$</span>
+        <input id="home-support-custom" type="number" min="5" max="999" step="1" inputmode="numeric" placeholder="25">
+        <button type="button" class="dice" id="home-support-random" aria-label="Pick a random amount">🎲</button>
+      </div>
+      <a class="pay" id="home-support-paypal" href="https://paypal.me/altnkw" data-i18n="support.homeCta">Support with PayPal</a>
+      <p class="micro" data-i18n="support.homeMicro">Voluntary · Non-refundable · No license</p>
+      <a class="more" href="/support" data-i18n="support.more">Full support page →</a>
+    </div>
+  </section>
+
   <section class="faq">
     <h2 style="font-size:22px;margin:0 0 8px" data-i18n="faq.title">Questions</h2>
 
@@ -253,6 +332,13 @@ const I18N = {
   en: {
     "nav.how":"How it works","nav.pricing":"Pricing","nav.privacy":"Privacy","nav.download":"Download",
     "nav.changelog":"Changelog","nav.iphone":"iPhone","nav.support":"Support",
+    "support.homeEyebrow":"SUPPORT FLOWCUE",
+    "support.homeTitle":"Free for everyone. Optional support.",
+    "support.homeBody":"FlowCue is free. If you would like to help fund development, you can leave a voluntary tip. The goal is 1,999 founding supporters; it is optional, not a product, and it unlocks nothing.",
+    "support.homeGoal":" / 1,999 founding supporters",
+    "support.homeFine":"Voluntary support. Not a product or service. Non-refundable. No license.",
+    "support.custom":"Custom","support.homeCta":"Support with PayPal",
+    "support.homeMicro":"Voluntary · Non-refundable · No license","support.more":"Full support page →",
     "hero.title":"Ideas first.<br>Agents <span>next</span>.",
     "hero.lede":"Write the thought before it disappears. FlowCue keeps it in a quiet inbox until you decide which coding agent gets it — Codex, Claude Code, or whatever you install next.",
     "cta.mac":"Download for Mac","cta.ios":"iPhone beta","cta.windows":"Windows (coming soon)",
@@ -304,6 +390,13 @@ const I18N = {
   zh: {
     "nav.how":"怎么用","nav.pricing":"价格","nav.privacy":"隐私","nav.download":"下载",
     "nav.changelog":"更新日志","nav.iphone":"iPhone 版","nav.support":"支持",
+    "support.homeEyebrow":"支持 FLOWCUE",
+    "support.homeTitle":"对所有人免费，支持完全自愿。",
+    "support.homeBody":"FlowCue 是免费的。如果你想支持后续开发，可以自愿打赏一次。目标是 1,999 位创始支持者；完全自愿，不是商品，也不解锁任何功能。",
+    "support.homeGoal":" / 1,999 位创始支持者",
+    "support.homeFine":"自愿支持，不是商品或服务，不支持退款，不包含 License。",
+    "support.custom":"自定义","support.homeCta":"用 PayPal 支持",
+    "support.homeMicro":"自愿 · 不退款 · 无 License","support.more":"完整支持页 →",
     "hero.title":"先记下来，<br>再交给 <span>Agent</span>。",
     "hero.lede":"趁想法还在，先写下来。FlowCue 把它放进一个安静的收件箱，等你决定交给 Codex、Claude Code，还是以后新装的任何 agent。",
     "cta.mac":"下载 Mac 版","cta.ios":"iPhone beta","cta.windows":"Windows 版（开发中）",
@@ -371,5 +464,60 @@ function applyLanguage(lang) {
 })();
 </script>
 
+<script>
+(function () {
+  const PAYPAL_ME = "https://paypal.me/altnkw";
+  const base = PAYPAL_ME.replace(/\/$/, "");
+  const input = document.getElementById("home-support-custom");
+  const pay = document.getElementById("home-support-paypal");
+  const amounts = [...document.querySelectorAll(".support-home .amount")];
+  const random = document.getElementById("home-support-random");
+  const count = document.getElementById("home-support-count");
+  const meter = document.getElementById("home-support-meter");
+  const GOAL = 1999;
+  const COUNT = 0;
+  if (count) count.textContent = String(COUNT);
+  if (meter) meter.style.width = Math.min(100, (COUNT / GOAL) * 100) + "%";
+  if (!pay) return;
+  let selected = null;
+
+  function highlight() {
+    amounts.forEach((button) => button.classList.toggle("selected", Number(button.dataset.amount) === selected));
+  }
+
+  function setAmount(value) {
+    selected = value;
+    if (input) input.value = value == null ? "" : String(value);
+    pay.href = value == null ? base : base + "/" + value;
+    highlight();
+  }
+
+  amounts.forEach((button) => {
+    button.addEventListener("click", () => setAmount(Number(button.dataset.amount)));
+  });
+
+  if (random) {
+    random.addEventListener("click", () => {
+      const pool = [7, 13, 21, 37, 59, 99];
+      setAmount(pool[Math.floor(Math.random() * pool.length)]);
+    });
+  }
+
+  if (input) {
+    input.addEventListener("input", () => {
+      const raw = input.value.trim();
+      if (!raw) { selected = null; pay.href = base; highlight(); return; }
+      const n = Number(raw);
+      if (!Number.isFinite(n) || n < 5) { selected = null; pay.href = base; highlight(); return; }
+      selected = Math.min(999, Math.round(n));
+      pay.href = base + "/" + selected;
+      highlight();
+    });
+    input.addEventListener("blur", () => {
+      if (input.value && selected != null) input.value = String(selected);
+    });
+  }
+})();
+</script>
 </body>
 </html>
