@@ -104,16 +104,38 @@ public struct APNsSender: Sendable {
 
         let (data, response) = try await configuration.session.data(for: request)
         if let http = response as? HTTPURLResponse {
+            let body = String(data: data, encoding: .utf8) ?? ""
             NSLog("[FlowCue APNs] env=%@ token=%@ status=%ld body=%@",
                   configuration.environment.host,
                   String(deviceToken.prefix(8)),
                   http.statusCode,
-                  String(data: data, encoding: .utf8) ?? "")
+                  body)
+            // NSLog 在系统日志里经常查不到；同时写文件，排查推送失败时有据可查。
+            Self.appendLog(environment: configuration.environment.host,
+                           token: deviceToken,
+                           status: http.statusCode,
+                           body: body)
         }
         guard let http = response as? HTTPURLResponse else { throw PushError.invalidKey }
         guard http.statusCode == 200 else {
             let reason = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["reason"] as? String
             throw PushError.rejected(reason ?? "HTTP \(http.statusCode)")
+        }
+    }
+
+    /// 把每次推送结果追加到 ~/.flowcue/apns.log（滚动丢弃过旧内容）。
+    private static func appendLog(environment: String, token: String, status: Int, body: String) {
+        let dir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".flowcue")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("apns.log")
+        let stamp = ISO8601DateFormatter().string(from: Date())
+        let line = "\(stamp) env=\(environment) token=\(token.prefix(8))… status=\(status) \(body)\n"
+        if let handle = try? FileHandle(forWritingTo: file) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(line.utf8))
+        } else {
+            try? line.write(to: file, atomically: true, encoding: .utf8)
         }
     }
 
