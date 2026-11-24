@@ -571,6 +571,7 @@ final class LANRemoteController {
             await refreshDSHSessions()
             await syncProToMac(force: true)
             await uploadPushToken(endpoint: endpoint, code: code)
+            await rememberRemoteIdentity(endpoint: endpoint, code: code, name: displayName)
             statusMessage = threads.isEmpty ? "Connected. No sessions are available yet." : "Connected."
             lastError = nil
             UINotificationFeedbackGenerator().notificationOccurred(.success)
@@ -589,6 +590,20 @@ final class LANRemoteController {
         guard FlowCuePushRegistration.shared.token != nil else { return }
         await uploadPushToken(endpoint: selected.endpoint, code: pairingCode)
         FlowCuePushRegistration.shared.needsUpload = false
+    }
+
+    /// 记住这台 Mac 的中继身份：远程配对时手机要靠它定位。
+    private func rememberRemoteIdentity(endpoint: NWEndpoint, code: String, name: String) async {
+        guard let data = try? await LANHTTP.request(
+            endpoint: endpoint, method: "GET", path: "/v1/ping",
+            token: code, body: nil, timeout: 8
+        ),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let macID = object["remoteMacID"] as? String, !macID.isEmpty else { return }
+        // LANHTTP 可能走隧道，这里必须直连才能拿到 ping；
+        // 若走隧道也返回了同样的字段，直接存即可。
+        RemoteCredentials.macID = macID
+        RemoteCredentials.deviceName = name
     }
 
     /// 把 APNs device token 交给 Mac。Mac 用它直接给苹果推送服务发请求，
@@ -1318,6 +1333,11 @@ private struct RootTabView: View {
         .onChange(of: remoteController.dshQuestions.isEmpty) { _, isEmpty in
         }
         .onAppear {
+            // 有远程凭据时直接连中继，不需要先在同一 Wi-Fi。
+            remoteController.restoreRemoteIfPossible()
+            if RemoteTunnel.active() != nil {
+                remoteController.adoptRemoteDevice()
+            }
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--flowcue-uitest-seed") {
                 store.seedUIIdeasIfNeeded()
@@ -4151,6 +4171,10 @@ private struct PairMacSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var target: DiscoveredMac?
     @State private var showingManual = false
+    @State private var remoteCode = ""
+    @State private var remoteBusy = false
+    @State private var remoteError: String?
+    @State private var showingRemote = false
     @FocusState private var codeFocused: Bool
 
     private var canConnect: Bool {
@@ -4208,6 +4232,7 @@ private struct PairMacSheet: View {
                 codeSection
                 nearbySection
                 manualSection
+                remoteSection
                 FlowCueMacPairingCard()
                     .padding(.top, 22)
 
@@ -4427,6 +4452,79 @@ private struct PairMacSheet: View {
                 .strokeBorder(selected ? FlowCueTheme.accent.opacity(0.6) : FlowCueTheme.hairline)
         )
         .contentShape(Rectangle())
+    }
+
+    /// 不在同一 Wi-Fi 时：用 6 位码通过中继配对。
+    private var remoteSection: some View {
+        DisclosureGroup(isExpanded: $showingRemote) {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("先在 Mac 的 FlowCue → 设置 → Remote 打开远程连接，然后把那里的 6 位码输进来。")
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                TextField("6 位配对码", text: $remoteCode)
+                    .keyboardType(.numberPad)
+                    .textContentType(.oneTimeCode)
+                    .font(.system(size: 20, weight: .semibold, design: .monospaced))
+                    .tracking(6)
+                    .multilineTextAlignment(.center)
+                    .frame(height: 48)
+                    .background(
+                        RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
+                            .fill(FlowCueTheme.surface)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous)
+                            .strokeBorder(FlowCueTheme.hairline)
+                    )
+                    .onChange(of: remoteCode) { _, value in
+                        let digits = String(value.filter { "0123456789".contains($0) }.prefix(6))
+                        if digits != value { remoteCode = digits }
+                    }
+
+                if let remoteError {
+                    Text(remoteError)
+                        .flowCueFont(11, relativeTo: .caption2)
+                        .foregroundStyle(FlowCueTheme.failure)
+                }
+
+                Button {
+                    Task {
+                        remoteBusy = true
+                        remoteError = nil
+                        let failure = await controller.pairRemote(code: remoteCode)
+                        remoteBusy = false
+                        if let failure {
+                            remoteError = failure
+                        } else {
+                            controller.adoptRemoteDevice()
+                            await controller.refresh()
+                            dismiss()
+                        }
+                    }
+                } label: {
+                    Text(remoteBusy ? "正在等待 Mac 批准…" : "通过中继配对")
+                        .flowCueFont(13.5, relativeTo: .subheadline, weight: .semibold)
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 46)
+                        .background(
+                            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
+                                .fill(FlowCueTheme.accent.opacity(remoteCode.count == 6 && !remoteBusy ? 1 : 0.4))
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(remoteCode.count != 6 || remoteBusy)
+            }
+            .padding(.top, 8)
+        } label: {
+            Text("不在同一 Wi-Fi？")
+                .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+        }
+        .tint(FlowCueTheme.textSecondary)
+        .padding(.top, 12)
     }
 
     private var manualSection: some View {
@@ -10653,5 +10751,185 @@ struct RemoteCryptoSession {
         let plaintext = try ChaChaPoly.open(box, using: receiveKey)
         lastReceivedSeq = envelope.seq
         return plaintext
+    }
+}
+
+// MARK: - 远程配对凭据
+
+/// 远程配对后要长期保存的东西：pair 标识、私钥、Mac 公钥。
+/// 私钥进钥匙串；其余（非机密）进 UserDefaults。
+enum RemoteCredentials {
+    private static let keychainAccount = "flowcue.remote.phonePrivateKey"
+
+    static var macID: String? {
+        get { UserDefaults.standard.string(forKey: "FlowCue.remoteMacID") }
+        set { UserDefaults.standard.set(newValue, forKey: "FlowCue.remoteMacID") }
+    }
+    static var pairID: String? {
+        get { UserDefaults.standard.string(forKey: "FlowCue.remotePairID") }
+        set { UserDefaults.standard.set(newValue, forKey: "FlowCue.remotePairID") }
+    }
+    static var pairToken: String? {
+        get { UserDefaults.standard.string(forKey: "FlowCue.remotePairToken") }
+        set { UserDefaults.standard.set(newValue, forKey: "FlowCue.remotePairToken") }
+    }
+    static var macPublicKey: Data? {
+        get { UserDefaults.standard.data(forKey: "FlowCue.remoteMacPublicKey") }
+        set { UserDefaults.standard.set(newValue, forKey: "FlowCue.remoteMacPublicKey") }
+    }
+    static var deviceName: String? {
+        get { UserDefaults.standard.string(forKey: "FlowCue.remoteDeviceName") }
+        set { UserDefaults.standard.set(newValue, forKey: "FlowCue.remoteDeviceName") }
+    }
+
+    static var phonePrivateKey: Curve25519.KeyAgreement.PrivateKey? {
+        get {
+            guard let data = keychainData() else { return nil }
+            return try? Curve25519.KeyAgreement.PrivateKey(rawRepresentation: data)
+        }
+        set {
+            guard let newValue else {
+                deleteKeychainItem()
+                return
+            }
+            saveKeychain(newValue.rawRepresentation)
+        }
+    }
+
+    static func clear() {
+        macID = nil; pairID = nil; pairToken = nil
+        macPublicKey = nil; deviceName = nil
+        phonePrivateKey = nil
+    }
+
+    // MARK: 钥匙串
+
+    private static func query() -> [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "FlowCue",
+            kSecAttrAccount as String: keychainAccount,
+        ]
+    }
+
+    private static func saveKeychain(_ data: Data) {
+        deleteKeychainItem()
+        var attributes = query()
+        attributes[kSecValueData as String] = data
+        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        SecItemAdd(attributes as CFDictionary, nil)
+    }
+
+    private static func keychainData() -> Data? {
+        var attributes = query()
+        attributes[kSecReturnData as String] = true
+        attributes[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(attributes as CFDictionary, &result) == errSecSuccess else { return nil }
+        return result as? Data
+    }
+
+    private static func deleteKeychainItem() {
+        SecItemDelete(query() as CFDictionary)
+    }
+}
+
+extension LANRemoteController {
+    /// 远程配对：用 6 位码在中继上建立隧道。
+    /// 前提是本机之前通过 LAN 配对过（有 remoteMacID 和最后的设备地址）。
+    func pairRemote(code: String) async -> String? {
+        guard let macID = RemoteCredentials.macID else {
+            return "请先在同一 Wi-Fi 下连接一次，让手机记住这台 Mac。"
+        }
+        guard let relay = URL(string: "https://flowcue-remote.honaler.workers.dev") else { return nil }
+
+        let privateKey = Curve25519.KeyAgreement.PrivateKey()
+        let publicKeyBase64 = privateKey.publicKey.rawRepresentation.base64EncodedString()
+
+        // 1. 创建配对
+        var components = URLComponents(url: relay.appendingPathComponent("v1/remote/pair/create"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "mac", value: macID)]
+        guard let createURL = components?.url else { return nil }
+        var request = URLRequest(url: createURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try? JSONEncoder().encode([
+            "codeProof": code,
+            "phonePublicKey": publicKeyBase64
+        ])
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let pairID = object["pairID"] as? String,
+              let pairToken = object["pairToken"] as? String,
+              let macPublicBase64 = object["macPublicKey"] as? String,
+              let macPublicData = Data(base64Encoded: macPublicBase64) else {
+            return "配对码不正确，或 Mac 不在线。"
+        }
+
+        // 2. 等 Mac 批准
+        for _ in 0..<60 {
+            try? await Task.sleep(for: .seconds(1))
+            var statusComponents = URLComponents(url: relay.appendingPathComponent("v1/remote/pair/status"), resolvingAgainstBaseURL: false)
+            statusComponents?.queryItems = [
+                URLQueryItem(name: "mac", value: macID),
+                URLQueryItem(name: "pair", value: pairID)
+            ]
+            guard let statusURL = statusComponents?.url,
+                  let (statusData, _) = try? await URLSession.shared.data(from: statusURL),
+                  let statusObject = try? JSONSerialization.jsonObject(with: statusData) as? [String: Any],
+                  let status = statusObject["status"] as? String else { continue }
+            if status == "approved" { break }
+            if status == "revoked" { return "这台 Mac 拒绝了配对。" }
+        }
+
+        // 3. 派生密钥、建立隧道
+        guard let macPublic = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: macPublicData),
+              let session = try? RemoteCryptoSession(
+                localPrivate: privateKey, macPublic: macPublic, pairID: pairID
+              ) else {
+            return "密钥协商失败。"
+        }
+        RemoteCredentials.macID = macID
+        RemoteCredentials.pairID = pairID
+        RemoteCredentials.pairToken = pairToken
+        RemoteCredentials.macPublicKey = macPublicData
+        RemoteCredentials.phonePrivateKey = privateKey
+
+        let tunnel = RemoteTunnel()
+        RemoteTunnel.install(tunnel)
+        tunnel.connect(relayURL: relay, pairID: pairID, pairToken: pairToken, session: session)
+        return nil
+    }
+
+    /// 远程配对成功后，让 UI 进入「已连接」状态。
+    /// 隧道会接管所有 /v1 请求，endpoint 只在回退 LAN 时用到。
+    func adoptRemoteDevice() {
+        let name = RemoteCredentials.deviceName ?? "Mac"
+        selected = DiscoveredMac(
+            id: RemoteCredentials.macID ?? name,
+            name: name,
+            endpoint: .hostPort(host: "remote.invalid", port: 47824)
+        )
+        statusMessage = "Connected over Remote."
+        lastError = nil
+        lastRefreshAt = Date()
+    }
+
+    /// 启动时若有凭据，直接恢复隧道（不需要在同一 Wi-Fi）。
+    func restoreRemoteIfPossible() {
+        guard let pairID = RemoteCredentials.pairID,
+              let pairToken = RemoteCredentials.pairToken,
+              let macID = RemoteCredentials.macID,
+              let macPublicData = RemoteCredentials.macPublicKey,
+              let privateKey = RemoteCredentials.phonePrivateKey,
+              let relay = URL(string: "https://flowcue-remote.honaler.workers.dev"),
+              let macPublic = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: macPublicData),
+              let session = try? RemoteCryptoSession(localPrivate: privateKey, macPublic: macPublic, pairID: pairID) else {
+            return
+        }
+        RemoteCredentials.macID = macID
+        let tunnel = RemoteTunnel()
+        RemoteTunnel.install(tunnel)
+        tunnel.connect(relayURL: relay, pairID: pairID, pairToken: pairToken, session: session)
     }
 }
