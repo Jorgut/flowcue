@@ -668,6 +668,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // 手机通过中继请求配对时弹窗批准。
             relay.onPairRequest = { [weak relay] pairID, code in
                 guard let relay else { return }
+                // 弹窗在菜单栏应用里可能被压住，先发一条通知兜底。
+                NotificationService.shared.postPairRequest(code: code)
                 // 把应用提到最前，否则弹窗可能被压在别的窗口后面。
                 NSApp.activate(ignoringOtherApps: true)
                 let alert = NSAlert()

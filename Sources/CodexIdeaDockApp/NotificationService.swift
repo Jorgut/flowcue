@@ -61,6 +61,17 @@ final class NotificationService: NSObject, UNUserNotificationCenterDelegate {
         deliver(content, id: "approvals-\(count)")
     }
 
+    /// 配对请求：弹窗在菜单栏应用里可能被压住，通知是可靠的第二条通道。
+    func postPairRequest(code: String) {
+        guard isEnabled else { return }
+        let content = UNMutableNotificationContent()
+        content.title = "FlowCue"
+        content.body = L10n.text("一台 iPhone 请求配对，配对码 ") + code
+        content.sound = .default
+        content.userInfo = ["kind": "remotePair"]
+        deliver(content, id: "remote-pair-\(code)")
+    }
+
     private func deliver(_ content: UNMutableNotificationContent, id: String) {
         center.add(UNNotificationRequest(identifier: id, content: content, trigger: nil))
     }
