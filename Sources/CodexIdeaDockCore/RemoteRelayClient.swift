@@ -27,7 +27,7 @@ public final class RemoteRelayClient: @unchecked Sendable {
     /// Mac 需要弹出批准界面（pairID, 6 位码）。UI 由 AppDelegate 提供。
     public var onPairRequest: ((String, String) -> Void)?
     public var onPairRejected: ((String, String) -> Void)?
-    private var pendingPair: (pairID: String, code: String, key: Data)?
+
 
     public init(relayURL: URL, macID: String, server: LANRemoteServer) {
         self.relayURL = relayURL
@@ -172,7 +172,6 @@ public final class RemoteRelayClient: @unchecked Sendable {
     // MARK: 帧处理
 
     private func handleFrame(_ data: Data) {
-        NSLog("[FlowCue Remote] frame in: %d bytes", data.count)
         // 控制帧（明文）：pair/request 等
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let type = object["type"] as? String {
@@ -182,7 +181,6 @@ public final class RemoteRelayClient: @unchecked Sendable {
                let code = object["code"] as? String,
                let keyBase64 = object["phonePublicKey"] as? String,
                let phoneKey = Data(base64Encoded: keyBase64) {
-                pendingPair = (pairID, code, phoneKey)
                 Task { [weak self] in
                     guard let self else { return }
                     do {
