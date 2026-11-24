@@ -857,7 +857,7 @@ final class LANRemoteController {
             await syncProToMac()
             lastError = nil
         } catch {
-            lastError = "Connection lost. Make sure the Mac app is still running on the same Wi-Fi."
+            lastError = "Connection lost. Make sure FlowCue is still running on your Mac."
         }
     }
 
@@ -1075,7 +1075,12 @@ private enum LANHTTP {
         // 远程优先：中继隧道在线时所有 /v1 请求走加密通道，
         // LAN 直连作为同 Wi-Fi 的后备（断线即回退）。
         if let tunnel = await RemoteTunnel.active() {
-            return try await tunnel.request(method: method, path: path, headers: [:], body: body)
+            // 必须带鉴权头：Mac 端所有接口都要 Bearer，隧道不传就会 401。
+            var headers: [String: String] = [:]
+            if let token, !token.isEmpty {
+                headers["authorization"] = "Bearer \(token)"
+            }
+            return try await tunnel.request(method: method, path: path, headers: headers, body: body)
         }
         return try await withCheckedThrowingContinuation { continuation in
             let runner = LANHTTPRunner(endpoint: endpoint, method: method, path: path, token: token, body: body, continuation: continuation)
