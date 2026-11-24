@@ -18,6 +18,14 @@
 - 新增 `dispatchRemote(method:path:headers:body:)`：中继隧道复用同一套路由，
   端点不再分叉（Remote M2 的基础）。
 
+## 1.1.18 — 修复远程模式下对话永远空白
+
+- `dshMessages` / `messages` 开头有 `guard let selected else { return [] }`，
+  而远程模式下 selected 来自局域网发现、通常为 nil：
+  **打开对话时直接返回空数组，一个请求都不发**。
+  Mac 日志里从未出现过 messages 请求，就是这个原因。
+- 改为隧道在线时用占位 endpoint 发请求，由隧道接管。
+
 ## 1.1.17 — 远程请求不再互相阻塞
 
 - 手机轮询拆分：审批/提问 3 秒一次，Agent 汇总改为 30 秒一次

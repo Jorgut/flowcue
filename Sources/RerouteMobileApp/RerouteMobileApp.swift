@@ -904,8 +904,14 @@ final class LANRemoteController {
         }
     }
 
+    /// 远程模式下 selected 可能为空（它来自局域网发现）；
+    /// 只要隧道在，就用占位 endpoint 发请求，由隧道接管。
+    private var requestEndpoint: NWEndpoint {
+        selected?.endpoint ?? .hostPort(host: "remote.invalid", port: 47824)
+    }
+
     func dshMessages(for session: DSHSessionSnapshot) async -> [RemoteConversationMessage] {
-        guard let selected else { return [] }
+        let selected = DiscoveredMac(id: "remote", name: "Mac", endpoint: requestEndpoint)
         let encoded = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
         do {
             let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/sessions/\(encoded)/messages", token: pairingCode, body: nil)
@@ -1015,7 +1021,7 @@ final class LANRemoteController {
     }
 
     func messages(for thread: RemoteThreadSnapshot) async -> [RemoteConversationMessage] {
-        guard let selected else { return [] }
+        let selected = DiscoveredMac(id: "remote", name: "Mac", endpoint: requestEndpoint)
         let encoded = thread.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? thread.id
         do {
             let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/threads/\(encoded)/messages", token: pairingCode, body: nil)
