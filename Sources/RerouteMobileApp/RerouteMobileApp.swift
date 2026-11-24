@@ -671,6 +671,21 @@ final class LANRemoteController {
         return (try? decoder.decode([RemoteAgentMessage].self, from: data)) ?? []
     }
 
+    /// 该会话「正在执行什么」；没有就返回 nil。
+    func agentActivity(agentID: String, sessionID: String) async -> String? {
+        guard let selected else { return nil }
+        let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? sessionID
+        guard let data = try? await LANHTTP.request(
+            endpoint: selected.endpoint, method: "GET",
+            path: "/v1/agents/\(agentID)/sessions/\(encoded)/activity",
+            token: pairingCode, body: nil, timeout: 15
+        ) else { return nil }
+        struct Payload: Decodable { let activity: String }
+        guard let payload = try? JSONDecoder().decode(Payload.self, from: data),
+              !payload.activity.isEmpty else { return nil }
+        return payload.activity
+    }
+
     @discardableResult
     func sendAgent(agentID: String, sessionID: String, text: String) async -> Bool {
         guard let selected else { return false }
@@ -10091,6 +10106,7 @@ private struct AgentChatView: View {
     @State private var sending = false
     @State private var loading = true
     @State private var isAtBottom = true
+    @State private var activity: String?
 
     /// 以 `/` 开头且还没敲空格时，展示 skill 候选。
     private var slashQuery: String? {
@@ -10101,6 +10117,7 @@ private struct AgentChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            activityBar
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
@@ -10152,6 +10169,30 @@ private struct AgentChatView: View {
         .navigationTitle(session.title.isEmpty ? agent.displayName : session.title)
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+        .task {
+            // 轮询这一条会话正在执行什么（Mac 端只解压这一个日志）。
+            while !Task.isCancelled {
+                activity = await controller.agentActivity(agentID: agent.id, sessionID: session.id)
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var activityBar: some View {
+        if let activity {
+            HStack(spacing: 7) {
+                ProgressView().controlSize(.mini)
+                Text(activity)
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 6)
+            .background(FlowCueTheme.surface.opacity(0.6))
+        }
     }
 
     @ViewBuilder

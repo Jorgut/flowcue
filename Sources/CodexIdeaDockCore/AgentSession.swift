@@ -27,10 +27,13 @@ public struct AgentSession: Identifiable, Hashable, Sendable {
     public let updatedAt: Date
     public let projectPath: String?
     public let messageCount: Int?    // 能算就填，不能算为 nil
+    /// 该会话「正在执行什么」；拿不到就为 nil（Codex/Claude 暂无此信号）。
+    public let activity: String?
     public let locator: String       // 文件路径 / RPC id / URL，适配器自己解释
 
     public init(id: String, agentID: String, title: String, updatedAt: Date,
-                projectPath: String?, messageCount: Int?, locator: String) {
+                projectPath: String?, messageCount: Int?, locator: String,
+                activity: String? = nil) {
         self.id = id
         self.agentID = agentID
         self.title = title
@@ -38,6 +41,7 @@ public struct AgentSession: Identifiable, Hashable, Sendable {
         self.projectPath = projectPath
         self.messageCount = messageCount
         self.locator = locator
+        self.activity = activity
     }
 }
 

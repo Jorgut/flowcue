@@ -270,7 +270,8 @@ public final class LANRemoteServer {
             title: session.title,
             projectPath: session.projectPath,
             updatedAt: session.updatedAt,
-            messageCount: session.messageCount
+            messageCount: session.messageCount,
+            activity: session.activity
         )
     }
 
@@ -316,6 +317,12 @@ public final class LANRemoteServer {
                     let sessions = (try? await agentService.sessions(for: agentID, limit: 1000)) ?? []
                     guard let session = sessions.first(where: { $0.id == sessionID }) else {
                         return Self.response(status: 404, body: Data("{}".utf8))
+                    }
+                    if action == "activity", request.method == "GET" {
+                        let label = (agentService.adapter(for: agentID) as? DSHAgentAdapter)?
+                            .activity(in: session)
+                        let payload = ["activity": label ?? ""]
+                        return Self.response(status: 200, body: (try? Self.encoder.encode(payload)) ?? Data("{}".utf8))
                     }
                     if action == "messages", request.method == "GET" {
                         let messages = (try? await agentService.messages(session)) ?? []

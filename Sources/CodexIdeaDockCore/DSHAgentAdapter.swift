@@ -63,6 +63,11 @@ public struct DSHAgentAdapter: AgentAdapter {
         return Array((sessions + pendingOnly).prefix(limit))
     }
 
+    /// 单个会话「正在执行什么」。只解压这一个日志，不进列表路径。
+    public func activity(in session: AgentSession) -> String? {
+        reader.currentActivity(sessionID: session.locator)?.label
+    }
+
     public func messages(in session: AgentSession, limit: Int = 80) async throws -> [AgentMessage] {
         // 桥只暴露待审/发消息/决策，对话内容从本机会话日志读。
         let raw = reader.messages(sessionID: session.locator, limit: limit)

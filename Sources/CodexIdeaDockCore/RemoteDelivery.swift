@@ -567,14 +567,17 @@ public struct RemoteAgentSession: Codable, Identifiable, Hashable, Sendable {
     public let projectPath: String?
     public let updatedAt: Date
     public let messageCount: Int?
+    /// 正在执行的动作（DSH 有；其它 Agent 暂为 nil）。
+    public let activity: String?
 
-    public init(id: String, agentID: String, title: String, projectPath: String?, updatedAt: Date, messageCount: Int?) {
+    public init(id: String, agentID: String, title: String, projectPath: String?, updatedAt: Date, messageCount: Int?, activity: String? = nil) {
         self.id = id
         self.agentID = agentID
         self.title = title
         self.projectPath = projectPath
         self.updatedAt = updatedAt
         self.messageCount = messageCount
+        self.activity = activity
     }
 }
 
