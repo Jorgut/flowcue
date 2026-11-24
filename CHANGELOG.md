@@ -1,3 +1,11 @@
+## 0.1.6 — 未发布（Mac build 11）
+
+- **Mac 全免费**：移除发消息、并行分发、收藏/搜索的 Pro 门禁；本地功能不再需要订阅或 License。
+- **移除 Mac License 设置页**：原「Pro / Mac 授权」改为「支持」页，只说明当前免费与官网支持者入口；不再有授权码输入。
+- **iPhone 同 Wi-Fi 全免费**：移除 Agents 页的 Pro 付费墙、Pro 设置行、主题解锁和 Pro 徽章；StoreKit 代码保留但不再参与门禁。
+- **官网**：移除 Paddle / 1,999 Mac Pro 购买区；Mac 与 iPhone 文案改为免费；Support 页新增自愿支持者入口（Stripe 链接待配置）。
+- 验证：Mac `swift test` 126 项、2 跳过、0 失败；iOS 1.1.9 (99) 模拟器构建通过；Mac 0.1.6 (11) 构建通过。
+
 # Changelog
 
 本项目遵循语义化版本号。公开发布前的构建记录在本文件中维护。

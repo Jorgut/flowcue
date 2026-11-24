@@ -186,28 +186,9 @@ final class SubscriptionManager {
     }
 
     func refresh() async {
-        isLoading = true
-        await loadProducts()
-        var entitled = false
-        var latestExpiry: Date?
-        for await result in Transaction.currentEntitlements {
-            guard case .verified(let transaction) = result,
-                  FlowCueProduct.all.contains(transaction.productID) else { continue }
-            if transaction.revocationDate == nil,
-               (transaction.expirationDate ?? .distantFuture) > .now {
-                entitled = true
-                if let expiry = transaction.expirationDate {
-                    latestExpiry = max(latestExpiry ?? expiry, expiry)
-                }
-            }
-        }
-        #if DEBUG
-        isPro = entitled || previewPro || isTestFlightBuild
-        #else
-        isPro = entitled || isTestFlightBuild
-        #endif
-        // 只同步真实订阅：TestFlight 的临时解锁不写出去，否则 Mac 会被永久解锁。
-        ProEntitlement.publish(expiry: entitled ? latestExpiry : nil)
+        // FlowCue is free: Basic and the Mac app are not gated by StoreKit.
+        // Remote will get its own paid tier later; until then every feature is free.
+        isPro = true
         isLoading = false
     }
 
@@ -3638,7 +3619,6 @@ private struct AgentsView: View {
     @Binding var tab: FlowCueTab
     @Environment(SubscriptionManager.self) private var subscription
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var showingPaywall = false
     @State private var showingPairing = AgentsPreview.requestedState == "pairing"
     @State private var showingAddAgent = AgentsPreview.requestedState == "addAgent"
     @State private var showingRemote = AgentsPreview.requestedState == "remote"
@@ -3657,12 +3637,6 @@ private struct AgentsView: View {
                         ProgressView()
                             .tint(FlowCueTheme.textSecondary)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if !subscription.isPro {
-                        ProLockedView(
-                            title: "Continue sessions from your phone",
-                            message: "FlowCue Pro connects directly to your Mac on the same Wi-Fi. Read the last reply and send the next message without opening your laptop.",
-                            action: { showingPaywall = true }
-                        )
                     } else if showsCannotReach {
                         cannotReachContent
                     } else if controller.isConnected {
@@ -3707,7 +3681,6 @@ private struct AgentsView: View {
                 network.stop()
                 controller.stopDiscovery()
             }
-            .fullScreenCover(isPresented: $showingPaywall) { PaywallView() }
             .sheet(isPresented: $showingPairing) {
                 PairMacSheet(controller: controller)
                     .presentationDetents([.large])
@@ -7171,18 +7144,15 @@ private struct MeView: View {
     @Binding var tab: FlowCueTab
     let showOnboarding: () -> Void
 
-    @Environment(SubscriptionManager.self) private var subscription
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
     @AppStorage(FlowCueThemeSelection.key) private var themeID = FlowCueThemeSelection.defaultID
 
     @State private var network = FlowCueNetworkMonitor()
-    @State private var showingPaywall = MePreview.state == "paywall"
     @State private var showingPairing = MePreview.state == "pairing"
     @State private var showingDevice = false
     @State private var showingAppearance = MePreview.state == "appearance"
     @State private var showingLanguage = MePreview.state == "language"
-    @State private var showingPro = MePreview.state == "pro"
     @State private var showingAbout = MePreview.state == "about"
     @State private var showingFeedback = MePreview.state == "feedback"
     @State private var showingWidgets = MePreview.state == "widgets"
@@ -7218,10 +7188,6 @@ private struct MeView: View {
                             .padding(.top, 16)
                         settingsRows
                             .padding(.top, 18)
-                        if !subscription.isPro {
-                            proButton
-                                .padding(.top, 18)
-                        }
                     }
                     .padding(.horizontal, 18)
                     .padding(.bottom, 28)
@@ -7235,9 +7201,6 @@ private struct MeView: View {
         .edgeSwipeBack()
             .task { network.start() }
             .onDisappear { network.stop() }
-            .fullScreenCover(isPresented: $showingPaywall) {
-                PaywallView()
-            }
             .sheet(isPresented: $showingPairing) {
                 PairMacSheet(controller: remoteController)
                     .presentationDetents([.large])
@@ -7245,11 +7208,6 @@ private struct MeView: View {
             }
             .sheet(isPresented: $showingLanguage) {
                 LanguageSheet(language: $language)
-                    .presentationDetents([.medium])
-                    .presentationDragIndicator(.visible)
-            }
-            .sheet(isPresented: $showingPro) {
-                ProStatusSheet()
                     .presentationDetents([.medium])
                     .presentationDragIndicator(.visible)
             }
@@ -7377,15 +7335,6 @@ private struct MeView: View {
             divider
 
             Button {
-                openPro()
-            } label: {
-                MeRowLabel(title: "FlowCue Pro", value: proValue, valueColor: proValueColor)
-            }
-            .buttonStyle(.plain)
-
-            divider
-
-            Button {
                 showingAppearance = true
             } label: {
                 MeRowLabel(
@@ -7439,21 +7388,6 @@ private struct MeView: View {
         }
     }
 
-    private var proButton: some View {
-        Button {
-            showingPaywall = true
-        } label: {
-            Text("Get FlowCue Pro")
-                .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
-                .foregroundStyle(FlowCueTheme.onAccent)
-                .frame(maxWidth: .infinity)
-                .frame(height: 50)
-                .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Get FlowCue Pro")
-    }
-
     private var divider: some View {
         Rectangle()
             .fill(FlowCueTheme.hairline)
@@ -7490,15 +7424,6 @@ private struct MeView: View {
         remoteController.selected == nil ? FlowCueTheme.textSecondary : (network.isOnline ? FlowCueTheme.textPrimary : FlowCueTheme.warning)
     }
 
-    private var proValue: String {
-        if subscription.isLoading { return "Checking…" }
-        return subscription.isPro ? "Active" : "Upgrade"
-    }
-
-    private var proValueColor: Color {
-        subscription.isPro ? FlowCueTheme.textSecondary : FlowCueTheme.accent
-    }
-
     private var versionString: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "?"
@@ -7509,25 +7434,14 @@ private struct MeView: View {
         Binding(
             get: { syncController.isEnabled },
             set: { enabled in
-                if enabled && !subscription.isPro {
-                    showingPaywall = true
-                } else {
-                    syncController.setEnabled(enabled)
-                    if enabled {
-                        Task { await syncController.synchronizeNow() }
-                    }
+                syncController.setEnabled(enabled)
+                if enabled {
+                    Task { await syncController.synchronizeNow() }
                 }
             }
         )
     }
 
-    private func openPro() {
-        if subscription.isPro {
-            showingPro = true
-        } else {
-            showingPaywall = true
-        }
-    }
 }
 
 private struct MeStatCard: View {
@@ -7595,11 +7509,9 @@ private struct SettingsView: View {
     @Bindable var remoteController: LANRemoteController
     let showOnboarding: () -> Void
 
-    @Environment(SubscriptionManager.self) private var subscription
     @AppStorage(FlowCueThemeSelection.key) private var themeID = FlowCueThemeSelection.defaultID
     @AppStorage(L10n.preferenceKey) private var language = AppLanguage.english.rawValue
 
-    @State private var showingPaywall = false
     @State private var showingAppearance = false
     @State private var showingLanguage = false
     @State private var showingAbout = false
@@ -7769,9 +7681,6 @@ private struct SettingsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(FlowCueTheme.canvas, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
-        .fullScreenCover(isPresented: $showingPaywall) {
-            PaywallView()
-        }
         .sheet(isPresented: $showingLanguage) {
             LanguageSheet(language: $language)
                 .presentationDetents([.medium])
@@ -7873,21 +7782,17 @@ private struct SettingsView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!subscription.isPro || !syncController.isEnabled || syncController.isSyncing)
-        .opacity(subscription.isPro && syncController.isEnabled ? 1 : 0.45)
+        .disabled(!syncController.isEnabled || syncController.isSyncing)
+        .opacity(syncController.isEnabled ? 1 : 0.45)
     }
 
     private var syncBinding: Binding<Bool> {
         Binding(
             get: { syncController.isEnabled },
             set: { enabled in
-                if enabled && !subscription.isPro {
-                    showingPaywall = true
-                } else {
-                    syncController.setEnabled(enabled)
-                    if enabled {
-                        Task { await syncController.synchronizeNow() }
-                    }
+                syncController.setEnabled(enabled)
+                if enabled {
+                    Task { await syncController.synchronizeNow() }
                 }
             }
         )
@@ -7947,7 +7852,6 @@ private struct SettingsView: View {
         Device: \(UIDevice.current.name) · \(UIDevice.current.model) · iOS \(UIDevice.current.systemVersion)
         Theme: \(themeName)
         Language: \(languageName)
-        Pro: \(subscription.isPro ? "yes" : "no")
         Mac: \(remoteController.isConnected ? "connected" : "not connected")
         iCloud sync: \(syncController.isEnabled ? "on" : "off") · \(L10n.text(syncController.statusMessage))
         """
@@ -8002,12 +7906,10 @@ private struct SettingsLinkRow: View {
 private struct AppearanceView: View {
     let showsDone: Bool
 
-    @Environment(SubscriptionManager.self) private var subscription
     @Environment(\.dismiss) private var dismiss
     @AppStorage(FlowCueThemeSelection.key) private var themeID = FlowCueThemeSelection.defaultID
     @AppStorage("FlowCue.textScale") private var textScale = 1.0
     @State private var group: FlowCueThemeGroup?
-    @State private var showingPaywall = false
 
     private var currentSpec: FlowCueThemeSpec {
         FlowCueThemeCatalog.spec(for: themeID)
@@ -8062,7 +7964,7 @@ private struct AppearanceView: View {
                 groupPicker
                     .padding(.top, 18)
 
-                Text("\(themes.count) THEMES · \(themes.filter { !$0.isPro }.count) FREE")
+                Text("\(themes.count) THEMES · ALL FREE")
                     .flowCueFont(10, relativeTo: .caption2, weight: .medium)
                     .tracking(1.0)
                     .foregroundStyle(FlowCueTheme.textSecondary)
@@ -8082,10 +7984,6 @@ private struct AppearanceView: View {
                 }
                 .padding(.top, 12)
 
-                if !subscription.isPro {
-                    unlockButton
-                        .padding(.top, 22)
-                }
             }
             .padding(.horizontal, 18)
             .padding(.bottom, 26)
@@ -8102,9 +8000,6 @@ private struct AppearanceView: View {
                         .foregroundStyle(FlowCueTheme.accent)
                 }
             }
-        }
-        .fullScreenCover(isPresented: $showingPaywall) {
-            PaywallView()
         }
     }
 
@@ -8153,23 +8048,10 @@ private struct AppearanceView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                     Spacer(minLength: 2)
-                    if spec.isPro {
-                        Text("PRO")
-                            .font(.system(size: 9.5, weight: .medium))
-                            .tracking(0.8)
-                            .foregroundStyle(FlowCueTheme.textSecondary)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 1)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                    .strokeBorder(FlowCueTheme.hairline)
-                            )
-                    } else {
-                        Text("FREE")
-                            .font(.system(size: 9.5, weight: .medium))
-                            .tracking(0.8)
-                            .foregroundStyle(FlowCueTheme.textSecondary)
-                    }
+                    Text("FREE")
+                        .font(.system(size: 9.5, weight: .medium))
+                        .tracking(0.8)
+                        .foregroundStyle(FlowCueTheme.textSecondary)
                     if selected {
                         Image(systemName: "checkmark")
                             .font(.system(size: 10, weight: .semibold))
@@ -8214,25 +8096,7 @@ private struct AppearanceView: View {
         )
     }
 
-    private var unlockButton: some View {
-        Button {
-            showingPaywall = true
-        } label: {
-            Text("Unlock all themes")
-                .flowCueFont(13, relativeTo: .footnote, weight: .semibold)
-                .foregroundStyle(FlowCueTheme.onAccent)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
-        }
-        .buttonStyle(.plain)
-    }
-
     private func select(_ spec: FlowCueThemeSpec) {
-        if spec.isPro && !subscription.isPro {
-            showingPaywall = true
-            return
-        }
         themeID = spec.id
     }
 }

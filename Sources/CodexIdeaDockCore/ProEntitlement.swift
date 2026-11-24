@@ -4,9 +4,6 @@ import Foundation
 /// 只为「有没有订阅」这一件事服务，不涉及支付逻辑。
 public enum ProEntitlement {
     public static let key = "FlowCue.proUntil"
-    /// 一次买断的 Mac Pro 授权；不随 iOS 订阅到期而清除。
-    public static let lifetimeKey = "FlowCue.proLifetime"
-    public static let licenseTokenKey = "FlowCue.licenseToken"
     /// 订阅到期后仍给一段宽限，避免续订失败瞬间功能消失。
     public static let graceDays = 7
 
@@ -21,31 +18,7 @@ public enum ProEntitlement {
         return nil
     }
 
-    public static var isLifetime: Bool {
-        UserDefaults.standard.bool(forKey: lifetimeKey)
-    }
-
-    public static var license: FlowCueLicense? {
-        guard let token = UserDefaults.standard.string(forKey: licenseTokenKey) else { return nil }
-        return LicenseVerifier.verify(token)
-    }
-
-    /// Verifies the Ed25519 license before enabling the lifetime flag.
-    @discardableResult
-    public static func activateLifetime(_ token: String) -> FlowCueLicense? {
-        guard let license = LicenseVerifier.verify(token) else { return nil }
-        UserDefaults.standard.set(true, forKey: lifetimeKey)
-        UserDefaults.standard.set(token.trimmingCharacters(in: .whitespacesAndNewlines), forKey: licenseTokenKey)
-        return license
-    }
-
-    public static func deactivateLifetime() {
-        UserDefaults.standard.removeObject(forKey: lifetimeKey)
-        UserDefaults.standard.removeObject(forKey: licenseTokenKey)
-    }
-
     public static func isPro(now: Date = Date()) -> Bool {
-        if isLifetime { return true }
         guard let expiry else { return false }
         return expiry.addingTimeInterval(TimeInterval(graceDays) * 86_400) > now
     }

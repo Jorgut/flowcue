@@ -16,7 +16,6 @@ struct AgentBrowserView: View {
     @State private var crossAgentResults: [AgentSession] = []
     @State private var searchingAll = false
     @State private var reloadToken = 0
-    @State private var upgradePrompt: String?
 
     private let service = AgentService.default
 
@@ -40,18 +39,6 @@ struct AgentBrowserView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color(nsColor: .windowBackgroundColor))
-        .alert(L10n.text("需要 FlowCue Pro"), isPresented: Binding(
-            get: { upgradePrompt != nil },
-            set: { if !$0 { upgradePrompt = nil } }
-        )) {
-            Button(L10n.text("了解更多")) {
-                if let url = URL(string: "https://altn.vision/flowcue/mac") { NSWorkspace.shared.open(url) }
-                upgradePrompt = nil
-            }
-            Button(L10n.text("稍后"), role: .cancel) { upgradePrompt = nil }
-        } message: {
-            Text((upgradePrompt ?? "") + "\n" + L10n.text("在 iPhone 上订阅后，这台 Mac 会自动解锁。"))
-        }
         .onAppear {
             if agents.isEmpty { agents = AgentDiscovery.scan() }
             if sessions.isEmpty { Task { await loadAllSessions() } }
@@ -364,7 +351,6 @@ struct AgentBrowserView: View {
                     }
                     .buttonStyle(.borderless)
                     .disabled(broadcasting || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .opacity(isPro ? 1 : 0.4)
                     .help(L10n.text("同时发给所有可对话 agent 的最近会话"))
                     .accessibilityLabel(L10n.text("并行分发"))
 
@@ -379,7 +365,6 @@ struct AgentBrowserView: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(sending || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .opacity(isPro ? 1 : 0.4)
                     .accessibilityLabel(L10n.text("发送"))
                 }
                 .padding(.horizontal, 12)
@@ -437,7 +422,6 @@ struct AgentBrowserView: View {
     }
 
     private func searchAllAgentsIfNeeded() async {
-        guard requirePro(L10n.text("收藏与搜索是 Pro 功能")) else { return }
         guard !search.isEmpty, !searchingAll else { return }
         searchingAll = true
         defer { searchingAll = false }
@@ -496,7 +480,6 @@ struct AgentBrowserView: View {
     @State private var dispatchResults: [DispatchResult] = []
 
     private func broadcast() async {
-        guard requirePro(L10n.text("并行分发是 Pro 功能")) else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !broadcasting else { return }
         broadcasting = true
@@ -531,17 +514,7 @@ struct AgentBrowserView: View {
         if results.allSatisfy({ $0.ok }) { draft = "" }
     }
 
-    private var isPro: Bool { ProEntitlement.isPro() }
-
-    /// 未解锁时给出升级提示并返回 false。
-    private func requirePro(_ what: String) -> Bool {
-        if isPro { return true }
-        upgradePrompt = what
-        return false
-    }
-
     private func send(to session: AgentSession) async {
-        guard requirePro(L10n.text("给 agent 发消息是 Pro 功能")) else { return }
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !sending else { return }
         sending = true

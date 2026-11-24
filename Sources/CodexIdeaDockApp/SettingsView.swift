@@ -16,7 +16,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .remote: L10n.text("远程")
         case .sync: L10n.text("同步")
         case .usage: L10n.text("用量")
-        case .pro: L10n.text("Pro")
+        case .pro: L10n.text("支持")
         case .updates: L10n.text("更新")
         case .lab: L10n.text("实验室")
         case .feedback: L10n.text("反馈")
@@ -32,7 +32,7 @@ enum SettingsSection: String, CaseIterable, Identifiable {
         case .remote: "iphone"
         case .sync: "icloud"
         case .usage: "chart.bar"
-        case .pro: "star"
+        case .pro: "heart"
         case .updates: "arrow.down.circle"
         case .lab: "flask"
         case .feedback: "envelope"
@@ -150,7 +150,7 @@ struct SettingsView: View {
         case .remote: L10n.text("这台 Mac 的配对与远程会话")
         case .sync: L10n.text("iCloud 同步与本地存储")
         case .usage: L10n.text("Codex 额度与重置时间")
-        case .pro: L10n.text("解锁全部主题、同步与远程续写")
+        case .pro: L10n.text("支持 FlowCue，或了解如何参与")
         case .updates: L10n.text("版本与更新检查")
         case .lab: L10n.text("实验特性，默认关闭，可能随时改动或消失。")
         case .feedback: L10n.text("一般反馈 + 最近 20 行日志，从不包含想法内容。")
@@ -170,7 +170,7 @@ struct SettingsView: View {
         case .remote: RemoteSettingsPage()
         case .sync: SyncSettingsPage()
         case .usage: UsageSettingsPage()
-        case .pro: ProSettingsPage()
+        case .pro: SupportSettingsPage()
         case .updates: UpdatesSettingsPage()
         case .lab: LabSettingsPage()
         case .feedback: FeedbackSettingsPage()
@@ -726,143 +726,47 @@ private struct UsageSettingsPage: View {
     }
 }
 
-private struct ProSettingsPage: View {
-    @State private var isPro = ProEntitlement.isPro()
-    @State private var expiry: Date? = ProEntitlement.expiry
-    @State private var license: FlowCueLicense? = ProEntitlement.license
-    @State private var licenseInput = ""
-    @State private var licenseMessage: String?
-
+private struct SupportSettingsPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            SettingsGroup(title: L10n.text("Pro"), footnote: L10n.text("iPhone 订阅或 Mac 终身授权都可以解锁。")) {
-                SettingsRow(title: L10n.text("状态")) {
+            SettingsGroup(
+                title: L10n.text("FlowCue 现在完全免费"),
+                footnote: L10n.text("Mac 本地和同一 Wi-Fi 的 iPhone 都不需要付费；没有订阅，也没有 License。")
+            ) {
+                SettingsRow(title: L10n.text("Mac 本地")) {
                     HStack(spacing: 6) {
-                        Circle()
-                            .fill(isPro ? Color(hex: FlowCueTokens.airyDark.success)
-                                        : Color(hex: FlowCueTokens.airyDark.textTertiary))
-                            .frame(width: 6, height: 6)
-                        Text(isPro ? L10n.text("已解锁") : L10n.text("未订阅"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                        Circle().fill(Color(hex: FlowCueTokens.airyDark.success)).frame(width: 6, height: 6)
+                        Text(L10n.text("全部功能免费")).font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                 }
-                if let expiry, isPro {
-                    SettingsRow(title: L10n.text("续订日期")) {
-                        Text(expiry, format: .dateTime.year().month().day())
-                            .font(.system(size: 11).monospacedDigit())
-                            .foregroundStyle(.secondary)
+                SettingsRow(title: L10n.text("iPhone 同 Wi-Fi")) {
+                    HStack(spacing: 6) {
+                        Circle().fill(Color(hex: FlowCueTokens.airyDark.success)).frame(width: 6, height: 6)
+                        Text(L10n.text("免费")).font(.system(size: 11)).foregroundStyle(.secondary)
                     }
                 }
-                SettingsRow(title: L10n.text("刷新状态")) {
-                    Button(L10n.text("刷新")) { refresh() }
-                        .controlSize(.small)
+                SettingsRow(title: L10n.text("Remote")) {
+                    HStack(spacing: 6) {
+                        Circle().fill(Color(hex: FlowCueTokens.airyDark.textTertiary)).frame(width: 6, height: 6)
+                        Text(L10n.text("开发中")).font(.system(size: 11)).foregroundStyle(.secondary)
+                    }
                 }
             }
 
             SettingsGroup(
-                title: L10n.text("Mac 授权"),
-                footnote: L10n.text("一次买断，永久解锁这台 Mac；手机端 Pro 仍是单独订阅。")
+                title: L10n.text("支持 FlowCue"),
+                footnote: L10n.text("如果愿意支持后续开发，可以在官网打赏；不付费也能使用全部功能。")
             ) {
-                SettingsRow(title: L10n.text("状态")) {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(license != nil ? Color(hex: FlowCueTokens.airyDark.success)
-                                                 : Color(hex: FlowCueTokens.airyDark.textTertiary))
-                            .frame(width: 6, height: 6)
-                        Text(license != nil ? L10n.text("终身授权") : L10n.text("未激活"))
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                if let license {
-                    SettingsRow(title: L10n.text("席位")) {
-                        Text("#\(license.seat)")
-                            .font(.system(size: 11).monospacedDigit())
-                            .foregroundStyle(.secondary)
-                    }
-                    if let email = license.email {
-                        SettingsRow(title: L10n.text("授权邮箱")) {
-                            Text(email)
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
+                SettingsRow(title: L10n.text("支持者页面")) {
+                    Button(L10n.text("打开官网")) {
+                        if let url = URL(string: "https://flowcue.altn.vision/support") {
+                            NSWorkspace.shared.open(url)
                         }
                     }
+                    .controlSize(.small)
                 }
-                SettingsRow(title: L10n.text("授权码")) {
-                    HStack(spacing: 8) {
-                        TextField(L10n.text("粘贴授权码"), text: $licenseInput)
-                            .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 11, design: .monospaced))
-                            .frame(minWidth: 240)
-                        Button(L10n.text("激活")) { activateLicense() }
-                            .controlSize(.small)
-                            .disabled(licenseInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        if license != nil {
-                            Button(L10n.text("移除授权")) {
-                                ProEntitlement.deactivateLifetime()
-                                licenseInput = ""
-                                licenseMessage = nil
-                                refresh()
-                            }
-                            .controlSize(.small)
-                        }
-                    }
-                }
-                if let licenseMessage {
-                    Text(licenseMessage)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            SettingsGroup(title: L10n.text("包含")) {
-                ForEach(Array([
-                    L10n.text("给 agent 发消息"),
-                    L10n.text("多 agent 并行分发"),
-                    L10n.text("跨 agent 收藏与搜索"),
-                    L10n.text("之后新增的 Pro 能力")
-                ].enumerated()), id: \.offset) { _, line in
-                    HStack(spacing: 8) {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color(hex: FlowCueTokens.airyDark.accent))
-                        Text(line).font(.system(size: 12))
-                        Spacer()
-                    }
-                    .frame(minHeight: 26)
-                }
-            }
-            HStack(spacing: 10) {
-                Button(L10n.text("了解更多")) {
-                    if let url = URL(string: "https://altn.vision") { NSWorkspace.shared.open(url) }
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .tint(Color(hex: FlowCueTokens.airyDark.accent))
-                Text(L10n.text("手机订阅在 App Store 完成；Mac 授权在官网购买。"))
-                    .font(.system(size: 10))
-                    .foregroundStyle(.secondary)
             }
         }
-        .onAppear { refresh() }
-    }
-
-    private func activateLicense() {
-        if let activated = ProEntitlement.activateLifetime(licenseInput) {
-            license = activated
-            licenseInput = ""
-            licenseMessage = L10n.text("授权已激活。")
-        } else {
-            licenseMessage = L10n.text("授权码无效。")
-        }
-        refresh()
-    }
-
-    private func refresh() {
-        expiry = ProEntitlement.expiry
-        isPro = ProEntitlement.isPro()
-        license = ProEntitlement.license
     }
 }
 
