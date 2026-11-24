@@ -224,8 +224,9 @@ public final class LANRemoteServer {
     /// 生成后登记到中继，手机输码即可找到这台 Mac，无需先在同一 Wi-Fi。
     public func newRemotePairingCode() async -> String {
         let code = await pairing.beginPairing()
-        // 登记不阻塞界面：网络差时也要立刻拿到码。
-        Task { await self.announcePairingCode(code) }
+        // 等登记完成再返回，否则用户拿到码立刻输入时中继还查不到。
+        // announce 内部有 3 秒超时，网络差也不会卡太久。
+        await announcePairingCode(code)
         return code
     }
 
@@ -233,7 +234,7 @@ public final class LANRemoteServer {
         guard let url = URL(string: "https://flowcue-remote.honaler.workers.dev/v1/remote/code/announce") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        request.timeoutInterval = 6
+        request.timeoutInterval = 3
         request.setValue("application/json", forHTTPHeaderField: "content-type")
         let publicKey = await pairing.publicKey.base64EncodedString()
         request.httpBody = try? JSONEncoder().encode([
@@ -472,7 +473,7 @@ public final class LANRemoteServer {
         case ("POST", "/v1/remote/pair/begin"):
             let code = await pairing.beginPairing()
             // 任何途径生成的码都要登记到中继，手机才能用码找到这台 Mac
-            Task { await self.announcePairingCode(code) }
+            await announcePairingCode(code)
             let macKey = await pairing.publicKey
             let macID = await pairing.macID
             let payload: [String: String] = [

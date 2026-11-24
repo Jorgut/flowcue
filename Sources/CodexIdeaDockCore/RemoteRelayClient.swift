@@ -42,6 +42,23 @@ public final class RemoteRelayClient: @unchecked Sendable {
         queue.async { [weak self] in
             self?.stopped = false
             self?.registerThenConnect()
+            self?.startWatchdog()
+        }
+    }
+
+    /// 中继部署、休眠或网络切换都会让连接静默失效。
+    /// 每 15 秒检查一次，不在线就主动重连。
+    private func startWatchdog() {
+        queue.asyncAfter(deadline: .now() + 15) { [weak self] in
+            guard let self, !self.stopped else { return }
+            if self.state != .online {
+                self.state = .offline(reason: "watchdog")
+                self.task?.cancel(with: .goingAway, reason: nil)
+                self.task = nil
+                self.reconnectAttempt = 0
+                self.connect()
+            }
+            self.startWatchdog()
         }
     }
 
