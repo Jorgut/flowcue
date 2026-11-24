@@ -586,5 +586,8 @@ New:
 - 2026-11-24: `RemoteRelayStub` 落地（Network.framework，4 字节长度前缀 + 握手帧，
   按 pair 转发，对端不在返回 `mac_offline`）。3 项测试通过：加密帧穿越、
   离线报错、pair 隔离。完整套件 135 项通过。
+- 2026-11-24: `RemotePairingManager` 落地（actor）：6 位码一码一用、5 分钟 TTL、
+  5 次错误即锁定；Mac 批准后两端各自派生同一组会话密钥（测试证明可互相解密）；
+  撤销后 `session(for:)` 立即失效。6 项测试通过，完整套件 145 项通过。
 
 
