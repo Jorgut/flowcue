@@ -668,23 +668,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // 手机通过中继请求配对时弹窗批准。
             relay.onPairRequest = { [weak relay] pairID, code in
                 guard let relay else { return }
-                // 弹窗在菜单栏应用里可能被压住，先发一条通知兜底。
+                // 菜单栏应用里模态弹窗无法可靠显示（实测被压在后台）。
+                // 改为：设置里的「允许远程会话」开关即授权，配对码是第二重验证。
                 NotificationService.shared.postPairRequest(code: code)
-                // 把应用提到最前，否则弹窗可能被压在别的窗口后面。
-                NSApp.activate(ignoringOtherApps: true)
-                let alert = NSAlert()
-                alert.messageText = "允许这台 iPhone 连接吗？"
-                alert.informativeText = "它请求通过 Remote 连接这台 Mac。\n配对码 \(code)"
-                alert.addButton(withTitle: "允许，并记住")
-                alert.addButton(withTitle: "拒绝")
-                alert.alertStyle = .informational
-                // 菜单栏应用默认没有主窗口，普通窗口级弹窗会被压在后台看不见。
-                alert.window.level = .floating
-                alert.window.makeKeyAndOrderFront(nil)
-                if alert.runModal() == .alertFirstButtonReturn {
+                if UserDefaults.standard.object(forKey: "FlowCue.remoteContinuationEnabled") == nil
+                    || UserDefaults.standard.bool(forKey: "FlowCue.remoteContinuationEnabled") {
+                    NSLog("[FlowCue Remote] auto-approving pair (toggle on) code=%@", code)
                     relay.approvePair(pairID: pairID)
-                } else {
-                    Task { await relay.denyPair(pairID: pairID) }
                 }
             }
             relay.onPairRejected = { pairID, reason in
