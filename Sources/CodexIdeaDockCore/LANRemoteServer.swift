@@ -302,7 +302,56 @@ public final class LANRemoteServer {
         )
     }
 
+    /// 中继隧道的复用入口：解密后的请求交给同一套路由，返回状态码和 body。
+    /// LAN 直连和中继因此没有第二条代码路径——端点不会分叉。
+    public func dispatchRemote(
+        method: String,
+        path: String,
+        headers: [String: String],
+        body: Data? = nil
+    ) async -> (status: Int, body: Data) {
+        let request = HTTPRequest(method: method, path: path, headers: headers, body: body ?? Data())
+        guard let raw = try? await respond(to: request) else {
+            return (500, Data("{}".utf8))
+        }
+        return Self.parseHTTPResponse(raw)
+    }
+
+    /// 从 `response(status:body:)` 生成的字节里取回状态码和 body。
+    private static func parseHTTPResponse(_ raw: Data) -> (status: Int, body: Data) {
+        guard let separator = raw.range(of: Data("\r\n\r\n".utf8)) else {
+            return (500, raw)
+        }
+        let head = String(decoding: raw[..<separator.lowerBound], as: UTF8.self)
+        let status = head
+            .split(separator: " ")
+            .dropFirst()
+            .first
+            .flatMap { Int($0) } ?? 500
+        return (status, Data(raw[separator.upperBound...]))
+    }
+
     private func respond(to request: HTTPRequest) async throws -> Data {
+        // 只有 /v1/ping 公开：配对前客户端要靠它做版本握手。
+        // 其余所有入口（含通用 Agent 接口）都必须在鉴权之后，
+        // 否则局域网内任何人无需配对码就能读会话、发消息。
+        if request.path == "/v1/ping" {
+            let payload: [String: String] = [
+                "name": "FlowCue",
+                "version": String(Self.protocolVersion),
+                "protocol": String(Self.protocolVersion),
+                "appVersion": Self.appVersion,
+                "phonePolls": String(phonePollCount),
+                "skillsRequests": String(skillsRequestCount),
+                "lastPhonePollAt": lastPhonePollAt.map { ISO8601DateFormatter().string(from: $0) } ?? ""
+            ]
+            return Self.response(status: 200, body: try JSONEncoder().encode(payload))
+        }
+
+        guard request.headers["authorization"] == "Bearer \(pairingCode)" else {
+            return Self.response(status: 401, body: Data("{}".utf8))
+        }
+
         if request.path == "/v1/dsh/approvals" {
             phonePollCount += 1
             lastPhonePollAt = Date()
@@ -369,24 +418,8 @@ public final class LANRemoteServer {
             return Self.response(status: 200, body: (try? Self.encoder.encode(localSkills())) ?? Data("[]".utf8))
         }
 
-        if request.path == "/v1/ping" {
-            // `version` 保留给旧客户端；`protocol` 与 `appVersion` 给新客户端做版本握手
-            let payload: [String: String] = [
-                "name": "FlowCue",
-                "version": String(Self.protocolVersion),
-                "protocol": String(Self.protocolVersion),
-                "appVersion": Self.appVersion,
-                "phonePolls": String(phonePollCount),
-                "skillsRequests": String(skillsRequestCount),
-                "lastPhonePollAt": lastPhonePollAt.map { ISO8601DateFormatter().string(from: $0) } ?? ""
-            ]
-            return Self.response(status: 200, body: try JSONEncoder().encode(payload))
-        }
         if let clientVersion = request.headers["x-flowcue-version"] {
             Self.lastClientVersion = clientVersion
-        }
-        guard request.headers["authorization"] == "Bearer \(pairingCode)" else {
-            return Self.response(status: 401, body: Data("{}".utf8))
         }
         switch (request.method, request.path) {
         case ("GET", "/v1/threads"):
