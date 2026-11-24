@@ -14,7 +14,7 @@ public final class RemoteRelayClient: @unchecked Sendable {
     private let macID: String
     private let server: LANRemoteServer
     private let queue = DispatchQueue(label: "flowcue.remote.relay")
-    private var connection: NWConnection?
+    private var task: URLSessionWebSocketTask?
     private var stopped = false
     private var macToken: String?
     private var reconnectAttempt = 0
@@ -48,8 +48,8 @@ public final class RemoteRelayClient: @unchecked Sendable {
     public func stop() {
         queue.async { [weak self] in
             self?.stopped = true
-            self?.connection?.cancel()
-            self?.connection = nil
+            self?.task?.cancel(with: .goingAway, reason: nil)
+            self?.task = nil
             self?.state = .idle
         }
     }
@@ -111,43 +111,17 @@ public final class RemoteRelayClient: @unchecked Sendable {
             URLQueryItem(name: "mac", value: macID),
             URLQueryItem(name: "token", value: macToken),
         ]
-        guard let url = components?.url, url.host != nil else {
+        guard let url = components?.url else {
             scheduleReconnect(reason: "bad url")
             return
         }
-
-        let parameters = NWParameters.tls
-        let options = NWProtocolWebSocket.Options(.version13)
-        // 提供客户端握手响应 = 声明自己是 client
-        options.setClientRequestHandler(queue) { _, _ in
-            NWProtocolWebSocket.Response(status: .accept, subprotocol: nil, additionalHeaders: [])
-        }
-        parameters.defaultProtocolStack.applicationProtocols.insert(options, at: 0)
-
-        // 必须用 NWEndpoint.url：只给 host:port 的话，WebSocket 握手会发 GET / 而丢掉路径。
-        let connection = NWConnection(to: .url(url), using: parameters)
-        self.connection = connection
+        // 用 URLSessionWebSocketTask：Network.framework 的 WebSocket 在这里
+        // 会长时间停在 preparing，握手不完成。
+        let socket = URLSession.shared.webSocketTask(with: url)
+        task = socket
         state = .connecting
-
-        connection.stateUpdateHandler = { [weak self] newState in
-            guard let self else { return }
-            switch newState {
-            case .ready:
-                self.state = .online
-                self.reconnectAttempt = 0
-                self.receiveLoop()
-            case .failed(let error), .waiting(let error):
-                self.state = .offline(reason: error.localizedDescription)
-                self.scheduleReconnect(reason: error.localizedDescription)
-            case .cancelled:
-                // 中继部署/重启会把连接断掉；必须重连，否则会一直静默离线。
-                guard !self.stopped else { return }
-                self.scheduleReconnect(reason: "cancelled")
-            default:
-                break
-            }
-        }
-        connection.start(queue: queue)
+        socket.resume()
+        receiveLoop()
     }
 
     private func scheduleReconnect(reason: String) {
@@ -155,20 +129,27 @@ public final class RemoteRelayClient: @unchecked Sendable {
         let delay = pow(2.0, Double(reconnectAttempt)) * 0.5
         state = .offline(reason: reason)
         queue.asyncAfter(deadline: .now() + delay) { [weak self] in
-            self?.connect()
+            guard let self, !self.stopped else { return }
+            self.connect()
         }
     }
 
     private func receiveLoop() {
-        connection?.receiveMessage { [weak self] data, _, _, error in
+        task?.receive { [weak self] result in
             guard let self else { return }
-            if let data, !data.isEmpty {
-                self.handleFrame(data)
-            }
-            if error == nil {
+            switch result {
+            case .failure(let error):
+                self.state = .offline(reason: error.localizedDescription)
+                self.scheduleReconnect(reason: error.localizedDescription)
+            case .success(let message):
+                self.state = .online
+                self.reconnectAttempt = 0
+                switch message {
+                case .data(let data): self.handleFrame(data)
+                case .string(let text): self.handleFrame(Data(text.utf8))
+                @unknown default: break
+                }
                 self.receiveLoop()
-            } else {
-                self.scheduleReconnect(reason: error?.localizedDescription ?? "receive failed")
             }
         }
     }
@@ -268,8 +249,6 @@ public final class RemoteRelayClient: @unchecked Sendable {
     }
 
     private func send(_ data: Data) {
-        let metadata = NWProtocolWebSocket.Metadata(opcode: .binary)
-        let context = NWConnection.ContentContext(identifier: "frame", metadata: [metadata])
-        connection?.send(content: data, contentContext: context, isComplete: true, completion: .contentProcessed { _ in })
+        task?.send(.data(data)) { _ in }
     }
 }
