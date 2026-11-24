@@ -216,6 +216,19 @@ public final class LANRemoteServer {
     /// Remote 配对：6 位码、批准、撤销都在这里。
     /// 中继客户端需要读取会话，所以暴露为 internal 可读。
     let pairing = RemotePairingManager()
+
+    /// 当前运行的服务实例：设置页要读远程配对码和中继状态。
+    public static weak var current: LANRemoteServer?
+
+    /// 生成一个新的远程配对码（给「不在同一 Wi-Fi」用）。
+    public func newRemotePairingCode() async -> String {
+        await pairing.beginPairing()
+    }
+
+    /// 已批准的远程配对数。
+    public var approvedPairCount: Int {
+        get async { await pairing.approvedCount }
+    }
     /// 各 Agent 的会话列表缓存（30 秒）：手机上反复进出同一个 Agent 不必重扫。
     private var agentSessionsCache: [String: (items: [RemoteAgentSession], at: Date)] = [:]
     /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——

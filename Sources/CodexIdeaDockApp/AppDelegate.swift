@@ -658,6 +658,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             )
             try server.start()
             remoteService = server
+            LANRemoteServer.current = server
             // 中继：注册并保持 WebSocket，收到加密请求后交给同一套路由。
             let relay = RemoteRelayClient(
                 relayURL: URL(string: "https://flowcue-remote.honaler.workers.dev")!,

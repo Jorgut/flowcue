@@ -581,9 +581,25 @@ private struct PanelSettingsPage: View {
     }
 }
 
+private extension String {
+    /// "482913" → "482 913"
+    func chunked(_ size: Int) -> String {
+        var result: [String] = []
+        var index = startIndex
+        while index < endIndex {
+            let next = self.index(index, offsetBy: size, limitedBy: endIndex) ?? endIndex
+            result.append(String(self[index..<next]))
+            index = next
+        }
+        return result.joined(separator: " ")
+    }
+}
+
 private struct RemoteSettingsPage: View {
     @AppStorage("FlowCue.remoteContinuationEnabled") private var enabled = false
     @State private var code: String = UserDefaults.standard.string(forKey: "FlowCue.remotePairingCode") ?? "------"
+    @State private var remoteCode: String?
+    @State private var remoteBusy = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -606,6 +622,34 @@ private struct RemoteSettingsPage: View {
                     }
                 }
             }
+            SettingsGroup(
+                title: L10n.text("远程连接"),
+                footnote: L10n.text("手机不在同一 Wi-Fi 时用这个码。上传到中继的只有密文，配对码 5 分钟有效、一码一用。")
+            ) {
+                SettingsRow(title: L10n.text("远程配对码")) {
+                    HStack(spacing: 8) {
+                        Text(remoteCode.map { $0.chunked(3) } ?? L10n.text("未生成"))
+                            .font(.system(size: 12).monospaced())
+                            .foregroundStyle(remoteCode == nil ? .secondary : .primary)
+                        Button(remoteBusy ? L10n.text("生成中…") : (remoteCode == nil ? L10n.text("生成") : L10n.text("重新生成"))) {
+                            Task {
+                                remoteBusy = true
+                                remoteCode = await LANRemoteServer.current?.newRemotePairingCode()
+                                remoteBusy = false
+                            }
+                        }
+                        .controlSize(.small)
+                        .disabled(remoteBusy)
+                    }
+                }
+                if let remoteCode {
+                    Text(L10n.text("在 iPhone 的配对面板打开「不在同一 Wi-Fi？」输入 ") + remoteCode.chunked(3))
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+
             Text(L10n.text("重新生成后，已配对的设备需要重新输入。"))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)

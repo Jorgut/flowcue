@@ -118,6 +118,11 @@ public actor RemotePairingManager {
         revoked.contains(pairID)
     }
 
+    /// 已批准的配对数（设置页展示）。
+    public var approvedCount: Int {
+        sessions.count
+    }
+
     /// 配对状态：手机端轮询用。
     public func status(for pairID: String) -> String? {
         if revoked.contains(pairID) { return "revoked" }
