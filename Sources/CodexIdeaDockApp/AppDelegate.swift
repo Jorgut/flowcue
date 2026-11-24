@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var syncTask: Task<Void, Never>?
     #if !FLOWCUE_APP_STORE
     private var remoteService: LANRemoteServer?
+    private var remoteRelay: RemoteRelayClient?
     private static let remotePreferenceKey = "FlowCue.remoteContinuationEnabled"
     private static let remoteExecutorKey = "FlowCue.remoteExecutorID"
     private static let remoteCodeKey = "FlowCue.remotePairingCode"
@@ -657,6 +658,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             )
             try server.start()
             remoteService = server
+            // 中继：注册并保持 WebSocket，收到加密请求后交给同一套路由。
+            let relay = RemoteRelayClient(
+                relayURL: URL(string: "https://flowcue-remote.honaler.workers.dev")!,
+                macID: executorID.uuidString,
+                server: server
+            )
+            relay.start()
+            remoteRelay = relay
         } catch {
             remoteService = nil
         }

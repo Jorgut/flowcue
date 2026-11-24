@@ -214,7 +214,8 @@ public final class LANRemoteServer {
     }
     private var externalApprovals: [ExternalApproval] = []
     /// Remote 配对：6 位码、批准、撤销都在这里。
-    private let pairing = RemotePairingManager()
+    /// 中继客户端需要读取会话，所以暴露为 internal 可读。
+    let pairing = RemotePairingManager()
     /// 各 Agent 的会话列表缓存（30 秒）：手机上反复进出同一个 Agent 不必重扫。
     private var agentSessionsCache: [String: (items: [RemoteAgentSession], at: Date)] = [:]
     /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——
