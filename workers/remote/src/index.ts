@@ -11,6 +11,7 @@
 
 export interface Env {
   MAC_SESSION: DurableObjectNamespace;
+  CODE_INDEX: DurableObjectNamespace;
 }
 
 // ---------- 工具 ----------
@@ -55,7 +56,9 @@ export class MacSession {
 
     if (url.pathname === "/pair/create") {
       const body = await request.json<{ codeProof: string; phonePublicKey: string }>();
-      const macPublicKey = (await this.state.storage.get<string>(`macPublicKey:${this.macID}`)) ?? "";
+      const macID = url.searchParams.get("mac") ?? this.macID;
+      if (macID) this.macID = macID;
+      const macPublicKey = (await this.state.storage.get<string>(`macPublicKey:${macID}`)) ?? "";
       // codeProof 是手机输入的 6 位码，Mac 端用它做校验
       const pairID = randomToken();
       const pairToken = randomToken();
@@ -73,7 +76,7 @@ export class MacSession {
           code: body.codeProof,
         }),
       );
-      return json({ pairID, pairToken, macPublicKey });
+      return json({ pairID, pairToken, macPublicKey, macID });
     }
 
     if (url.pathname === "/pair/approve") {
@@ -183,6 +186,57 @@ export class MacSession {
   }
 }
 
+// ---------- 全局配对码索引：用 6 位码反查是哪台 Mac ----------
+
+export class CodeIndex {
+  private state: DurableObjectState;
+
+  constructor(state: DurableObjectState) {
+    this.state = state;
+  }
+
+  async fetch(request: Request): Promise<Response> {
+    const url = new URL(request.url);
+
+    if (url.pathname === "/announce") {
+      const body = await request.json<{ code: string; macID: string; publicKey?: string }>();
+      // 5 分钟有效；一码一用
+      await this.state.storage.put(`code:${body.code}`, {
+        macID: body.macID,
+        publicKey: body.publicKey ?? "",
+        expiresAt: Date.now() + 5 * 60 * 1000,
+        failures: 0,
+      });
+      return json({ ok: true });
+    }
+
+    if (url.pathname === "/resolve") {
+      const body = await request.json<{ code: string }>();
+      const record = await this.state.storage.get<Record<string, unknown>>(
+        `code:${body.code}`,
+      );
+      if (!record) return json({ error: "unknown_code" }, 404);
+      if ((record.expiresAt as number) < Date.now()) {
+        await this.state.storage.delete(`code:${body.code}`);
+        return json({ error: "expired" }, 410);
+      }
+      // 限流：同一码最多 5 次尝试
+      if ((record.failures as number) >= 5) {
+        return json({ error: "locked" }, 429);
+      }
+      return json({ macID: record.macID, publicKey: record.publicKey ?? "" });
+    }
+
+    if (url.pathname === "/consume") {
+      const body = await request.json<{ code: string }>();
+      await this.state.storage.delete(`code:${body.code}`);
+      return json({ ok: true });
+    }
+
+    return new Response("not found", { status: 404 });
+  }
+}
+
 // ---------- Worker 入口 ----------
 
 export default {
@@ -190,7 +244,52 @@ export default {
     const url = new URL(request.url);
 
     if (url.pathname === "/health") {
-      return json({ ok: true, service: "flowcue-remote" });
+      return json({ ok: true, service: "flowcue-remote", v: "probe-1" });
+    }
+
+    const indexStub = env.CODE_INDEX.get(env.CODE_INDEX.idFromName("codes"));
+
+    // Mac 生成码时登记：让手机可以用码找到它
+    if (url.pathname === "/v1/remote/code/announce") {
+      return indexStub.fetch(new Request("https://index/announce", request));
+    }
+
+    // 手机用码直接配对：不需要先在同一 Wi-Fi
+    if (url.pathname === "/v1/remote/pair/claim") {
+      const body = await request.clone().json<{ code: string; phonePublicKey: string }>();
+      const resolved = await indexStub
+        .fetch(new Request("https://index/resolve", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code: body.code }),
+        }))
+        .then((r) => r.json<{ macID?: string; publicKey?: string }>());
+      if (!resolved.macID) {
+        return json({ error: "unknown_code" }, 404);
+      }
+      const macStub = env.MAC_SESSION.get(env.MAC_SESSION.idFromName(resolved.macID));
+      const target = new URL(request.url);
+      target.pathname = "/pair/create";
+      target.search = `?mac=${resolved.macID}`;
+      const result = await macStub.fetch(new Request(target.toString(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      }));
+      // 成功就消费掉这个码，防止重复使用
+      if (result.ok) {
+        await indexStub.fetch(new Request("https://index/consume", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ code: body.code }),
+        }));
+      }
+      const payload = await result.json<Record<string, unknown>>();
+      return json({
+        ...payload,
+        macID: resolved.macID,
+        macPublicKey: (payload.macPublicKey as string) || resolved.publicKey || "",
+      });
     }
 
     const macID = url.searchParams.get("mac") ?? "";

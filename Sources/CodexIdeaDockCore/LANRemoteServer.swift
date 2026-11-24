@@ -221,8 +221,25 @@ public final class LANRemoteServer {
     public static weak var current: LANRemoteServer?
 
     /// 生成一个新的远程配对码（给「不在同一 Wi-Fi」用）。
+    /// 生成后登记到中继，手机输码即可找到这台 Mac，无需先在同一 Wi-Fi。
     public func newRemotePairingCode() async -> String {
-        await pairing.beginPairing()
+        let code = await pairing.beginPairing()
+        await announcePairingCode(code)
+        return code
+    }
+
+    private func announcePairingCode(_ code: String) async {
+        guard let url = URL(string: "https://flowcue-remote.honaler.workers.dev/v1/remote/code/announce") else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        let publicKey = await pairing.publicKey.base64EncodedString()
+        request.httpBody = try? JSONEncoder().encode([
+            "code": code,
+            "macID": executorID.uuidString,
+            "publicKey": publicKey
+        ])
+        _ = try? await URLSession.shared.data(for: request)
     }
 
     /// 已批准的远程配对数。
@@ -452,6 +469,8 @@ public final class LANRemoteServer {
         switch (request.method, request.path) {
         case ("POST", "/v1/remote/pair/begin"):
             let code = await pairing.beginPairing()
+            // 任何途径生成的码都要登记到中继，手机才能用码找到这台 Mac
+            await announcePairingCode(code)
             let macKey = await pairing.publicKey
             let macID = await pairing.macID
             let payload: [String: String] = [

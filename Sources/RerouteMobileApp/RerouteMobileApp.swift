@@ -10838,18 +10838,23 @@ extension LANRemoteController {
     /// 远程配对：用 6 位码在中继上建立隧道。
     /// 前提是本机之前通过 LAN 配对过（有 remoteMacID 和最后的设备地址）。
     func pairRemote(code: String) async -> String? {
-        guard let macID = RemoteCredentials.macID else {
-            return "请先在同一 Wi-Fi 下连接一次，让手机记住这台 Mac。"
-        }
         guard let relay = URL(string: "https://flowcue-remote.honaler.workers.dev") else { return nil }
 
         let privateKey = Curve25519.KeyAgreement.PrivateKey()
         let publicKeyBase64 = privateKey.publicKey.rawRepresentation.base64EncodedString()
 
-        // 1. 创建配对
-        var components = URLComponents(url: relay.appendingPathComponent("v1/remote/pair/create"), resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "mac", value: macID)]
-        guard let createURL = components?.url else { return nil }
+        // 1. 创建配对：知道 macID 就直接建；不知道就用 6 位码让中继去查，
+        //    这样不需要先在同一 Wi-Fi 下连接过。
+        let createURL: URL
+        if let macID = RemoteCredentials.macID {
+            var components = URLComponents(url: relay.appendingPathComponent("v1/remote/pair/create"), resolvingAgainstBaseURL: false)
+            components?.queryItems = [URLQueryItem(name: "mac", value: macID)]
+            guard let url = components?.url else { return nil }
+            createURL = url
+        } else {
+            guard let url = URL(string: "https://flowcue-remote.honaler.workers.dev/v1/remote/pair/claim") else { return nil }
+            createURL = url
+        }
         var request = URLRequest(url: createURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
@@ -10865,6 +10870,8 @@ extension LANRemoteController {
               let macPublicData = Data(base64Encoded: macPublicBase64) else {
             return "配对码不正确，或 Mac 不在线。"
         }
+
+        let macID = (object["macID"] as? String) ?? RemoteCredentials.macID ?? ""
 
         // 2. 等 Mac 批准
         for _ in 0..<60 {

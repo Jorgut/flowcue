@@ -5,11 +5,13 @@
   "compatibility_date": "2026-01-01",
   "durable_objects": {
     "bindings": [
-      { "name": "MAC_SESSION", "class_name": "MacSession" }
+      { "name": "MAC_SESSION", "class_name": "MacSession" },
+      { "name": "CODE_INDEX", "class_name": "CodeIndex" }
     ]
   },
   "migrations": [
-    { "tag": "v1", "new_sqlite_classes": ["MacSession"] }
+    { "tag": "v1", "new_sqlite_classes": ["MacSession"] },
+    { "tag": "v2", "new_sqlite_classes": ["CodeIndex"] }
   ],
   "observability": { "enabled": true }
 }
