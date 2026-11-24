@@ -15,12 +15,17 @@ public final class RemoteRelayClient: @unchecked Sendable {
     private let server: LANRemoteServer
     private let queue = DispatchQueue(label: "flowcue.remote.relay")
     private var connection: NWConnection?
+    private var stopped = false
     private var macToken: String?
     private var reconnectAttempt = 0
     public private(set) var state: State = .idle {
         didSet { onStateChange?(state) }
     }
     public var onStateChange: ((State) -> Void)?
+    /// Mac 需要弹出批准界面（pairID, 6 位码）。UI 由 AppDelegate 提供。
+    public var onPairRequest: ((String, String) -> Void)?
+    public var onPairRejected: ((String, String) -> Void)?
+    private var pendingPair: (pairID: String, code: String, key: Data)?
 
     public init(relayURL: URL, macID: String, server: LANRemoteServer) {
         self.relayURL = relayURL
@@ -33,12 +38,14 @@ public final class RemoteRelayClient: @unchecked Sendable {
 
     public func start() {
         queue.async { [weak self] in
+            self?.stopped = false
             self?.registerThenConnect()
         }
     }
 
     public func stop() {
         queue.async { [weak self] in
+            self?.stopped = true
             self?.connection?.cancel()
             self?.connection = nil
             self?.state = .idle
@@ -116,6 +123,10 @@ public final class RemoteRelayClient: @unchecked Sendable {
             case .failed(let error), .waiting(let error):
                 self.state = .offline(reason: error.localizedDescription)
                 self.scheduleReconnect(reason: error.localizedDescription)
+            case .cancelled:
+                // 中继部署/重启会把连接断掉；必须重连，否则会一直静默离线。
+                guard !self.stopped else { return }
+                self.scheduleReconnect(reason: "cancelled")
             default:
                 break
             }
@@ -149,25 +160,56 @@ public final class RemoteRelayClient: @unchecked Sendable {
     // MARK: 帧处理
 
     private func handleFrame(_ data: Data) {
+        NSLog("[FlowCue Remote] frame in: %d bytes", data.count)
         // 控制帧（明文）：pair/request 等
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let type = object["type"] as? String {
             if type == "error" { return }
-            // pair/request 目前只在 Mac 上记一笔，批准由 Mac 端接口完成
-            NSLog("[FlowCue Remote] control frame: %@", type)
+            if type == "pair/request",
+               let pairID = object["pairID"] as? String,
+               let code = object["code"] as? String,
+               let keyBase64 = object["phonePublicKey"] as? String,
+               let phoneKey = Data(base64Encoded: keyBase64) {
+                pendingPair = (pairID, code, phoneKey)
+                Task { [weak self] in
+                    guard let self else { return }
+                    do {
+                        _ = try await self.server.pairing.request(
+                            code: code, phonePublicKey: phoneKey, pairID: pairID
+                        )
+                        await MainActor.run {
+                            self.onPairRequest?(pairID, code)
+                        }
+                    } catch {
+                        await MainActor.run {
+                            self.onPairRejected?(pairID, String(describing: error))
+                        }
+                    }
+                }
+            }
             return
         }
 
         guard let envelope = try? JSONDecoder().decode(RemoteEnvelope.self, from: data) else {
+            NSLog("[FlowCue Remote] envelope decode failed: %@",
+                  String(decoding: data.prefix(60), as: UTF8.self))
             return
         }
         Task { [weak self] in
             guard let self else { return }
             guard var session = await self.server.pairing.session(for: envelope.pair) else {
+                NSLog("[FlowCue Remote] no session for pair %@", envelope.pair)
                 return
             }
-            guard let plaintext = try? session.open(envelope),
-                  let request = try? JSONDecoder().decode(RemoteRequest.self, from: plaintext) else {
+            let plaintext: Data
+            do {
+                plaintext = try session.open(envelope)
+            } catch {
+                NSLog("[FlowCue Remote] decrypt failed: %@", String(describing: error))
+                return
+            }
+            guard let request = try? JSONDecoder().decode(RemoteRequest.self, from: plaintext) else {
+                NSLog("[FlowCue Remote] bad request payload")
                 return
             }
             let result = await self.server.dispatchRemote(
@@ -182,6 +224,31 @@ public final class RemoteRelayClient: @unchecked Sendable {
                   let frame = try? JSONEncoder().encode(reply) else { return }
             self.send(frame)
         }
+    }
+
+    /// Mac 上点了「允许」。
+    public func approvePair(pairID: String) {
+        Task { [weak self] in
+            guard let self else { return }
+            _ = try? await self.server.pairing.approve(pairID: pairID)
+            await self.notifyRelay(path: "v1/remote/pair/approve", pairID: pairID)
+        }
+    }
+
+    public func denyPair(pairID: String) async {
+        await server.pairing.deny(pairID: pairID)
+        await notifyRelay(path: "v1/remote/pair/revoke", pairID: pairID)
+    }
+
+    private func notifyRelay(path: String, pairID: String) async {
+        var components = URLComponents(url: relayURL.appendingPathComponent(path), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "mac", value: macID)]
+        guard let url = components?.url else { return }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try? JSONEncoder().encode(["pairID": pairID])
+        _ = try? await URLSession.shared.data(for: request)
     }
 
     private func send(_ data: Data) {

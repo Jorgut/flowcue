@@ -50,6 +50,7 @@ export class MacSession {
 
     if (url.pathname === "/pair/create") {
       const body = await request.json<{ codeProof: string; phonePublicKey: string }>();
+      // codeProof 是手机输入的 6 位码，Mac 端用它做校验
       const pairID = randomToken();
       const pairToken = randomToken();
       await this.state.storage.put(`pair:${pairID}`, {
@@ -63,6 +64,7 @@ export class MacSession {
           type: "pair/request",
           pairID,
           phonePublicKey: body.phonePublicKey,
+          code: body.codeProof,
         }),
       );
       return json({ pairID, pairToken });
@@ -121,7 +123,7 @@ export class MacSession {
       server.accept();
       this.macSocket = server;
       server.addEventListener("message", (event) => {
-        this.routeFromMac(event.data as string);
+        this.routeFromMac(event.data as string | ArrayBuffer);
       });
       server.addEventListener("close", () => {
         if (this.macSocket === server) this.macSocket = null;
@@ -155,21 +157,23 @@ export class MacSession {
     return new Response("bad role", { status: 400 });
   }
 
-  /** Mac 发来的帧带着信封里的 pair，按它找对应的手机。 */
-  private routeFromMac(raw: string): void {
+  /** Mac 发来的帧带着信封里的 pair，按它找对应的手机。
+   *  注意 Mac 客户端用二进制帧发送，这里必须先解码再解析。 */
+  private routeFromMac(raw: string | ArrayBuffer): void {
+    const text = typeof raw === "string" ? raw : new TextDecoder().decode(raw);
     let pairID = "";
     try {
-      pairID = JSON.parse(raw)?.pair ?? "";
+      pairID = JSON.parse(text)?.pair ?? "";
     } catch {
       return;
     }
     const target = pairID ? this.iosSockets.get(pairID) : undefined;
     if (target) {
-      target.send(raw);
+      target.send(text);
       return;
     }
     // 没有指定 pair（如 pair/request 事件）就广播给所有已连手机
-    for (const socket of this.iosSockets.values()) socket.send(raw);
+    for (const socket of this.iosSockets.values()) socket.send(text);
   }
 }
 

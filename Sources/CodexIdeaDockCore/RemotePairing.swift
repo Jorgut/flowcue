@@ -60,7 +60,7 @@ public actor RemotePairingManager {
 
     /// iPhone 提交公钥和验证码。验证码正确则进入「等待 Mac 批准」。
     @discardableResult
-    public func request(code: String, phonePublicKey: Data) throws -> String {
+    public func request(code: String, phonePublicKey: Data, pairID externalID: String? = nil) throws -> String {
         guard var active = activeCode else { throw PairingError.expired }
         guard now() < active.expiresAt else {
             activeCode = nil
@@ -72,7 +72,8 @@ public actor RemotePairingManager {
             activeCode = active
             throw PairingError.invalidCode
         }
-        let pairID = UUID().uuidString
+        // 远程场景下 pairID 由中继分配，加密信封里的 pair 必须与路由一致
+        let pairID = externalID ?? UUID().uuidString
         pending[pairID] = PendingPair(
             pairID: pairID,
             phonePublicKey: phonePublicKey,

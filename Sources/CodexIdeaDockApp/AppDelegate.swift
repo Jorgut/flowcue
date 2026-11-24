@@ -664,6 +664,30 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 macID: executorID.uuidString,
                 server: server
             )
+            // 手机通过中继请求配对时弹窗批准。
+            relay.onPairRequest = { [weak relay] pairID, code in
+                guard let relay else { return }
+                // 自动化验证用：仅当显式设置 FLOWCUE_REMOTE_AUTO_APPROVE=1 时跳过弹窗
+                if ProcessInfo.processInfo.environment["FLOWCUE_REMOTE_AUTO_APPROVE"] == "1" {
+                    NSLog("[FlowCue Remote] auto-approve enabled, pairID=%@", pairID)
+                    relay.approvePair(pairID: pairID)
+                    return
+                }
+                let alert = NSAlert()
+                alert.messageText = "允许这台 iPhone 连接吗？"
+                alert.informativeText = "它请求通过 Remote 连接这台 Mac。\n配对码 \(code)"
+                alert.addButton(withTitle: "允许，并记住")
+                alert.addButton(withTitle: "拒绝")
+                alert.alertStyle = .informational
+                if alert.runModal() == .alertFirstButtonReturn {
+                    relay.approvePair(pairID: pairID)
+                } else {
+                    Task { await relay.denyPair(pairID: pairID) }
+                }
+            }
+            relay.onPairRejected = { _, reason in
+                NSLog("[FlowCue Remote] pair rejected: %@", reason)
+            }
             relay.start()
             remoteRelay = relay
         } catch {
