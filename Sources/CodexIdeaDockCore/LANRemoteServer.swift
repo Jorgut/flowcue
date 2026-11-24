@@ -202,6 +202,17 @@ public final class LANRemoteServer {
     private var agentSummaryCache: [String: RemoteAgentInfo] = [:]
     private var agentSummaryCacheAt: Date?
     private var agentSummaryTask: Task<[RemoteAgentInfo], Never>?
+    /// 来自 Claude hooks 等外部通道的审批请求（DSH 走桥接，不在这里）。
+    private struct ExternalApproval {
+        let id: String
+        let agent: String
+        let sessionId: String?
+        let title: String
+        let detail: String?
+        let createdAt: Date
+        var status: String  // pending / approved / denied
+    }
+    private var externalApprovals: [ExternalApproval] = []
     /// 各 Agent 的会话列表缓存（30 秒）：手机上反复进出同一个 Agent 不必重扫。
     private var agentSessionsCache: [String: (items: [RemoteAgentSession], at: Date)] = [:]
     /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——
@@ -429,21 +440,78 @@ public final class LANRemoteServer {
             } catch {
                 return Self.response(status: 409, body: Data("{}".utf8))
             }
+        case ("POST", "/v1/approvals"):
+            struct Create: Decodable {
+                let agent: String?
+                let sessionId: String?
+                let title: String
+                let detail: String?
+            }
+            guard let payload = try? JSONDecoder().decode(Create.self, from: request.body),
+                  !payload.title.isEmpty else {
+                return Self.response(status: 400, body: Data("{}".utf8))
+            }
+            let id = UUID().uuidString
+            externalApprovals.append(ExternalApproval(
+                id: id,
+                agent: payload.agent ?? "claude",
+                sessionId: payload.sessionId,
+                title: payload.title,
+                detail: payload.detail,
+                createdAt: Date(),
+                status: "pending"
+            ))
+            if let data = try? JSONEncoder().encode(["id": id]) {
+                return Self.response(status: 200, body: data)
+            }
+            return Self.response(status: 500, body: Data("{}".utf8))
+
+        case ("GET", let path) where path.hasPrefix("/v1/approvals/"):
+            let id = String(path.dropFirst("/v1/approvals/".count))
+            guard let item = externalApprovals.first(where: { $0.id == id }) else {
+                return Self.response(status: 404, body: Data("{}".utf8))
+            }
+            return Self.response(status: 200, body: (try? JSONEncoder().encode(["status": item.status])) ?? Data("{}".utf8))
+
+        case ("POST", let path) where path.hasPrefix("/v1/approvals/") && path.hasSuffix("/decide"):
+            let id = String(path.dropFirst("/v1/approvals/".count).dropLast("/decide".count))
+            struct Decide: Decodable { let decision: String }
+            guard let payload = try? JSONDecoder().decode(Decide.self, from: request.body),
+                  let index = externalApprovals.firstIndex(where: { $0.id == id }) else {
+                return Self.response(status: 404, body: Data("{}".utf8))
+            }
+            externalApprovals[index].status = payload.decision == "allow" ? "approved" : "denied"
+            return Self.response(status: 200, body: Data("{}".utf8))
+
         case ("GET", "/v1/dsh/approvals"):
             struct Response: Encodable {
                 let available: Bool
                 let pending: [DSHRemoteApproval]
             }
+            // 外部通道（Claude hooks 等）的待审也并进来，手机端一套 UI 处理。
+            let external = externalApprovals
+                .filter { $0.status == "pending" }
+                .map { item in
+                    DSHRemoteApproval(
+                        id: item.id,
+                        sessionId: item.sessionId,
+                        toolName: item.agent,
+                        callId: nil,
+                        reason: item.title,
+                        displayReason: item.detail ?? item.title,
+                        createdAt: ISO8601DateFormatter().string(from: item.createdAt)
+                    )
+                }
             guard dshBridge.isConfigured else {
-                return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: false, pending: [])))
+                return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: !external.isEmpty, pending: external)))
             }
             do {
                 // 这是 iPhone 发起的轮询，只有它能代表「手机在线」；
                 // 桥接靠这个标记决定要不要扣住桌面审批卡。
                 let approvals = try await dshBridge.pending(source: "phone")
-                return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: true, pending: approvals)))
+                return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: true, pending: approvals + external)))
             } catch {
-                return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: true, pending: [])))
+                return Self.response(status: 200, body: try JSONEncoder().encode(Response(available: true, pending: external)))
             }
         case ("POST", "/v1/dsh/send"):
             let message = try JSONDecoder().decode(DSHRemoteMessage.self, from: request.body)
@@ -455,6 +523,11 @@ public final class LANRemoteServer {
             }
         case ("POST", "/v1/dsh/decide"):
             let decision = try JSONDecoder().decode(DSHRemoteDecision.self, from: request.body)
+            // 外部通道（Claude hooks）的审批也走这个入口，手机端不必区分来源。
+            if let index = externalApprovals.firstIndex(where: { $0.id == decision.id }) {
+                externalApprovals[index].status = decision.decision == "allow" ? "approved" : "denied"
+                return Self.response(status: 200, body: Data("{}".utf8))
+            }
             do {
                 try await dshBridge.decide(id: decision.id, decision: decision.decision)
                 return Self.response(status: 200, body: Data("{}".utf8))
