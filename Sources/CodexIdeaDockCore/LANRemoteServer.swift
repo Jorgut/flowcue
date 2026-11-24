@@ -229,6 +229,16 @@ public final class LANRemoteServer {
     public var approvedPairCount: Int {
         get async { await pairing.approvedCount }
     }
+
+    /// 已批准的配对列表（设置页用）。
+    public var activeRemotePairIDs: [String] {
+        get async { await pairing.activePairIDs }
+    }
+
+    /// 撤销某个远程配对。
+    public func revokeRemotePair(_ pairID: String) async {
+        await pairing.revoke(pairID: pairID)
+    }
     /// 各 Agent 的会话列表缓存（30 秒）：手机上反复进出同一个 Agent 不必重扫。
     private var agentSessionsCache: [String: (items: [RemoteAgentSession], at: Date)] = [:]
     /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——

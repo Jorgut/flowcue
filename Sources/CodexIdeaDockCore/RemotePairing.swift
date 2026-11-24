@@ -118,6 +118,11 @@ public actor RemotePairingManager {
         revoked.contains(pairID)
     }
 
+    /// 已批准的配对（设置页列出设备）。
+    public var activePairIDs: [String] {
+        sessions.keys.sorted()
+    }
+
     /// 已批准的配对数（设置页展示）。
     public var approvedCount: Int {
         sessions.count

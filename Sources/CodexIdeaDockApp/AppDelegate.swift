@@ -691,6 +691,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             relay.start()
             remoteRelay = relay
+            RemoteRelayClient.shared = relay
         } catch {
             remoteService = nil
         }

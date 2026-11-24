@@ -596,10 +596,16 @@ private extension String {
 }
 
 private struct RemoteSettingsPage: View {
+    private func refreshPairs() async {
+        activePairs = await LANRemoteServer.current?.activeRemotePairIDs ?? []
+    }
+
     @AppStorage("FlowCue.remoteContinuationEnabled") private var enabled = false
     @State private var code: String = UserDefaults.standard.string(forKey: "FlowCue.remotePairingCode") ?? "------"
     @State private var remoteCode: String?
     @State private var remoteBusy = false
+    @State private var activePairs: [String] = []
+    @State private var relayOnline = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
@@ -650,6 +656,47 @@ private struct RemoteSettingsPage: View {
                 }
             }
 
+            SettingsGroup(
+                title: L10n.text("已配对的手机"),
+                footnote: L10n.text("撤销后，这台手机不能再通过中继连接；重新配对需要新的配对码。")
+            ) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(relayOnline ? Color(hex: FlowCueTokens.airyDark.success) : Color.secondary)
+                        .frame(width: 6, height: 6)
+                    Text(relayOnline ? L10n.text("中继在线") : L10n.text("中继离线"))
+                        .font(.system(size: 11))
+                    Spacer()
+                }
+                .frame(minHeight: 24)
+
+                if activePairs.isEmpty {
+                    Text(L10n.text("还没有手机通过中继配对。"))
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 4)
+                } else {
+                    ForEach(activePairs, id: \.self) { pairID in
+                        HStack(spacing: 8) {
+                            Image(systemName: "iphone")
+                                .foregroundStyle(.secondary)
+                            Text(pairID.prefix(8) + "…")
+                                .font(.system(size: 11).monospaced())
+                            Spacer()
+                            Button(L10n.text("撤销")) {
+                                Task {
+                                    await LANRemoteServer.current?.revokeRemotePair(pairID)
+                                    await refreshPairs()
+                                }
+                            }
+                            .controlSize(.small)
+                        }
+                        .frame(minHeight: 28)
+                    }
+                }
+            }
+
             Text(L10n.text("重新生成后，已配对的设备需要重新输入。"))
                 .font(.system(size: 10))
                 .foregroundStyle(.secondary)
@@ -672,6 +719,16 @@ private struct RemoteSettingsPage: View {
                     }
                     .frame(minHeight: 30)
                 }
+            }
+        }
+        
+        .task {
+            await refreshPairs()
+            relayOnline = RemoteRelayClient.shared?.state == .online
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(5))
+                relayOnline = RemoteRelayClient.shared?.state == .online
+                await refreshPairs()
             }
         }
     }

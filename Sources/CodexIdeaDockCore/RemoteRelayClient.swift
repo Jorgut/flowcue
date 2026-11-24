@@ -22,6 +22,8 @@ public final class RemoteRelayClient: @unchecked Sendable {
         didSet { onStateChange?(state) }
     }
     public var onStateChange: ((State) -> Void)?
+    /// 设置页读取中继在线状态。
+    public nonisolated(unsafe) static weak var shared: RemoteRelayClient?
     /// Mac 需要弹出批准界面（pairID, 6 位码）。UI 由 AppDelegate 提供。
     public var onPairRequest: ((String, String) -> Void)?
     public var onPairRejected: ((String, String) -> Void)?
