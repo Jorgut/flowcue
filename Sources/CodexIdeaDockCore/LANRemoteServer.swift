@@ -261,6 +261,8 @@ public final class LANRemoteServer {
     }
     /// 各 Agent 的会话列表缓存（30 秒）：手机上反复进出同一个 Agent 不必重扫。
     private var agentSessionsCache: [String: (items: [RemoteAgentSession], at: Date)] = [:]
+    /// 各会话的消息缓存（5 秒）：读一条消息要解压日志，实测 0.9 秒。
+    private var agentMessagesCache: [String: (items: [RemoteAgentMessage], at: Date)] = [:]
     /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——
     /// 这个接口只有手机会调，本机测试不会干扰计数。
     private var phonePollCount = 0
@@ -440,10 +442,24 @@ public final class LANRemoteServer {
                         return Self.response(status: 200, body: (try? Self.encoder.encode(payload)) ?? Data("{}".utf8))
                     }
                     if action == "messages", request.method == "GET" {
+                        let key = "\(agentID)/\(session.id)"
+                        if let cached = agentMessagesCache[key],
+                           Date().timeIntervalSince(cached.at) < 5 {
+                            return Self.response(status: 200, body: (try? Self.encoder.encode(cached.items)) ?? Data("[]".utf8))
+                        }
                         let messages = (try? await agentService.messages(session)) ?? []
-                        return Self.response(status: 200, body: (try? Self.encoder.encode(messages.map(Self.remoteMessage))) ?? Data("[]".utf8))
+                        let items = messages.map(Self.remoteMessage)
+                        agentMessagesCache[key] = (items, Date())
+                        // 每个会话最多留 30 条缓存，避免内存无限增长
+                        if agentMessagesCache.count > 30 {
+                            let oldest = agentMessagesCache.min { $0.value.at < $1.value.at }?.key
+                            if let oldest { agentMessagesCache.removeValue(forKey: oldest) }
+                        }
+                        return Self.response(status: 200, body: (try? Self.encoder.encode(items)) ?? Data("[]".utf8))
                     }
                     if action == "send", request.method == "POST" {
+                        // 发完立刻让消息缓存失效，下一条拉取能看到新内容
+                        agentMessagesCache["\(agentID)/\(session.id)"] = nil
                         struct SendBody: Decodable { let text: String }
                         guard let body = try? JSONDecoder().decode(SendBody.self, from: request.body),
                               !body.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
