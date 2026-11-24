@@ -583,4 +583,8 @@ New:
 - 2026-11-24: Remote price $5.99/month, $49.99/year, 14-day trial; no lifetime at launch.
 - 2026-11-24: `RemoteCryptoSession` 落地（X25519 + HKDF-SHA256 + ChaChaPoly，
   分方向密钥、单调 seq、64 帧重放窗口），6 项单元测试通过。中继尚未开始。
+- 2026-11-24: `RemoteRelayStub` 落地（Network.framework，4 字节长度前缀 + 握手帧，
+  按 pair 转发，对端不在返回 `mac_offline`）。3 项测试通过：加密帧穿越、
+  离线报错、pair 隔离。完整套件 135 项通过。
+
 
