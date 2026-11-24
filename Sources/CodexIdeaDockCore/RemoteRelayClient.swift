@@ -72,10 +72,8 @@ public final class RemoteRelayClient: @unchecked Sendable {
     }
 
     private func registerThenConnect() {
-        guard macToken == nil else {
-            connect()
-            return
-        }
+        // 每次都重新注册：中继的 Durable Object 可能被部署重置，
+        // 只靠首次注册的话公钥会丢失，手机端就会「密钥协商失败」。
         Task { [weak self] in
             guard let self else { return }
             // 公钥来自 actor，必须在异步上下文里取
