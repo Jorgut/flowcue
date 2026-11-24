@@ -26,7 +26,8 @@ public struct DSHAgentAdapter: AgentAdapter {
             pendingCounts[sessionID, default: 0] += 1
         }
 
-        let localSessions = reader.sessions(limit: limit)
+        let seeded = DSHSeededIndex.seededIDs()
+        let localSessions = reader.sessions(limit: limit).filter { !seeded.contains($0.id) }
         var sessions: [AgentSession] = localSessions.map { session in
             let count = pendingCounts[session.id] ?? 0
             let title = count > 0 ? "\(session.title) · \(count) 个待审" : session.title

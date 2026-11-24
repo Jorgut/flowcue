@@ -421,6 +421,38 @@ final class LANRemoteController {
 
     var isConnected: Bool { selected != nil }
 
+    /// 连续失败到阈值就重新扫一遍 Bonjour，找到同名 Mac 就切过去。
+    /// 之前 IP 一变，轮询只重试旧地址，永远是 Connection lost。
+    private var consecutiveFailures = 0
+    private var isRecovering = false
+
+    func recoverConnectionIfNeeded() async {
+        guard let current = selected else { return }
+        let alive = (try? await LANHTTP.request(
+            endpoint: current.endpoint, method: "GET", path: "/v1/ping",
+            token: nil, body: nil, timeout: 4
+        )) != nil
+        if alive {
+            consecutiveFailures = 0
+            return
+        }
+        consecutiveFailures += 1
+        guard consecutiveFailures >= 3, !isRecovering else { return }
+        isRecovering = true
+        defer {
+            stopDiscovery()
+            isRecovering = false
+        }
+        startDiscovery()
+        for _ in 0..<8 {
+            try? await Task.sleep(for: .seconds(1))
+            guard let match = discovered.first(where: { $0.name == current.name }) ?? discovered.first else { continue }
+            await connect(to: match)
+            consecutiveFailures = 0
+            return
+        }
+    }
+
     func startDiscovery() {
         guard browser == nil else { return }
         let parameters = NWParameters.tcp
@@ -1270,6 +1302,7 @@ private struct RootTabView: View {
                 await remoteController.refreshDSHQuestions()
                 await remoteController.refreshAgents()
                 await remoteController.uploadPushTokenIfNeeded()
+                await remoteController.recoverConnectionIfNeeded()
                 try? await Task.sleep(for: .seconds(3))
             }
         }

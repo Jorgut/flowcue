@@ -225,6 +225,13 @@ public final class LANRemoteServer {
     /// 启动后在后台预热一次统计，避免手机刚连上时等几秒。
     public func warmAgentSummary() {
         Task { _ = await agentSummaries() }
+        // 顺便补扫「哪些会话是示例」，过滤时就不用读日志了。
+        if let directory = DSHSessionReader().sessionsDirectoryIfAvailable {
+            let ids = DSHSessionReader().sessions(limit: 500).map(\.id)
+            Task.detached(priority: .utility) {
+                DSHSeededIndex.refresh(sessionsDirectory: directory, sessionIDs: ids)
+            }
+        }
     }
 
     /// 装上且被支持的 Agent，附会话数与项目数（60 秒缓存 + 并发去重）。

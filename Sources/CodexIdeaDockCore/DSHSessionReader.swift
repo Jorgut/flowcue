@@ -4,6 +4,9 @@ import Foundation
 /// messages are exposed; reasoning, tool calls, and tool output stay local.
 public struct DSHSessionReader: Sendable {
     private let sessionsDirectory: URL
+
+    /// 供索引器定位日志（只读用途）。
+    public var sessionsDirectoryIfAvailable: URL? { sessionsDirectory }
     private let projectionCacheDirectory: URL
     private let attachmentsDirectory: URL
 
