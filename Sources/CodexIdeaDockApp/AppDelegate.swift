@@ -676,6 +676,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 alert.addButton(withTitle: "允许，并记住")
                 alert.addButton(withTitle: "拒绝")
                 alert.alertStyle = .informational
+                // 菜单栏应用默认没有主窗口，普通窗口级弹窗会被压在后台看不见。
+                alert.window.level = .floating
+                alert.window.makeKeyAndOrderFront(nil)
                 if alert.runModal() == .alertFirstButtonReturn {
                     relay.approvePair(pairID: pairID)
                 } else {
