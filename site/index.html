@@ -106,6 +106,9 @@
   }
   .support-home .amount:hover { border-color: var(--accent); }
   .support-home .amount.selected { border-color: var(--accent); color: var(--accent); }
+  .support-home .amount strong { display: block; font-size: 15px; }
+  .support-home .amount small { display: block; font-size: 9.5px; line-height: 1.3; color: var(--muted); font-weight: 400; margin-top: 2px; }
+  .support-home .tier-note { font-size: 10px; color: var(--muted); text-align: center; margin: 7px 0 0; }
   .support-home .custom {
     display: flex; align-items: center; gap: 6px; margin-top: 9px;
     border: 1px solid var(--border); border-radius: 10px; padding: 6px 9px; color: var(--muted); font-size: 12px;
@@ -279,10 +282,11 @@
     </div>
     <div class="panel">
       <div class="amounts">
-        <button type="button" class="amount" data-amount="9">$9</button>
-        <button type="button" class="amount" data-amount="29">$29</button>
-        <button type="button" class="amount" data-amount="99">$99</button>
+        <button type="button" class="amount" data-amount="9"><strong>$9</strong><small data-i18n="support.tier1.note">Buy me a coffee</small></button>
+        <button type="button" class="amount" data-amount="29"><strong>$29</strong><small data-i18n="support.tier2.note">Keep the builds coming</small></button>
+        <button type="button" class="amount" data-amount="99"><strong>$99</strong><small data-i18n="support.tier3.note">Name on the supporter wall</small></button>
       </div>
+      <p class="tier-note" data-i18n="support.tierNote">Support tiers, not products. Every feature stays free.</p>
       <div class="custom">
         <label for="home-support-custom" data-i18n="support.custom">Custom</label>
         <span aria-hidden="true">$</span>
@@ -337,7 +341,7 @@ const I18N = {
     "support.homeBody":"FlowCue is free. If you would like to help fund development, you can leave a voluntary tip. The goal is 1,999 founding supporters; it is optional, not a product, and it unlocks nothing.",
     "support.homeGoal":" / 1,999 founding supporters",
     "support.homeFine":"Voluntary support. Not a product or service. Non-refundable. No license.",
-    "support.custom":"Custom","support.homeCta":"Support with PayPal",
+    "support.custom":"Custom","support.tier1.note":"Buy me a coffee","support.tier2.note":"Keep the builds coming","support.tier3.note":"Name on the supporter wall","support.tierNote":"Support tiers, not products. Every feature stays free.","support.homeCta":"Support with PayPal",
     "support.homeMicro":"Voluntary · Non-refundable · No license","support.more":"Full support page →",
     "hero.title":"Ideas first.<br>Agents <span>next</span>.",
     "hero.lede":"Write the thought before it disappears. FlowCue keeps it in a quiet inbox until you decide which coding agent gets it — Codex, Claude Code, or whatever you install next.",
@@ -395,7 +399,7 @@ const I18N = {
     "support.homeBody":"FlowCue 是免费的。如果你想支持后续开发，可以自愿打赏一次。目标是 1,999 位创始支持者；完全自愿，不是商品，也不解锁任何功能。",
     "support.homeGoal":" / 1,999 位创始支持者",
     "support.homeFine":"自愿支持，不是商品或服务，不支持退款，不包含 License。",
-    "support.custom":"自定义","support.homeCta":"用 PayPal 支持",
+    "support.custom":"自定义","support.tier1.note":"请我喝杯咖啡","support.tier2.note":"支持继续开发","support.tier3.note":"支持者墙留名","support.tierNote":"只是支持档位，不是商品；不打赏也能使用全部功能。","support.homeCta":"用 PayPal 支持",
     "support.homeMicro":"自愿 · 不退款 · 无 License","support.more":"完整支持页 →",
     "hero.title":"先记下来，<br>再交给 <span>Agent</span>。",
     "hero.lede":"趁想法还在，先写下来。FlowCue 把它放进一个安静的收件箱，等你决定交给 Codex、Claude Code，还是以后新装的任何 agent。",

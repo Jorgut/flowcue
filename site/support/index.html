@@ -44,6 +44,8 @@
   .support-tier:hover { border-color: var(--accent); }
   .support-tier strong { font-size: 20px; letter-spacing: -.02em; }
   .support-tier span { font-size: 11px; color: var(--muted); }
+  .support-tier small { font-size: 10px; line-height: 1.35; color: var(--muted); text-align: center; margin-top: 2px; }
+  .support-tier-note { font-size: 10.5px; color: var(--muted); text-align: center; margin: 8px 0 0; }
   .support-tier.disabled, .support-cta.disabled { opacity: .55; cursor: not-allowed; }
   .support-random { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
   .support-random-btn {
@@ -116,10 +118,11 @@
     <div class="support-meter" aria-hidden="true"><span id="support-meter"></span></div>
     <p class="support-note" data-i18n="support.note">Voluntary support. Not a product or service. Non-refundable.</p>
     <div class="support-tiers">
-      <a class="support-tier" href="#" data-amount="9"><strong>$9</strong><span data-i18n="support.tier1">Coffee</span></a>
-      <a class="support-tier" href="#" data-amount="29"><strong>$29</strong><span data-i18n="support.tier2">Boost</span></a>
-      <a class="support-tier" href="#" data-amount="99"><strong>$99</strong><span data-i18n="support.tier3">Founding</span></a>
+      <a class="support-tier" href="#" data-amount="9"><strong>$9</strong><span data-i18n="support.tier1">Coffee</span><small data-i18n="support.tier1.note">Buy me a coffee</small></a>
+      <a class="support-tier" href="#" data-amount="29"><strong>$29</strong><span data-i18n="support.tier2">Boost</span><small data-i18n="support.tier2.note">Keep the builds coming</small></a>
+      <a class="support-tier" href="#" data-amount="99"><strong>$99</strong><span data-i18n="support.tier3">Founding</span><small data-i18n="support.tier3.note">Name on the supporter wall</small></a>
     </div>
+    <p class="support-tier-note" data-i18n="support.tierNote">Support tiers, not products. Every feature stays free.</p>
     <div class="support-random">
       <label class="support-custom">
         <span data-i18n="support.custom">Custom</span>
@@ -200,6 +203,8 @@ const I18N = {
     "support.kicker":"FOUNDING SUPPORTERS","support.of":"/ 1,999","support.badge":"Optional",
     "support.note":"Voluntary support. Not a product or service. Non-refundable.",
     "support.tier1":"Coffee","support.tier2":"Boost","support.tier3":"Founding",
+    "support.tier1.note":"Buy me a coffee","support.tier2.note":"Keep the builds coming","support.tier3.note":"Name on the supporter wall",
+    "support.tierNote":"Support tiers, not products. Every feature stays free.",
     "support.custom":"Custom",
     "support.random":"Random amount",
     "support.cta":"Support with PayPal",
@@ -239,6 +244,8 @@ const I18N = {
     "support.kicker":"创始支持者","support.of":"/ 1,999","support.badge":"自愿",
     "support.note":"自愿支持，不是商品或服务，不支持退款。",
     "support.tier1":"咖啡","support.tier2":"加油","support.tier3":"创始",
+    "support.tier1.note":"请我喝杯咖啡","support.tier2.note":"支持继续开发","support.tier3.note":"支持者墙留名",
+    "support.tierNote":"只是支持档位，不是商品；不打赏也能使用全部功能。",
     "support.custom":"自定义",
     "support.random":"随机金额",
     "support.cta":"用 PayPal 支持",
