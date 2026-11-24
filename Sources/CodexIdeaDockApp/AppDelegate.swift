@@ -668,6 +668,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             // 手机通过中继请求配对时弹窗批准。
             relay.onPairRequest = { [weak relay] pairID, code in
                 guard let relay else { return }
+                // 把应用提到最前，否则弹窗可能被压在别的窗口后面。
+                NSApp.activate(ignoringOtherApps: true)
                 let alert = NSAlert()
                 alert.messageText = "允许这台 iPhone 连接吗？"
                 alert.informativeText = "它请求通过 Remote 连接这台 Mac。\n配对码 \(code)"

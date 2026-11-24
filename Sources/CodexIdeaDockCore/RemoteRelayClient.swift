@@ -136,6 +136,10 @@ public final class RemoteRelayClient: @unchecked Sendable {
         task = socket
         state = .connecting
         socket.resume()
+        // 连接建立后立刻标为 online：原来只在收到第一条消息时才标记，
+        // 空闲时设置页会一直显示「中继离线」（误报）。
+        state = .online
+        reconnectAttempt = 0
         receiveLoop()
     }
 
