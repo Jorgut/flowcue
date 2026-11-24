@@ -5785,6 +5785,9 @@ private struct ChatScreen: View {
                 SlashSkillMenu(skills: controller.skills, query: skillQuery) { name in
                     text = "/" + name + " "
                 }
+                .task(id: showsSkillMenu) {
+                    if controller.skills.isEmpty { await controller.refreshSkills() }
+                }
             }
             ChatComposer(text: $text, sending: sending) { images in
                 send(images)
@@ -10139,6 +10142,9 @@ private struct AgentChatView: View {
                 SlashSkillMenu(skills: controller.skills, query: slashQuery ?? "") { name in
                     text = "/" + name + " "
                 }
+                .task(id: showsSlashMenu) {
+                    if controller.skills.isEmpty { await controller.refreshSkills() }
+                }
             }
             composer
         }
@@ -10302,7 +10308,22 @@ private struct SlashSkillMenu: View {
     }
 
     var body: some View {
-        if !matches.isEmpty {
+        if matches.isEmpty {
+            // 空的时候也要有反馈：否则用户以为斜杠没反应。
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.mini)
+                Text(skills.isEmpty ? "正在读取 skill 列表…" : "没有匹配的 skill")
+                    .flowCueFont(11.5, relativeTo: .caption)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(FlowCueTheme.surface)
+            .overlay(alignment: .top) {
+                Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
+            }
+        } else {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(matches) { skill in
                     Button {

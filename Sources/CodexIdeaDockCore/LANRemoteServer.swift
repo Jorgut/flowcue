@@ -207,6 +207,8 @@ public final class LANRemoteServer {
     /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——
     /// 这个接口只有手机会调，本机测试不会干扰计数。
     private var phonePollCount = 0
+    /// /v1/skills 被请求的次数：用来确认手机端斜杠菜单到底有没有发请求。
+    private var skillsRequestCount = 0
     private var lastPhonePollAt: Date?
 
     /// 启动后在后台预热一次统计，避免手机刚连上时等几秒。
@@ -338,6 +340,7 @@ public final class LANRemoteServer {
         }
 
         if request.method == "GET", request.path == "/v1/skills" {
+            skillsRequestCount += 1
             return Self.response(status: 200, body: (try? Self.encoder.encode(localSkills())) ?? Data("[]".utf8))
         }
 
@@ -349,6 +352,7 @@ public final class LANRemoteServer {
                 "protocol": String(Self.protocolVersion),
                 "appVersion": Self.appVersion,
                 "phonePolls": String(phonePollCount),
+                "skillsRequests": String(skillsRequestCount),
                 "lastPhonePollAt": lastPhonePollAt.map { ISO8601DateFormatter().string(from: $0) } ?? ""
             ]
             return Self.response(status: 200, body: try JSONEncoder().encode(payload))
