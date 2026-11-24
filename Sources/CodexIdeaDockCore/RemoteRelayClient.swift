@@ -43,6 +43,38 @@ public final class RemoteRelayClient: @unchecked Sendable {
             self?.stopped = false
             self?.registerThenConnect()
             self?.startWatchdog()
+            self?.startPairPolling()
+        }
+    }
+
+    /// 轮询待批准配对：不依赖 WebSocket，避免半死连接导致弹窗不出现。
+    private func startPairPolling() {
+        queue.asyncAfter(deadline: .now() + 2) { [weak self] in
+            guard let self, !self.stopped else { return }
+            Task { await self.pollPendingPairs() }
+            self.startPairPolling()
+        }
+    }
+
+    private func pollPendingPairs() async {
+        var components = URLComponents(url: relayURL.appendingPathComponent("v1/remote/pair/pending"), resolvingAgainstBaseURL: false)
+        components?.queryItems = [URLQueryItem(name: "mac", value: macID)]
+        guard let url = components?.url,
+              let (data, _) = try? await URLSession.shared.data(from: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let list = object["pending"] as? [[String: Any]] else { return }
+        for item in list {
+            guard let pairID = item["pairID"] as? String,
+                  let code = item["code"] as? String,
+                  let keyBase64 = item["phonePublicKey"] as? String,
+                  let phoneKey = Data(base64Encoded: keyBase64) else { continue }
+            await notifyRelay(path: "v1/remote/pair/mark", pairID: pairID)
+            do {
+                _ = try await server.pairing.request(code: code, phonePublicKey: phoneKey, pairID: pairID)
+                await MainActor.run { self.onPairRequest?(pairID, code) }
+            } catch {
+                await MainActor.run { self.onPairRejected?(pairID, String(describing: error)) }
+            }
         }
     }
 
@@ -188,11 +220,27 @@ public final class RemoteRelayClient: @unchecked Sendable {
 
     // MARK: 帧处理
 
+    /// 写 ~/.flowcue/relay.log：open 启动时 NSLog 不进系统日志，排查全靠它。
+    private func log(_ message: String) {
+        let dir = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".flowcue")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let file = dir.appendingPathComponent("relay.log")
+        let line = "\(ISO8601DateFormatter().string(from: Date())) \(message)\n"
+        if let handle = try? FileHandle(forWritingTo: file) {
+            defer { try? handle.close() }
+            _ = try? handle.seekToEnd()
+            try? handle.write(contentsOf: Data(line.utf8))
+        } else {
+            try? line.write(to: file, atomically: true, encoding: .utf8)
+        }
+    }
+
     private func handleFrame(_ data: Data) {
         // 控制帧（明文）：pair/request 等
         if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let type = object["type"] as? String {
             if type == "error" { return }
+            log("control frame: \(type)")
             if type == "pair/request",
                let pairID = object["pairID"] as? String,
                let code = object["code"] as? String,
@@ -204,10 +252,12 @@ public final class RemoteRelayClient: @unchecked Sendable {
                         _ = try await self.server.pairing.request(
                             code: code, phonePublicKey: phoneKey, pairID: pairID
                         )
+                        self.log("pair request accepted, code=\(code), showing dialog")
                         await MainActor.run {
                             self.onPairRequest?(pairID, code)
                         }
                     } catch {
+                        self.log("pair request rejected: \(error)")
                         await MainActor.run {
                             self.onPairRejected?(pairID, String(describing: error))
                         }
@@ -247,6 +297,7 @@ public final class RemoteRelayClient: @unchecked Sendable {
                 body: request.body,
                 authenticated: true
             )
+            self.log("\(request.method) \(request.path) → \(result.status)")
             NSLog("[FlowCue Remote] %@ %@ → %d (%.1fs)",
                   request.method, request.path, result.status,
                   Date().timeIntervalSince(started))

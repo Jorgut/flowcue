@@ -66,6 +66,7 @@ export class MacSession {
         phonePublicKey: body.phonePublicKey,
         pairToken,
         approved: false,
+        code: body.codeProof ?? "",
       });
       // 让 Mac 的 WS 知道有新的配对请求，由 Mac 端自己弹批准
       this.macSocket?.send(
@@ -111,6 +112,31 @@ export class MacSession {
           approved: false,
           rejected: true,
         });
+      }
+      return json({ ok: true });
+    }
+
+    if (url.pathname === "/pair/pending") {
+      // Mac 轮询用：返回还没提示过的待批准配对
+      const all = await this.state.storage.list<Record<string, unknown>>({ prefix: "pair:" });
+      const pending: unknown[] = [];
+      for (const [key, record] of all) {
+        if (!record.approved && !record.rejected && !record.delivered) {
+          pending.push({
+            pairID: key.replace("pair:", ""),
+            phonePublicKey: record.phonePublicKey,
+            code: record.code ?? "",
+          });
+        }
+      }
+      return json({ pending });
+    }
+
+    if (url.pathname === "/pair/mark") {
+      const body = await request.json<{ pairID: string }>();
+      const record = await this.state.storage.get<Record<string, unknown>>(`pair:${body.pairID}`);
+      if (record) {
+        await this.state.storage.put(`pair:${body.pairID}`, { ...record, delivered: true });
       }
       return json({ ok: true });
     }
