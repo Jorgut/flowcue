@@ -10889,6 +10889,7 @@ extension LANRemoteController {
                   let status = statusObject["status"] as? String else { continue }
             if status == "approved" { break }
             if status == "revoked" { return "这台 Mac 拒绝了配对。" }
+            if status == "rejected" { return "配对码已过期或已被使用，请在 Mac 上重新生成。" }
         }
 
         // 3. 派生密钥、建立隧道

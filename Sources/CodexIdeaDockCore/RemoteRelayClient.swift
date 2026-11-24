@@ -249,6 +249,11 @@ public final class RemoteRelayClient: @unchecked Sendable {
         }
     }
 
+    /// 配对码无效（过期/已用）时通知中继，手机端才能立即显示原因。
+    public func reportPairRejected(pairID: String) async {
+        await notifyRelay(path: "v1/remote/pair/reject", pairID: pairID)
+    }
+
     public func denyPair(pairID: String) async {
         await server.pairing.deny(pairID: pairID)
         await notifyRelay(path: "v1/remote/pair/revoke", pairID: pairID)

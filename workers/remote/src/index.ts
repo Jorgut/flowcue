@@ -100,12 +100,28 @@ export class MacSession {
       return json({ ok: true });
     }
 
+    if (url.pathname === "/pair/reject") {
+      const body = await request.json<{ pairID: string }>();
+      const record = await this.state.storage.get<Record<string, unknown>>(
+        `pair:${body.pairID}`,
+      );
+      if (record) {
+        await this.state.storage.put(`pair:${body.pairID}`, {
+          ...record,
+          approved: false,
+          rejected: true,
+        });
+      }
+      return json({ ok: true });
+    }
+
     if (url.pathname === "/pair/status") {
       const pairID = url.searchParams.get("pair") ?? "";
       const record = await this.state.storage.get<Record<string, unknown>>(
         `pair:${pairID}`,
       );
       if (!record) return json({ status: "unknown" });
+      if (record.rejected) return json({ status: "rejected" });
       return json({ status: record.approved ? "approved" : "pending" });
     }
 
@@ -210,6 +226,18 @@ export class CodeIndex {
       return json({ ok: true });
     }
 
+    if (url.pathname === "/log") {
+      const body = await request.json<Record<string, unknown>>();
+      const list = (await this.state.storage.get<unknown[]>("recent")) ?? [];
+      list.unshift({ ...body, at: new Date().toISOString() });
+      await this.state.storage.put("recent", list.slice(0, 10));
+      return json({ ok: true });
+    }
+
+    if (url.pathname === "/recent") {
+      return json({ recent: (await this.state.storage.get<unknown[]>("recent")) ?? [] });
+    }
+
     if (url.pathname === "/resolve") {
       const body = await request.json<{ code: string }>();
       const record = await this.state.storage.get<Record<string, unknown>>(
@@ -249,6 +277,10 @@ export default {
 
     const indexStub = env.CODE_INDEX.get(env.CODE_INDEX.idFromName("codes"));
 
+    if (url.pathname === "/v1/remote/debug/recent") {
+      return indexStub.fetch(new Request("https://index/recent"));
+    }
+
     // Mac 生成码时登记：让手机可以用码找到它
     if (url.pathname === "/v1/remote/code/announce") {
       return indexStub.fetch(new Request("https://index/announce", request));
@@ -267,8 +299,18 @@ export default {
         }))
         .then((r) => r.json<{ macID?: string; publicKey?: string }>());
       if (!resolved.macID) {
+        await indexStub.fetch(new Request("https://index/log", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ path: "claim", code, result: "unknown_code" }),
+        }));
         return json({ error: "unknown_code" }, 404);
       }
+      await indexStub.fetch(new Request("https://index/log", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path: "claim", code, result: "resolved", macID: resolved.macID }),
+      }));
       const macStub = env.MAC_SESSION.get(env.MAC_SESSION.idFromName(resolved.macID));
       const target = new URL(request.url);
       target.pathname = "/pair/create";

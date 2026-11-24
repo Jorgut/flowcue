@@ -686,8 +686,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     Task { await relay.denyPair(pairID: pairID) }
                 }
             }
-            relay.onPairRejected = { _, reason in
+            relay.onPairRejected = { pairID, reason in
                 NSLog("[FlowCue Remote] pair rejected: %@", reason)
+                Task { await relay.reportPairRejected(pairID: pairID) }
             }
             relay.start()
             remoteRelay = relay
