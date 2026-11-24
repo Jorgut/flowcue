@@ -45,6 +45,15 @@
   .support-tier strong { font-size: 20px; letter-spacing: -.02em; }
   .support-tier span { font-size: 11px; color: var(--muted); }
   .support-tier.disabled, .support-cta.disabled { opacity: .55; cursor: not-allowed; }
+  .support-random { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
+  .support-random-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    border: 1px solid var(--border); background: transparent; color: var(--text);
+    font: inherit; font-size: 12px; padding: 7px 12px; border-radius: 999px; cursor: pointer;
+  }
+  .support-random-btn:hover { border-color: var(--accent); }
+  .support-random-value { font-size: 13px; font-weight: 600; color: var(--accent); min-width: 44px; }
+  .support-dice { font-size: 13px; }
   .support-cta {
     display: flex; align-items: center; justify-content: center; height: 46px;
     border-radius: 12px; background: var(--accent); color: #0b0b12;
@@ -97,6 +106,13 @@
       <a class="support-tier" href="#" data-amount="9"><strong>$9</strong><span data-i18n="support.tier1">Coffee</span></a>
       <a class="support-tier" href="#" data-amount="29"><strong>$29</strong><span data-i18n="support.tier2">Boost</span></a>
       <a class="support-tier" href="#" data-amount="99"><strong>$99</strong><span data-i18n="support.tier3">Founding</span></a>
+    </div>
+    <div class="support-random">
+      <button class="support-random-btn" type="button" id="support-random" aria-label="Pick a random amount">
+        <span class="support-dice" aria-hidden="true">🎲</span>
+        <span data-i18n="support.random">Random amount</span>
+      </button>
+      <span class="support-random-value" id="support-random-value" aria-live="polite"></span>
     </div>
     <a class="support-cta" id="support-paypal" href="#" data-i18n="support.cta">Support with PayPal</a>
     <p class="support-fine" data-i18n="support.fine">You will be redirected to PayPal. No license or feature is included.</p>
@@ -166,6 +182,7 @@ const I18N = {
     "support.kicker":"FOUNDING SUPPORTERS","support.of":"/ 1,999","support.badge":"Optional",
     "support.note":"Voluntary support. Not a product or service. Non-refundable.",
     "support.tier1":"Coffee","support.tier2":"Boost","support.tier3":"Founding",
+    "support.random":"Random amount",
     "support.cta":"Support with PayPal",
     "support.fine":"You will be redirected to PayPal. No license or feature is included.",
     "support.pending":"Preview: add your PayPal.Me link to enable.",
@@ -203,6 +220,7 @@ const I18N = {
     "support.kicker":"创始支持者","support.of":"/ 1,999","support.badge":"自愿",
     "support.note":"自愿支持，不是商品或服务，不支持退款。",
     "support.tier1":"咖啡","support.tier2":"加油","support.tier3":"创始",
+    "support.random":"随机金额",
     "support.cta":"用 PayPal 支持",
     "support.fine":"会跳转到 PayPal；不包含 License 或功能。",
     "support.pending":"预览：填入 PayPal.Me 链接后即可启用。",
@@ -264,7 +282,16 @@ function applyLanguage(lang) {
   const cta = document.getElementById("support-paypal");
   const pending = document.getElementById("support-pending");
   const tiers = [...document.querySelectorAll(".support-tier")];
+  const randomButton = document.getElementById("support-random");
+  const randomValue = document.getElementById("support-random-value");
   const configured = /^https:\/\/paypal\.me\/[A-Za-z0-9_-]+\/?$/.test(PAYPAL_ME);
+  const base = configured ? PAYPAL_ME.replace(/\/$/, "") : "";
+  let selectedAmount = null;
+
+  function updateCTA() {
+    if (!configured || !cta) return;
+    cta.href = selectedAmount ? base + "/" + selectedAmount : base;
+  }
 
   if (!configured) {
     if (cta) {
@@ -277,13 +304,20 @@ function applyLanguage(lang) {
       tier.setAttribute("aria-disabled", "true");
       tier.addEventListener("click", (event) => event.preventDefault());
     });
-    return;
+  } else {
+    tiers.forEach((tier) => { tier.href = base + "/" + tier.dataset.amount; });
+    if (pending) pending.hidden = true;
+    updateCTA();
   }
 
-  const base = PAYPAL_ME.replace(/\/$/, "");
-  tiers.forEach((tier) => { tier.href = base + "/" + tier.dataset.amount; });
-  if (cta) cta.href = base;
-  if (pending) pending.hidden = true;
+  if (randomButton) {
+    randomButton.addEventListener("click", () => {
+      const pool = [7, 13, 21, 37, 59, 99];
+      selectedAmount = pool[Math.floor(Math.random() * pool.length)];
+      if (randomValue) randomValue.textContent = "$" + selectedAmount;
+      updateCTA();
+    });
+  }
 })();
 </script>
 </body>
