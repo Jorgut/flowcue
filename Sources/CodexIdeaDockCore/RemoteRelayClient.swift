@@ -57,31 +57,41 @@ public final class RemoteRelayClient: @unchecked Sendable {
             connect()
             return
         }
-        var request = URLRequest(url: relayURL.appendingPathComponent("v1/remote/mac/register"))
+        Task { [weak self] in
+            guard let self else { return }
+            // 公钥来自 actor，必须在异步上下文里取
+            let publicKey = await self.server.pairing.publicKey
+            await self.performRegister(publicKey: publicKey)
+        }
+    }
+
+    private func performRegister(publicKey: Data) async {
+        guard var components = URLComponents(url: relayURL.appendingPathComponent("v1/remote/mac/register"), resolvingAgainstBaseURL: false) else {
+            scheduleReconnect(reason: "bad url")
+            return
+        }
+        components.queryItems = [URLQueryItem(name: "mac", value: macID)]
+        guard let url = components.url else { return }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")
-        let publicKey = await server.pairing.publicKey
         request.httpBody = try? JSONEncoder().encode([
             "macID": macID,
             "publicKey": publicKey.base64EncodedString()
         ])
-        // 把 mac 放进 query
-        var components = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)
-        components?.queryItems = [URLQueryItem(name: "mac", value: macID)]
-        request.url = components?.url
-
-        URLSession.shared.dataTask(with: request) { [weak self] data, _, _ in
-            guard let self,
-                  let data,
-                  let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        do {
+            let (data, _) = try await URLSession.shared.data(for: request)
+            guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let token = object["macToken"] as? String else {
-                self?.scheduleReconnect(reason: "register failed")
+                scheduleReconnect(reason: "register failed")
                 return
             }
-            self.macToken = token
+            macToken = token
             UserDefaults.standard.set(token, forKey: "FlowCue.remoteMacToken")
-            self.queue.async { self.connect() }
-        }.resume()
+            queue.async { self.connect() }
+        } catch {
+            scheduleReconnect(reason: error.localizedDescription)
+        }
     }
 
     // MARK: WebSocket
