@@ -574,7 +574,12 @@ final class LANRemoteController {
 
     func recoverConnectionIfNeeded() async {
         // 中继链路由 RemoteTunnel 自己看门狗+重连，这里只负责局域网 IP 变化。
-        guard !isRemote, let current = selected else { return }
+        guard !isRemote else { return }
+        guard let current = selected else {
+            // 启动/唤醒后局域网设备还没恢复时，别直接 return 卡死在 offline。
+            if restoreRemoteIfPossible() { adoptRemoteDevice() }
+            return
+        }
         let alive = (try? await LANHTTP.request(
             endpoint: current.endpoint, method: "GET", path: "/v1/ping",
             token: nil, body: nil, timeout: 4
@@ -1514,6 +1519,7 @@ private struct RootTabView: View {
     /// 同一个视图上只能可靠地存在一个 .sheet，所以这里合并成一个入口。
     @State private var activeSheet: RootSheet?
     @State private var didSeedSharedPreview = false
+    @State private var lastAutoReconnectAt = Date.distantPast
     private enum RootSheet: String, Identifiable {
         case approvals, sharePreview
         var id: String { rawValue }
@@ -1580,11 +1586,16 @@ private struct RootTabView: View {
                 tick += 1
                 await remoteController.uploadPushTokenIfNeeded()
                 await remoteController.recoverConnectionIfNeeded()
-                // 中继链路：App 在前台但网络刚恢复/手机刚解锁时，
-                // scenePhase 不一定会再变；这里每 3 秒兜底一次，
-                // 避免界面一直停在 offline 直到用户手动 Reconnect。
-                if remoteController.isRemote, !remoteController.isOnline {
-                    RemoteTunnel.current()?.checkLiveness()
+                // App 前台但网络刚恢复/手机刚解锁时，scenePhase 不一定再变。
+                // 每 15 秒兜底一次：优先恢复远程凭据，其次再走局域网重连。
+                if !remoteController.isOnline,
+                   Date().timeIntervalSince(lastAutoReconnectAt) > 15 {
+                    lastAutoReconnectAt = .now
+                    if remoteController.restoreRemoteIfPossible() {
+                        remoteController.adoptRemoteDevice()
+                    } else {
+                        await remoteController.reconnect()
+                    }
                 }
                 try? await Task.sleep(for: .seconds(3))
             }
@@ -12059,18 +12070,10 @@ extension LANRemoteController {
         let privateKey = Curve25519.KeyAgreement.PrivateKey()
         let publicKeyBase64 = privateKey.publicKey.rawRepresentation.base64EncodedString()
 
-        // 1. 创建配对：知道 macID 就直接建；不知道就用 6 位码让中继去查，
-        //    这样不需要先在同一 Wi-Fi 下连接过。
-        let createURL: URL
-        if let macID = RemoteCredentials.macID {
-            var components = URLComponents(url: relay.appendingPathComponent("v1/remote/pair/create"), resolvingAgainstBaseURL: false)
-            components?.queryItems = [URLQueryItem(name: "mac", value: macID)]
-            guard let url = components?.url else { return nil }
-            createURL = url
-        } else {
-            guard let url = URL(string: "https://flowcue-remote.honaler.workers.dev/v1/remote/pair/claim") else { return nil }
-            createURL = url
-        }
+        // 1. 用户手动输入的 6 位码必须走 claim 让 Worker 解析 macID。
+        //    不能因为本地还留着旧 macID 就直连 /pair/create：Mac 重新登记或
+        //    换公钥后，旧 macID 会返回空 macPublicKey，手机只看到“码不正确”。
+        guard let createURL = URL(string: "https://flowcue-remote.honaler.workers.dev/v1/remote/pair/claim") else { return nil }
         var request = URLRequest(url: createURL)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "content-type")

@@ -73,6 +73,11 @@ incremental fetch, Codex activity, Claude auth preflight.
   first run exposed a stale-offline state; a 3-second foreground
   `checkLiveness()` fallback was added and the retest passed. This is a
   process/relay drop, not a Wi-Fi radio-off test.
+- **Remote re-pair fix:** the phone used a stored `macID` and skipped the
+  six-digit code claim, so a new code could fail immediately with “wrong code
+  or Mac offline”. It now always uses `/v1/remote/pair/claim` for a manually
+  entered code, and the foreground watchdog restores remote credentials every
+  15s after wake.
 - **DSH history pagination:** initial load now requests the newest 60 messages
   instead of the full 126-message / 2.29MB history; “Load earlier messages”
   fetches 40-message windows with absolute `total`/`start`. API verified:
