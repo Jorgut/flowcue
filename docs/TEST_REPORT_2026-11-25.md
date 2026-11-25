@@ -73,6 +73,10 @@ incremental fetch, Codex activity, Claude auth preflight.
   first run exposed a stale-offline state; a 3-second foreground
   `checkLiveness()` fallback was added and the retest passed. This is a
   process/relay drop, not a Wi-Fi radio-off test.
+- **Pairing-code UX fix:** Mac Settings exposed a local “same Wi-Fi” code and
+  a separate announced “remote (5G)” code with nearly identical labels; the
+  phone form also put the local field first. Labels now distinguish them and
+  the remote section auto-expands when no nearby Mac is found.
 - **Remote re-pair fix:** the phone used a stored `macID` and skipped the
   six-digit code claim, so a new code could fail immediately with “wrong code
   or Mac offline”. It now always uses `/v1/remote/pair/claim` for a manually

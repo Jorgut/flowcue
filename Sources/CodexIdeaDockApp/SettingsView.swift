@@ -631,7 +631,7 @@ private struct RemoteSettingsPage: View {
                         .toggleStyle(.switch)
                         .tint(Color(hex: FlowCueTokens.airyDark.accent))
                 }
-                SettingsRow(title: L10n.text("配对码")) {
+                SettingsRow(title: L10n.text("同一 Wi-Fi 配对码")) {
                     HStack(spacing: 8) {
                         Text(code).font(.system(size: 12).monospaced())
                         Button(L10n.text("重新生成")) {
@@ -647,7 +647,7 @@ private struct RemoteSettingsPage: View {
                 title: L10n.text("远程连接"),
                 footnote: L10n.text("手机不在同一 Wi-Fi 时用这个码。上传到中继的只有密文，配对码 5 分钟有效、一码一用。")
             ) {
-                SettingsRow(title: L10n.text("远程配对码")) {
+                SettingsRow(title: L10n.text("远程配对码（5G / 不同 Wi-Fi）")) {
                     HStack(spacing: 8) {
                         Text(remoteCode.map { $0.chunked(3) } ?? L10n.text("未生成"))
                             .font(.system(size: 12).monospaced())

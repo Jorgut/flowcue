@@ -4549,6 +4549,9 @@ private struct PairMacSheet: View {
             }
             .task {
                 if !controller.isScanning { controller.startDiscovery() }
+                // 5G/不同 Wi-Fi 时没有 nearby Mac，直接展开远程配对，
+                // 避免把本机“同一 Wi-Fi 配对码”误当成远程码。
+                if controller.discovered.isEmpty { showingRemote = true }
             }
             .onChange(of: controller.pairingCode) { _, value in
                 let digits = String(value.filter { "0123456789".contains($0) }.prefix(6))
@@ -4674,10 +4677,10 @@ private struct PairMacSheet: View {
 
     private var codeSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text("Enter the code")
+            Text("Enter the code (same Wi-Fi)")
                 .flowCueFont(22, relativeTo: .title2, weight: .semibold)
                 .foregroundStyle(FlowCueTheme.textPrimary)
-            Text("Shown on your Mac in FlowCue → iPhone.")
+            Text("Shown in Mac FlowCue → iPhone. On 5G, open the remote section below.")
                 .flowCueFont(12, relativeTo: .caption)
                 .foregroundStyle(FlowCueTheme.textSecondary)
                 .padding(.top, 4)
@@ -4856,9 +4859,9 @@ private struct PairMacSheet: View {
             }
             .padding(.top, 8)
         } label: {
-            Text(L10n.text("不在同一 Wi-Fi？"))
+            Text(L10n.text("5G / 不在同一 Wi-Fi？用远程配对码"))
                 .flowCueFont(12, relativeTo: .caption, weight: .semibold)
-                .foregroundStyle(FlowCueTheme.textSecondary)
+                .foregroundStyle(FlowCueTheme.accent)
         }
         .tint(FlowCueTheme.textSecondary)
         .padding(.top, 12)
