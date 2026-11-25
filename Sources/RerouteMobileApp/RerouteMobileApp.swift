@@ -315,12 +315,17 @@ enum RemoteLinkError: LocalizedError, Equatable {
     case offline(String)
     case notReady
     case macOffline
+    /// A single request exceeded its deadline. This is not proof that the
+    /// transport is down; a large history payload can be slow while heartbeats
+    /// are still healthy, so callers must not flip the whole link offline.
+    case timeout
 
     var message: String {
         switch self {
         case .offline(let reason): return reason
         case .notReady: return L10n.text("正在连接 Mac…")
         case .macOffline: return L10n.text("Mac 不在线。")
+        case .timeout: return L10n.text("请求超时。")
         }
     }
 
@@ -811,7 +816,7 @@ final class LANRemoteController {
         path: String,
         authenticated: Bool = true,
         body: Data? = nil,
-        timeout: TimeInterval = 10,
+        timeout: TimeInterval = 20,
         requestID: String? = nil
     ) async throws -> Data {
         do {
@@ -827,9 +832,19 @@ final class LANRemoteController {
             markOnline()
             return data
         } catch {
-            markOffline(error)
+            // 大响应超时只代表这一次请求慢，不代表中继断了；链路状态交给
+            // 心跳和 transport 错误，避免 2MB 历史把整个 UI 打成 offline。
+            if !Self.isRequestTimeout(error) {
+                markOffline(error)
+            }
             throw error
         }
+    }
+
+    private static func isRequestTimeout(_ error: Error) -> Bool {
+        if let link = error as? RemoteLinkError, link == .timeout { return true }
+        if let urlError = error as? URLError, urlError.code == .timedOut { return true }
+        return false
     }
 
     func refreshSkills() async {
@@ -1103,7 +1118,8 @@ final class LANRemoteController {
         let encoded = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
         var path = "/v1/dsh/sessions/\(encoded)/messages"
         if after > 0 { path += "?after=\(after)" }
-        let data = try await sendRequest(path: path)
+        // DSH 历史可能到 2MB+；给它比普通轮询更长的 deadline。
+        let data = try await sendRequest(path: path, timeout: 60)
         guard let messages = try? JSONDecoder().decode([RemoteConversationMessage].self, from: data) else {
             throw RemoteLinkError.offline(L10n.text("Mac 返回了无法解析的对话。"))
         }
@@ -1276,7 +1292,7 @@ private enum LANHTTP {
             if let token, !token.isEmpty {
                 headers["authorization"] = "Bearer \(token)"
             }
-            return try await tunnel.request(method: method, path: path, headers: headers, body: body, requestID: requestID)
+            return try await tunnel.request(method: method, path: path, headers: headers, body: body, requestID: requestID, timeout: timeout)
         }
         return try await withCheckedThrowingContinuation { continuation in
             let runner = LANHTTPRunner(endpoint: endpoint, method: method, path: path, token: token, body: body, continuation: continuation)
@@ -6332,9 +6348,10 @@ private struct ChatScreen: View {
         .task { network.start() }
         .onDisappear { network.stop() }
         .task(id: target.id) { await runChat() }
-        .task(id: controller.isOnline) {
-            // 重连成功后补一次，不用等下一轮 3 秒轮询或重进页面。
-            if controller.isOnline { await reloadOnce() }
+        .onChange(of: controller.isOnline) { _, online in
+            // 只在真正重连后补一次；视图初次出现由 runChat 负责，
+            // 否则会并发拉两遍 2MB 历史，5G 下很容易把首个请求拖到超时。
+            if online { Task { await reloadOnce() } }
         }
         .onChange(of: displayMessages.last?.id) { _, _ in updateLiveActivity() }
         .onChange(of: isWorking) { _, _ in updateLiveActivity() }
@@ -11661,7 +11678,7 @@ final class RemoteTunnel {
         evaluateState()
     }
 
-    func request(method: String, path: String, headers: [String: String], body: Data?, requestID: String? = nil) async throws -> Data {
+    func request(method: String, path: String, headers: [String: String], body: Data?, requestID: String? = nil, timeout: TimeInterval? = nil) async throws -> Data {
         guard state.isOnline else {
             throw RemoteLinkError.offline(state.reason ?? L10n.text("Mac 不在线。"))
         }
@@ -11676,8 +11693,8 @@ final class RemoteTunnel {
 
         // 先登记 pending 再发：否则 Mac 的响应可能比登记还快，回调找不到
         // continuation，请求只能干等到超时（表现为「消息没发出去」）。
-        // POST 要等 Mac 的 agent 桥接返回，90 秒；GET 20 秒。
-        let timeout: TimeInterval = method == "POST" ? 90 : 20
+        // POST 要等 Mac 的 agent 桥接返回；GET 允许调用方给大响应更长的 deadline。
+        let deadline: TimeInterval = timeout ?? (method == "POST" ? 90 : 20)
         return try await withCheckedThrowingContinuation { continuation in
             pending[request.id] = continuation
             let gen = self.generation
@@ -11692,9 +11709,9 @@ final class RemoteTunnel {
                 }
             }
             Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(timeout))
+                try? await Task.sleep(for: .seconds(deadline))
                 guard let self, let waiting = self.pending.removeValue(forKey: request.id) else { return }
-                waiting.resume(throwing: RemoteLinkError.offline(L10n.text("请求超时。")))
+                waiting.resume(throwing: RemoteLinkError.timeout)
             }
         }
     }

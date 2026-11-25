@@ -73,6 +73,11 @@ incremental fetch, Codex activity, Claude auth preflight.
   first run exposed a stale-offline state; a 3-second foreground
   `checkLiveness()` fallback was added and the retest passed. This is a
   process/relay drop, not a Wi-Fi radio-off test.
+- **5G DSH load/flap fix:** the chat view fired two concurrent full-history
+  fetches (2,289,377 bytes / 10 chunks each); a 20s GET timeout then marked the
+  whole link offline even though heartbeats were healthy. Removed the duplicate
+  initial reload, gave DSH messages a 60s deadline, and stopped treating a
+  request timeout as transport loss. Verified the Release build on a 5G iPhone.
 - **DSH message presentation fixes:** ordered-list numbering now continues
   across explanation paragraphs (previously every item rendered as `1.`);
   a failed pending message is text-selectable and has a 44pt Retry capsule.
