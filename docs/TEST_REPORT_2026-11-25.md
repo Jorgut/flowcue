@@ -73,6 +73,11 @@ incremental fetch, Codex activity, Claude auth preflight.
   first run exposed a stale-offline state; a 3-second foreground
   `checkLiveness()` fallback was added and the retest passed. This is a
   process/relay drop, not a Wi-Fi radio-off test.
+- **Cellular LAN→relay fallback passed:** with the iPhone on cellular and the
+  Mac reachable only through the relay, the page initially showed `12 LOCAL`;
+  after the 3-failure fallback it switched to `Codex · 4.4s` and Worker health
+  changed to `iphones:1`. The failed-message row now exposes a 44pt Retry
+  button instead of a 9.5pt text link.
 - **Real-device approval card passed:** injected one external approval through
   `POST /v1/approvals`; the physical iPhone automatically presented the
   Approvals sheet with Approve/Deny. Approving through

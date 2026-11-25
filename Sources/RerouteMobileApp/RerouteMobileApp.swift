@@ -573,6 +573,13 @@ final class LANRemoteController {
             return
         }
         consecutiveFailures += 1
+        // 局域网不可达（例如手机切到蜂窝）时，如果已有远程凭据，
+        // 直接回退到中继，不要只反复扫 Bonjour 把界面卡在 LOCAL。
+        if consecutiveFailures >= 3, restoreRemoteIfPossible() {
+            adoptRemoteDevice()
+            consecutiveFailures = 0
+            return
+        }
         guard consecutiveFailures >= 3, !isRecovering else { return }
         isRecovering = true
         defer {
@@ -6959,21 +6966,34 @@ private struct ChatPendingBubble: View {
                 )
             }
 
-            HStack(spacing: 6) {
-                if failed {
-                    Text("Not delivered")
+            if failed {
+                HStack(spacing: 8) {
+                    Label("Not delivered", systemImage: "exclamationmark.circle.fill")
+                        .flowCueFont(10, relativeTo: .caption2, weight: .medium)
                         .foregroundStyle(FlowCueTheme.failure)
-                    Button("Retry", action: onRetry)
-                        .flowCueFont(9.5, relativeTo: .caption2, weight: .semibold)
-                        .foregroundStyle(FlowCueTheme.failure)
-                        .buttonStyle(.plain)
-                } else {
-                    Text("SENDING.")
+                    Button(action: onRetry) {
+                        Label(L10n.text("重试"), systemImage: "arrow.clockwise")
+                            .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                            .foregroundStyle(FlowCueTheme.failure)
+                            .padding(.horizontal, 12)
+                            .frame(minHeight: 44)
+                            .contentShape(Capsule())
+                            .background(
+                                Capsule().fill(FlowCueTheme.failure.opacity(0.14))
+                            )
+                            .overlay(
+                                Capsule().strokeBorder(FlowCueTheme.failure.opacity(0.4))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.text("重试发送失败的消息"))
                 }
+            } else {
+                Text("SENDING.")
+                    .flowCueFont(9.5, relativeTo: .caption2)
+                    .tracking(1.2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
             }
-            .flowCueFont(9.5, relativeTo: .caption2)
-            .tracking(1.2)
-            .foregroundStyle(failed ? FlowCueTheme.failure : FlowCueTheme.textSecondary)
         }
     }
 }
