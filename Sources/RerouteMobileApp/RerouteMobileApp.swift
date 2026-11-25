@@ -26,16 +26,27 @@ private enum FlowCueTheme {
 
     static var accent: Color { Color(hex: current.accent) }
     static var accentSoft: Color { accent.opacity(0.14) }
-    static var mint: Color { Color(hex: "#5CD9B8") }
+    /// 状态色跟主题明暗走：亮色主题上用深绿/深红/深琥珀，
+    /// 否则 #5CD9B8 这类荧光色放在米色底上几乎看不清。
+    static var mint: Color {
+        current.group == .light ? Color(hex: "#0B7A5C") : Color(hex: "#5CD9B8")
+    }
     static var surface: Color { Color(hex: current.card) }
     static var canvas: Color { Color(hex: current.background) }
     static var hairline: Color { current.hasBorder ? Color(hex: current.border) : .clear }
     static var textPrimary: Color { Color(hex: current.foreground) }
     static var textSecondary: Color { Color(hex: current.secondary) }
     static var textTertiary: Color { Color(hex: current.secondary).opacity(0.9) }
-    static var warning: Color { Color(hex: "#F0B429") }
-    static var failure: Color { Color(hex: "#FF6B6B") }
-    static var onAccent: Color { Color(hex: "#0A0A12") }
+    static var warning: Color {
+        current.group == .light ? Color(hex: "#8A5A00") : Color(hex: "#F0B429")
+    }
+    static var failure: Color {
+        current.group == .light ? Color(hex: "#B42318") : Color(hex: "#FF6B6B")
+    }
+    /// 亮色主题的 accent 是深色，按钮文字必须用白；深色主题反之。
+    static var onAccent: Color {
+        current.group == .light ? .white : Color(hex: "#0A0A12")
+    }
 
     static var radiusPanel: CGFloat { current.radius }
     static var radiusCard: CGFloat { current.radius }
@@ -122,8 +133,8 @@ private struct FlowCueScreenBackground: View {
             if FlowCueTheme.hasGlow {
                 RadialGradient(
                     stops: [
-                        .init(color: FlowCueTheme.accent.opacity(0.20), location: 0),
-                        .init(color: FlowCueTheme.accent.opacity(0.06), location: 0.46),
+                        .init(color: FlowCueTheme.accent.opacity(0.14), location: 0),
+                        .init(color: FlowCueTheme.accent.opacity(0.04), location: 0.46),
                         .init(color: .clear, location: 0.78)
                     ],
                     center: .top,
@@ -287,6 +298,35 @@ struct DiscoveredMac: Identifiable {
     let endpoint: NWEndpoint
 }
 
+/// 手机 ↔ Mac 的唯一链路状态（直连和中继共用一套）。
+enum RemoteLinkState: Equatable {
+    case disconnected
+    case connecting
+    case online
+    case offline(reason: String)
+
+    var isOnline: Bool { if case .online = self { return true } else { return false } }
+    var isConnecting: Bool { if case .connecting = self { return true } else { return false } }
+    var reason: String? { if case .offline(let reason) = self { return reason } else { return nil } }
+}
+
+/// 隧道自己的失败原因；`LANRemoteController.connectionMessage` 会把它翻成用户文案。
+enum RemoteLinkError: LocalizedError, Equatable {
+    case offline(String)
+    case notReady
+    case macOffline
+
+    var message: String {
+        switch self {
+        case .offline(let reason): return reason
+        case .notReady: return L10n.text("正在连接 Mac…")
+        case .macOffline: return L10n.text("Mac 不在线。")
+        }
+    }
+
+    var errorDescription: String? { message }
+}
+
 @MainActor
 @Observable
 final class LANRemoteController {
@@ -319,8 +359,9 @@ final class LANRemoteController {
     private(set) var macProtocolVersion: Int?
     private(set) var needsMacUpdate = false
     private(set) var needsPhoneUpdate = false
-    static let minimumProtocol = 1
-    static let supportedProtocol = 1
+    // v2 增加 zlib 响应压缩与 RemoteChunk 分块；旧端无法解析。
+    static let minimumProtocol = 2
+    static let supportedProtocol = 2
 
     /// 配对页/设备页展示用：iPhone 1.1.0 (52) ↔ Mac 0.1.1 · 协议 1
     var versionHandshakeText: String {
@@ -420,7 +461,100 @@ final class LANRemoteController {
         #endif
     }
 
-    var isConnected: Bool { selected != nil }
+    /// 链路状态的唯一真相：UI 只读它，不再用 `selected != nil` 或
+    /// 系统网络状态推断「在线」。隧道/直连任何一侧变化都写这里。
+    private(set) var linkState: RemoteLinkState = .disconnected
+    /// 当前链路走中继（否则是同一 Wi-Fi 直连）。
+    private(set) var isRemote = false
+
+    /// 已选好一台 Mac：决定 UI 显示「设备」还是「配对新 Mac」。
+    /// 它只说明配对还在，不说明现在能收发。
+    var isPaired: Bool { selected != nil }
+    /// 真的能收发请求。
+    var isOnline: Bool { linkState.isOnline }
+    var isConnecting: Bool { linkState.isConnecting }
+    var connectionReason: String? { linkState.reason }
+
+    /// 任何一次成功请求都证明链路仍通；设备页/卡片统一读这个。
+    fileprivate func markOnline() {
+        guard isPaired else { return }
+        linkState = .online
+        lastRefreshAt = Date()
+        lastError = nil
+    }
+
+    fileprivate func markOffline(_ error: Error) {
+        guard isPaired else { return }
+        let message = Self.connectionMessage(for: error)
+        linkState = .offline(reason: message)
+        lastError = message
+        lastLatencyMs = nil
+    }
+
+    static func connectionMessage(for error: Error) -> String {
+        if let link = error as? RemoteLinkError { return link.message }
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut: return L10n.text("连接超时。")
+            case .networkConnectionLost, .notConnectedToInternet: return L10n.text("网络已断开。")
+            case .cancelled: return L10n.text("连接已取消。")
+            case .badServerResponse, .userAuthenticationRequired: return L10n.text("配对已失效，请重新配对。")
+            default: return L10n.text("无法连接这台 Mac。")
+            }
+        }
+        return error.localizedDescription
+    }
+
+    /// 隧道每次状态变化都同步到这里；设备卡片、详情页、设置页不再各自推断。
+    func attachRemoteTunnel(_ tunnel: RemoteTunnel) {
+        isRemote = true
+        linkState = .connecting
+        tunnel.onStateChange = { [weak self] state in
+            guard let self else { return }
+            switch state {
+            case .disconnected:
+                if !self.isPaired { self.linkState = .disconnected }
+            case .connecting:
+                if self.isPaired { self.linkState = .connecting }
+            case .online:
+                if self.isPaired {
+                    self.linkState = .online
+                    self.lastError = nil
+                    self.lastRefreshAt = Date()
+                    // 重新在线后立刻补一次数据，UI 不用等下一轮轮询。
+                    Task { await self.refresh() }
+                }
+            case .offline(let reason):
+                if self.isPaired {
+                    self.linkState = .offline(reason: reason)
+                    self.lastError = reason
+                    self.lastLatencyMs = nil
+                }
+            }
+        }
+    }
+
+    /// 用户点「Reconnect」：优先重开中继隧道，其次重连上次的局域网设备。
+    func reconnect() async {
+        lastError = nil
+        if isRemote || RemoteTunnel.current() != nil {
+            isRemote = true
+            linkState = .connecting
+            if let tunnel = RemoteTunnel.current() {
+                tunnel.reconnectNow()
+            } else if restoreRemoteIfPossible() {
+                adoptRemoteDevice()
+            }
+            return
+        }
+        if let lastAttempted {
+            await connect(endpoint: lastAttempted.endpoint, displayName: lastAttempted.name)
+            return
+        }
+        if restoreRemoteIfPossible() {
+            adoptRemoteDevice()
+        }
+    }
 
     /// 连续失败到阈值就重新扫一遍 Bonjour，找到同名 Mac 就切过去。
     /// 之前 IP 一变，轮询只重试旧地址，永远是 Connection lost。
@@ -428,7 +562,8 @@ final class LANRemoteController {
     private var isRecovering = false
 
     func recoverConnectionIfNeeded() async {
-        guard let current = selected else { return }
+        // 中继链路由 RemoteTunnel 自己看门狗+重连，这里只负责局域网 IP 变化。
+        guard !isRemote, let current = selected else { return }
         let alive = (try? await LANHTTP.request(
             endpoint: current.endpoint, method: "GET", path: "/v1/ping",
             token: nil, body: nil, timeout: 4
@@ -526,9 +661,16 @@ final class LANRemoteController {
     }
 
     private func connect(endpoint: NWEndpoint, displayName: String) async {
+        // 切回局域网时把可能残留的中继隧道关掉，避免请求继续走旧隧道。
+        RemoteTunnel.current()?.disconnect()
+        RemoteTunnel.teardown()
+        isRemote = false
+        linkState = .connecting
+
         let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard code.count == 6 else {
             lastError = "Enter the 6-digit pairing code shown on your Mac."
+            linkState = .offline(reason: L10n.text("缺少配对码。"))
             return
         }
         lastAttempted = DiscoveredMac(id: displayName, name: displayName, endpoint: endpoint)
@@ -547,11 +689,13 @@ final class LANRemoteController {
                 if macProtocol < Self.minimumProtocol {
                     needsMacUpdate = true
                     lastError = "Your Mac's FlowCue is too old for this iPhone app. Update the Mac app to continue."
+                    linkState = .offline(reason: L10n.text("Mac 版本过旧。"))
                     return
                 }
                 if macProtocol > Self.supportedProtocol {
                     needsPhoneUpdate = true
                     lastError = "This Mac expects a newer iPhone app. Update FlowCue on your iPhone."
+                    linkState = .offline(reason: L10n.text("iPhone 版本过旧。"))
                     return
                 }
             }
@@ -563,10 +707,11 @@ final class LANRemoteController {
             let started = CFAbsoluteTimeGetCurrent()
             let data = try await LANHTTP.request(endpoint: endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
             lastLatencyMs = max(1, Int((CFAbsoluteTimeGetCurrent() - started) * 1000))
-            lastRefreshAt = .now
             let snapshots = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data)
             selected = DiscoveredMac(id: displayName, name: displayName, endpoint: endpoint)
             threads = snapshots.sorted { $0.updatedAt > $1.updatedAt }
+            linkState = .online
+            lastRefreshAt = .now
             await refreshDSHApprovals()
             await refreshDSHSessions()
             await syncProToMac(force: true)
@@ -578,7 +723,9 @@ final class LANRemoteController {
             stopDiscovery()
         } catch {
             UINotificationFeedbackGenerator().notificationOccurred(.error)
+            let message = Self.connectionMessage(for: error)
             lastError = "Could not connect. Check the code and that both devices are on the same Wi-Fi."
+            linkState = .offline(reason: message)
         }
     }
 
@@ -647,13 +794,40 @@ final class LANRemoteController {
     private(set) var agentInfos: [RemoteAgentInfo] = []
     /// 本机可用的 skill（斜杠菜单用）。
     private(set) var skills: [RemoteSkillInfo] = []
+    /// Agent 列表最近一次加载失败的原因；nil 表示没失败。
+    private(set) var agentsError: String?
+
+    /// 所有核心请求都走这里：成功即证明链路在线，失败立刻标离线并把
+    /// 原因交给 UI。`try?` 直接吞掉然后返回空数组会让页面永远转圈。
+    private func sendRequest(
+        method: String = "GET",
+        path: String,
+        authenticated: Bool = true,
+        body: Data? = nil,
+        timeout: TimeInterval = 10,
+        requestID: String? = nil
+    ) async throws -> Data {
+        do {
+            let data = try await LANHTTP.request(
+                endpoint: requestEndpoint,
+                method: method,
+                path: path,
+                token: authenticated ? pairingCode : nil,
+                body: body,
+                timeout: timeout,
+                requestID: requestID
+            )
+            markOnline()
+            return data
+        } catch {
+            markOffline(error)
+            throw error
+        }
+    }
 
     func refreshSkills() async {
-        guard let selected else { return }
-        guard let data = try? await LANHTTP.request(
-            endpoint: selected.endpoint, method: "GET", path: "/v1/skills",
-            token: pairingCode, body: nil, timeout: 15
-        ) else { return }
+        guard isPaired else { return }
+        guard let data = try? await sendRequest(path: "/v1/skills", timeout: 15) else { return }
         if let list = try? JSONDecoder().decode([RemoteSkillInfo].self, from: data) {
             skills = list
             UserDefaults.standard.set(data, forKey: "FlowCue.skillsCache")
@@ -681,52 +855,61 @@ final class LANRemoteController {
     }
 
     func refreshAgents() async {
-        guard let selected else { return }
-        guard let data = try? await LANHTTP.request(
-            endpoint: selected.endpoint, method: "GET", path: "/v1/agents",
-            token: pairingCode, body: nil, timeout: 20
-        ) else { return }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        if let agents = try? decoder.decode([RemoteAgentInfo].self, from: data) {
+        guard isPaired else { return }
+        do {
+            let data = try await sendRequest(path: "/v1/agents", timeout: 20)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            guard let agents = try? decoder.decode([RemoteAgentInfo].self, from: data) else {
+                agentsError = L10n.text("Mac 返回了无法解析的 Agent 列表。")
+                return
+            }
             agentInfos = agents
+            agentsError = nil
             UserDefaults.standard.set(data, forKey: Self.agentCacheKey)
+        } catch {
+            agentsError = Self.connectionMessage(for: error)
         }
     }
 
-    func agentSessions(_ agentID: String) async -> [RemoteAgentSession] {
-        guard let selected else { return [] }
-        guard let data = try? await LANHTTP.request(
-            endpoint: selected.endpoint, method: "GET",
+    func agentSessions(_ agentID: String) async throws -> [RemoteAgentSession] {
+        guard isPaired else { throw RemoteLinkError.offline(L10n.text("尚未连接 Mac。")) }
+        let data = try await sendRequest(
             path: "/v1/agents/\(agentID)/sessions",
-            token: pairingCode, body: nil, timeout: 25
-        ) else { return [] }
+            timeout: 25
+        )
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([RemoteAgentSession].self, from: data)) ?? []
+        guard let sessions = try? decoder.decode([RemoteAgentSession].self, from: data) else {
+            throw RemoteLinkError.offline(L10n.text("Mac 返回了无法解析的会话列表。"))
+        }
+        return sessions
     }
 
-    func agentMessages(agentID: String, sessionID: String) async -> [RemoteAgentMessage] {
-        guard let selected else { return [] }
+    func agentMessages(agentID: String, sessionID: String, after: Int = 0) async throws -> [RemoteAgentMessage] {
+        guard isPaired else { throw RemoteLinkError.offline(L10n.text("尚未连接 Mac。")) }
         let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? sessionID
-        guard let data = try? await LANHTTP.request(
-            endpoint: selected.endpoint, method: "GET",
-            path: "/v1/agents/\(agentID)/sessions/\(encoded)/messages",
-            token: pairingCode, body: nil, timeout: 25
-        ) else { return [] }
+        var path = "/v1/agents/\(agentID)/sessions/\(encoded)/messages"
+        if after > 0 { path += "?after=\(after)" }
+        let data = try await sendRequest(
+            path: path,
+            timeout: 25
+        )
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return (try? decoder.decode([RemoteAgentMessage].self, from: data)) ?? []
+        guard let messages = try? decoder.decode([RemoteAgentMessage].self, from: data) else {
+            throw RemoteLinkError.offline(L10n.text("Mac 返回了无法解析的对话。"))
+        }
+        return messages
     }
 
     /// 该会话「正在执行什么」；没有就返回 nil。
     func agentActivity(agentID: String, sessionID: String) async -> String? {
-        guard let selected else { return nil }
+        guard isPaired else { return nil }
         let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? sessionID
-        guard let data = try? await LANHTTP.request(
-            endpoint: selected.endpoint, method: "GET",
+        guard let data = try? await sendRequest(
             path: "/v1/agents/\(agentID)/sessions/\(encoded)/activity",
-            token: pairingCode, body: nil, timeout: 15
+            timeout: 15
         ) else { return nil }
         struct Payload: Decodable { let activity: String }
         guard let payload = try? JSONDecoder().decode(Payload.self, from: data),
@@ -735,31 +918,30 @@ final class LANRemoteController {
     }
 
     @discardableResult
-    func sendAgent(agentID: String, sessionID: String, text: String) async -> Bool {
-        guard let selected else { return false }
+    func sendAgent(agentID: String, sessionID: String, text: String, requestID: String? = nil) async -> Bool {
+        guard isPaired else { return false }
         let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? sessionID
         struct Body: Encodable { let text: String }
         guard let body = try? JSONEncoder().encode(Body(text: text)) else { return false }
         do {
-            _ = try await LANHTTP.request(
-                endpoint: selected.endpoint, method: "POST",
+            _ = try await sendRequest(
+                method: "POST",
                 path: "/v1/agents/\(agentID)/sessions/\(encoded)/send",
-                token: pairingCode, body: body, timeout: 30
+                body: body,
+                timeout: 30,
+                requestID: requestID
             )
             return true
         } catch {
-            lastError = "发送失败。"
+            lastError = String(format: L10n.text("发送失败：%@"), Self.connectionMessage(for: error))
             return false
         }
     }
 
     /// 从 Mac 拉取全部想法（包含 Mac 上原有的历史想法），用于反向同步。
     func pullIdeas() async -> [RemoteIdea]? {
-        guard let selected else { return nil }
-        guard let data = try? await LANHTTP.request(
-            endpoint: selected.endpoint, method: "GET", path: "/v1/ideas",
-            token: pairingCode, body: nil, timeout: 20
-        ) else { return nil }
+        guard isPaired,
+              let data = try? await sendRequest(path: "/v1/ideas", timeout: 20) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return try? decoder.decode([RemoteIdea].self, from: data)
@@ -767,37 +949,30 @@ final class LANRemoteController {
 
     /// 手机删掉一条想法后，让 Mac 也删掉同一条（同步是单向推送，不删会留副本）。
     func deleteIdeaOnMac(_ id: UUID) async {
-        guard let selected else { return }
+        guard isPaired else { return }
         struct Body: Encodable { let id: String }
         guard let body = try? JSONEncoder().encode(Body(id: id.uuidString)) else { return }
-        _ = try? await LANHTTP.request(
-            endpoint: selected.endpoint, method: "POST",
-            path: "/v1/ideas/delete", token: pairingCode, body: body, timeout: 15
-        )
+        _ = try? await sendRequest(method: "POST", path: "/v1/ideas/delete", body: body, timeout: 15)
     }
 
     func refreshDSHQuestions() async {
-        guard let selected else { return }
-        guard let data = try? await LANHTTP.request(
-            endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/questions", token: pairingCode, body: nil
-        ), let list = try? JSONDecoder().decode([DSHRemoteQuestionBatch].self, from: data) else { return }
+        guard isPaired,
+              let data = try? await sendRequest(path: "/v1/dsh/questions"),
+              let list = try? JSONDecoder().decode([DSHRemoteQuestionBatch].self, from: data) else { return }
         if list != dshQuestions { dshQuestions = list }
     }
 
     @discardableResult
     func answerDSH(batchID: String, questionID: String, chosen: [String]) async -> Bool {
-        guard let selected else { return false }
+        guard isPaired else { return false }
         let answer = DSHQuestionAnswer(id: batchID, answers: [.init(id: questionID, selected: chosen, custom: nil)])
         guard let body = try? JSONEncoder().encode(answer) else { return false }
         do {
-            _ = try await LANHTTP.request(
-                endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/answer",
-                token: pairingCode, body: body, timeout: 20
-            )
+            _ = try await sendRequest(method: "POST", path: "/v1/dsh/answer", body: body, timeout: 20)
             await refreshDSHQuestions()
             return true
         } catch {
-            lastError = "问题已回答或已失效。"
+            lastError = L10n.text("问题已回答或已失效。")
             await refreshDSHQuestions()
             return false
         }
@@ -805,21 +980,21 @@ final class LANRemoteController {
 
     /// Mac 当前在跑什么（最近一次工具调用还没结束）。没有就返回 nil。
     func dshActivity(for session: DSHSessionSnapshot) async -> (label: String, since: Date)? {
-        guard let selected else { return nil }
+        guard isPaired else { return nil }
         struct Activity: Decodable {
             let label: String
             let since: Double?
         }
         let encoded = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
-        guard let data = try? await LANHTTP.request(
-            endpoint: selected.endpoint, method: "GET",
-            path: "/v1/dsh/activity/\(encoded)", token: pairingCode, body: nil
-        ), let activity = try? JSONDecoder().decode(Activity.self, from: data) else { return nil }
+        guard let data = try? await sendRequest(path: "/v1/dsh/activity/\(encoded)"),
+              let activity = try? JSONDecoder().decode(Activity.self, from: data) else { return nil }
         let since = activity.since.map { Date(timeIntervalSince1970: $0) } ?? Date()
         return (activity.label, since)
     }
 
     func disconnect() {
+        RemoteTunnel.current()?.disconnect()
+        RemoteTunnel.teardown()
         selected = nil
         threads = []
         dshApprovals = []
@@ -832,6 +1007,8 @@ final class LANRemoteController {
         lastRefreshAt = nil
         lastAttempted = nil
         lastError = nil
+        linkState = .disconnected
+        isRemote = false
         didPushPro = false
         lastPushedProExpiry = nil
         macAppVersion = nil
@@ -842,39 +1019,42 @@ final class LANRemoteController {
     }
 
     func refresh() async {
-        guard let selected else { return }
-        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isPaired else { return }
         isLoading = true
         defer { isLoading = false }
         do {
             let started = CFAbsoluteTimeGetCurrent()
-            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
+            let data = try await sendRequest(path: "/v1/threads")
             lastLatencyMs = max(1, Int((CFAbsoluteTimeGetCurrent() - started) * 1000))
-            lastRefreshAt = .now
             threads = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data).sorted { $0.updatedAt > $1.updatedAt }
             await refreshDSHApprovals()
             await refreshDSHSessions()
             await syncProToMac()
             lastError = nil
         } catch {
-            lastError = "Connection lost. Make sure FlowCue is still running on your Mac."
+            // sendRequest 已经把链路标离线并写入具体原因。
+            if lastError == nil {
+                lastError = "Connection lost. Make sure FlowCue is still running on your Mac."
+            }
         }
     }
 
     private func refreshDSHSessions() async {
-        guard let selected else { return }
-        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isPaired else { return }
         do {
-            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/sessions", token: code, body: nil)
+            let data = try await sendRequest(path: "/v1/dsh/sessions")
             dshSessions = try JSONDecoder().decode([DSHSessionSnapshot].self, from: data)
         } catch {
-            dshSessions = []
+            // 保留上次的列表，不要因为一次失败就清空成「没有会话」。
+            if lastError == nil {
+                lastError = Self.connectionMessage(for: error)
+            }
         }
     }
 
     @discardableResult
-    func sendDSH(to session: DSHSessionSnapshot, text: String, images: [Data] = []) async -> Bool {
-        guard let selected else { return false }
+    func sendDSH(to session: DSHSessionSnapshot, text: String, images: [Data] = [], requestID: String? = nil) async -> Bool {
+        guard isPaired else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !images.isEmpty else { return false }
         do {
@@ -882,9 +1062,10 @@ final class LANRemoteController {
             let body = try JSONEncoder().encode(DSHRemoteMessage(
                 sessionId: session.id,
                 text: trimmed.isEmpty ? "Image attachment" : trimmed,
-                images: encodedImages.isEmpty ? nil : encodedImages
+                images: encodedImages.isEmpty ? nil : encodedImages,
+                requestID: requestID
             ))
-            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/send", token: pairingCode, body: body, timeout: 30)
+            _ = try await sendRequest(method: "POST", path: "/v1/dsh/send", body: body, timeout: 30)
             statusMessage = "Sent to DSH."
             return true
         } catch {
@@ -894,10 +1075,10 @@ final class LANRemoteController {
     }
 
     func dshSubagents(for session: DSHSessionSnapshot) async -> [DSHSessionSnapshot] {
-        guard let selected else { return [] }
+        guard isPaired else { return [] }
         let encoded = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
         do {
-            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/subagents/\(encoded)", token: pairingCode, body: nil)
+            let data = try await sendRequest(path: "/v1/dsh/subagents/\(encoded)")
             return try JSONDecoder().decode([DSHSessionSnapshot].self, from: data)
         } catch {
             return []
@@ -910,27 +1091,28 @@ final class LANRemoteController {
         selected?.endpoint ?? .hostPort(host: "remote.invalid", port: 47824)
     }
 
-    func dshMessages(for session: DSHSessionSnapshot) async -> [RemoteConversationMessage] {
-        let selected = DiscoveredMac(id: "remote", name: "Mac", endpoint: requestEndpoint)
+    func dshMessages(for session: DSHSessionSnapshot, after: Int = 0) async throws -> [RemoteConversationMessage] {
+        guard isPaired else { throw RemoteLinkError.offline(L10n.text("尚未连接 Mac。")) }
         let encoded = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
-        do {
-            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/sessions/\(encoded)/messages", token: pairingCode, body: nil)
-            return try JSONDecoder().decode([RemoteConversationMessage].self, from: data)
-        } catch {
-            return []
+        var path = "/v1/dsh/sessions/\(encoded)/messages"
+        if after > 0 { path += "?after=\(after)" }
+        let data = try await sendRequest(path: path)
+        guard let messages = try? JSONDecoder().decode([RemoteConversationMessage].self, from: data) else {
+            throw RemoteLinkError.offline(L10n.text("Mac 返回了无法解析的对话。"))
         }
+        return messages
     }
 
     private func refreshDSHApprovals() async {
-        guard let selected else { return }
-        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isPaired else { return }
         do {
-            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/dsh/approvals", token: code, body: nil)
+            let data = try await sendRequest(path: "/v1/dsh/approvals")
             let response = try JSONDecoder().decode(DSHRemoteApprovalsResponse.self, from: data)
             dshBridgeAvailable = response.available
             dshApprovals = response.pending
         } catch {
             // The DSH bridge is optional; an absent plugin must not break Codex.
+            // 传输失败时 sendRequest 已经标离线，这里只清桥接状态。
             dshBridgeAvailable = false
             dshApprovals = []
         }
@@ -955,14 +1137,14 @@ final class LANRemoteController {
 
     @discardableResult
     func pushIdea(_ idea: RemoteIdea) async -> Bool {
-        guard let selected else { return false }
+        guard isPaired else { return false }
         let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard code.count == 6 else { return false }
         do {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             let body = try encoder.encode(idea)
-            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/ideas", token: code, body: body)
+            _ = try await sendRequest(method: "POST", path: "/v1/ideas", body: body)
             return true
         } catch {
             return false
@@ -1005,11 +1187,10 @@ final class LANRemoteController {
 
     @discardableResult
     func decideDSH(_ approval: DSHRemoteApproval, decision: String) async -> Bool {
-        guard let selected else { return false }
-        let code = pairingCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard isPaired else { return false }
         do {
             let body = try JSONEncoder().encode(DSHRemoteDecision(id: approval.id, decision: decision))
-            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/dsh/decide", token: code, body: body)
+            _ = try await sendRequest(method: "POST", path: "/v1/dsh/decide", body: body)
             dshApprovals.removeAll { $0.id == approval.id }
             statusMessage = decision == "allowed-once" ? "DSH approved." : "DSH rejected."
             return true
@@ -1020,20 +1201,19 @@ final class LANRemoteController {
         }
     }
 
-    func messages(for thread: RemoteThreadSnapshot) async -> [RemoteConversationMessage] {
-        let selected = DiscoveredMac(id: "remote", name: "Mac", endpoint: requestEndpoint)
+    func messages(for thread: RemoteThreadSnapshot) async throws -> [RemoteConversationMessage] {
+        guard isPaired else { throw RemoteLinkError.offline(L10n.text("尚未连接 Mac。")) }
         let encoded = thread.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? thread.id
-        do {
-            let data = try await LANHTTP.request(endpoint: selected.endpoint, method: "GET", path: "/v1/threads/\(encoded)/messages", token: pairingCode, body: nil)
-            return try JSONDecoder().decode([RemoteConversationMessage].self, from: data)
-        } catch {
-            return []
+        let data = try await sendRequest(path: "/v1/threads/\(encoded)/messages")
+        guard let messages = try? JSONDecoder().decode([RemoteConversationMessage].self, from: data) else {
+            throw RemoteLinkError.offline(L10n.text("Mac 返回了无法解析的对话。"))
         }
+        return messages
     }
 
     @discardableResult
     func send(to thread: RemoteThreadSnapshot, text: String, images: [Data] = []) async -> Bool {
-        guard let selected else { return false }
+        guard isPaired else { return false }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty || !images.isEmpty else { return false }
         let phoneID: UUID
@@ -1053,7 +1233,7 @@ final class LANRemoteController {
         )
         do {
             let body = try JSONEncoder().encode(command)
-            _ = try await LANHTTP.request(endpoint: selected.endpoint, method: "POST", path: "/v1/send", token: pairingCode, body: body)
+            _ = try await sendRequest(method: "POST", path: "/v1/send", body: body)
             statusMessage = "Sent to your Mac. The reply will appear when it is ready."
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(2))
@@ -1076,17 +1256,20 @@ private enum LANHTTP {
         path: String,
         token: String?,
         body: Data?,
-        timeout: TimeInterval = 10
+        timeout: TimeInterval = 10,
+        requestID: String? = nil
     ) async throws -> Data {
         // 远程优先：中继隧道在线时所有 /v1 请求走加密通道，
         // LAN 直连作为同 Wi-Fi 的后备（断线即回退）。
-        if let tunnel = await RemoteTunnel.active() {
+        if let tunnel = await RemoteTunnel.current() {
+            // 有隧道就只走隧道：离线时立刻抛错，绝不悄悄回退到
+            // remote.invalid 这种占位地址然后卡到超时。
             // 必须带鉴权头：Mac 端所有接口都要 Bearer，隧道不传就会 401。
             var headers: [String: String] = [:]
             if let token, !token.isEmpty {
                 headers["authorization"] = "Bearer \(token)"
             }
-            return try await tunnel.request(method: method, path: path, headers: headers, body: body)
+            return try await tunnel.request(method: method, path: path, headers: headers, body: body, requestID: requestID)
         }
         return try await withCheckedThrowingContinuation { continuation in
             let runner = LANHTTPRunner(endpoint: endpoint, method: method, path: path, token: token, body: body, continuation: continuation)
@@ -1321,8 +1504,8 @@ private struct RootTabView: View {
             .toolbar(.hidden, for: .tabBar)
         }
         .tint(FlowCueTheme.accent)
-        .task(id: remoteController.isConnected) {
-            guard remoteController.isConnected else { return }
+        .task(id: remoteController.isPaired) {
+            guard remoteController.isPaired else { return }
             // 先把 Mac 上的想法拉下来合并（Mac → iPhone），再把本地推上去
             // （iPhone → Mac）。两边按 id 对齐，updatedAt 新的赢。
             if let pulled = await remoteController.pullIdeas() {
@@ -1351,8 +1534,7 @@ private struct RootTabView: View {
         }
         .onAppear {
             // 有远程凭据时直接连中继，不需要先在同一 Wi-Fi。
-            remoteController.restoreRemoteIfPossible()
-            if RemoteTunnel.active() != nil {
+            if remoteController.restoreRemoteIfPossible() {
                 remoteController.adoptRemoteDevice()
             }
             #if DEBUG
@@ -1385,6 +1567,8 @@ private struct RootTabView: View {
         }
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
+            // 回前台时系统可能已经回收了 WebSocket，主动确认一次。
+            RemoteTunnel.current()?.checkLiveness()
             #if DEBUG
             if !didSeedSharedPreview,
                ProcessInfo.processInfo.arguments.contains("--flowcue-share-preview") {
@@ -1412,7 +1596,7 @@ private struct RootTabView: View {
             )
         }
         let status: String
-        if remoteController.isConnected, let latency = remoteController.lastLatencyMs {
+        if remoteController.isOnline, let latency = remoteController.lastLatencyMs {
             status = "CODEX \(FlowCueLinkFormat.latency(latency) ?? "")"
         } else {
             status = "LOCAL"
@@ -1564,12 +1748,13 @@ private struct FlowCueTabBar: View {
         let tab: FlowCueTab
         let title: String
         let glyph: FlowCueGlyphKind
+        let symbol: String
     }
 
     private let items: [Item] = [
-        Item(tab: .inbox, title: "Ideas", glyph: .spark),
-        Item(tab: .agents, title: "Agents", glyph: .plane),
-        Item(tab: .me, title: "Me", glyph: .face)
+        Item(tab: .inbox, title: "Ideas", glyph: .spark, symbol: "sparkles"),
+        Item(tab: .agents, title: "Agents", glyph: .plane, symbol: "paperplane"),
+        Item(tab: .me, title: "Me", glyph: .face, symbol: "face.smiling")
     ]
 
     var body: some View {
@@ -1611,10 +1796,16 @@ private struct FlowCueTabBar: View {
             .frame(maxWidth: .infinity)
             .frame(minHeight: 44)
             .contentShape(Rectangle())
+            // 自定义栏不能像正文一样无限放大：HIG 要求用 Large Content
+            // Viewer，而不是让标签吃掉五分之一屏。
+            .dynamicTypeSize(.small ... .xxxLarge)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(item.title)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
+        .accessibilityShowsLargeContentViewer {
+            Label(item.title, systemImage: item.symbol)
+        }
     }
 }
 
@@ -2071,7 +2262,9 @@ private struct InboxView: View {
                 .frame(minHeight: chipHeight)
                 .background(
                     RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
-                        .fill(isSelected ? FlowCueTheme.accentSoft : Color.clear)
+                        // 未选中的 chip 也给一个实心底：透明底在自动对比度审计里
+                        // 会被当成白底，而且视觉上也不像一个可点的控件。
+                        .fill(isSelected ? FlowCueTheme.accentSoft : FlowCueTheme.surface)
                 )
                 .overlay(
                     RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
@@ -2213,7 +2406,7 @@ private struct InboxView: View {
                 .flowCueFont(10, relativeTo: .caption2)
                 .tracking(0.6)
                 .foregroundStyle(FlowCueTheme.textSecondary)
-        } else if remoteController.isConnected && !isOffline {
+        } else if remoteController.isOnline && !isOffline {
             HStack(spacing: 5) {
                 Circle()
                     .fill(FlowCueTheme.mint)
@@ -2739,7 +2932,7 @@ private struct SearchResultRow: View {
 
             Image(systemName: "chevron.right")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                .foregroundStyle(FlowCueTheme.textSecondary)
                 .padding(.top, 2)
                 .accessibilityHidden(true)
         }
@@ -2906,6 +3099,9 @@ private struct HomeIdeaRow: View {
                 .accessibilityHidden(true)
         }
         .padding(.vertical, 12)
+        // 实心画布底：视觉上与屏幕底一致；自动对比度审计需要真实背景色，
+        // 透明节点会被当成白底而误报。
+        .background(FlowCueTheme.canvas)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
@@ -3300,7 +3496,7 @@ private struct SendIdeaSheet: View {
     var body: some View {
         NavigationStack {
             Group {
-                if !controller.isConnected {
+                if !controller.isPaired {
                     placeholder(
                         icon: "wifi.slash",
                         title: "No Mac connected",
@@ -3660,6 +3856,9 @@ private struct AgentsAgentRow: View {
             }
         }
         .padding(.vertical, 12)
+        // 实心画布底：视觉上与屏幕底一致；自动对比度审计需要真实背景色，
+        // 透明节点会被当成白底而误报。
+        .background(FlowCueTheme.canvas)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(meta), \(isActive ? "active" : "idle")")
@@ -3730,7 +3929,7 @@ private struct AgentsView: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if showsCannotReach {
                         cannotReachContent
-                    } else if controller.isConnected {
+                    } else if controller.isPaired {
                         connectedContent
                             .task { await loadAgentsIfNeeded() }
                     } else if showsDiscovering {
@@ -3762,7 +3961,7 @@ private struct AgentsView: View {
             .task { network.start() }
             .task {
                 while !Task.isCancelled {
-                    if controller.isConnected {
+                    if controller.isOnline {
                         await controller.refresh()
                     }
                     try? await Task.sleep(for: .seconds(10))
@@ -3820,12 +4019,15 @@ private struct AgentsView: View {
 
     private var showsCannotReach: Bool {
         if AgentsPreview.forcesCannotReach { return true }
-        return !controller.isConnected && controller.lastError != nil && controller.lastAttempted != nil
+        // 已配对（尤其远程）时继续显示设备页：离线只是状态，不是「找不到设备」。
+        // 详情页里可以直接 Reconnect。
+        guard !controller.isPaired else { return false }
+        return controller.lastAttempted != nil || controller.lastError != nil
     }
 
     private var showsDiscovering: Bool {
         if AgentsPreview.forcesDiscovering { return true }
-        return !controller.isConnected
+        return !controller.isPaired
             && controller.lastAttempted == nil
             && controller.isScanning
             && controller.discovered.isEmpty
@@ -3835,15 +4037,21 @@ private struct AgentsView: View {
         if AgentsPreview.requestedState != nil {
             return "arrow.clockwise"
         }
-        if controller.isConnected || controller.lastAttempted != nil || controller.isScanning {
+        if controller.isPaired || controller.lastAttempted != nil || controller.isScanning {
             return "arrow.clockwise"
         }
         return "plus"
     }
 
     private func toolbarAction() {
-        if controller.isConnected {
-            Task { await controller.refresh() }
+        if controller.isPaired {
+            Task {
+                if controller.isOnline {
+                    await controller.refresh()
+                } else {
+                    await controller.reconnect()
+                }
+            }
         } else if controller.lastAttempted != nil {
             Task { await controller.retryLastAttempt() }
         } else if controller.isScanning {
@@ -3866,6 +4074,49 @@ private struct AgentsView: View {
 
     // MARK: Connected
 
+    @ViewBuilder
+    private var deviceActions: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: 12) {
+                disconnectControl
+                changeCodeControl
+            }
+        } else {
+            HStack(spacing: 14) {
+                disconnectControl
+                changeCodeControl
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private var disconnectControl: some View {
+        Button {
+            controller.disconnect()
+        } label: {
+            Label(L10n.language == .mandarin ? "断连" : "Disconnect", systemImage: "bolt.horizontal.circle")
+                .flowCueFont(11.5, relativeTo: .caption, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: 44)
+    }
+
+    private var changeCodeControl: some View {
+        Button {
+            controller.disconnect()
+            showingPairing = true
+        } label: {
+            Label(L10n.language == .mandarin ? "更换配对码" : "Change code", systemImage: "number.circle")
+                .flowCueFont(11.5, relativeTo: .caption, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.accent)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: 44)
+    }
+
     private var connectedContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -3875,12 +4126,18 @@ private struct AgentsView: View {
                         title: "No network. Agents need Wi-Fi."
                     )
                     .padding(.top, 10)
+                } else if controller.isConnecting {
+                    FlowCueInlineBanner(
+                        kind: .warning,
+                        title: "Connecting to your Mac…"
+                    )
+                    .padding(.top, 10)
                 } else if let message = controller.lastError {
                     FlowCueInlineBanner(
                         kind: .failure,
                         title: message,
-                        actionTitle: "Retry",
-                        action: { Task { await controller.refresh() } }
+                        actionTitle: "Reconnect",
+                        action: { Task { await controller.reconnect() } }
                     )
                     .padding(.top, 10)
                 }
@@ -3902,7 +4159,7 @@ private struct AgentsView: View {
                 } label: {
                     AgentsDeviceCard(
                         title: deviceName,
-                        isOnline: !isOffline,
+                        isOnline: controller.isOnline && !isOffline,
                         latency: FlowCueLinkFormat.latency(controller.lastLatencyMs)
                     )
                 }
@@ -3912,47 +4169,37 @@ private struct AgentsView: View {
                 // 断连与重新配对放在设备卡片正下方：
                 // 之前在「设备详情 → 底部」里，连着的时候根本找不到，
                 // 也进不去配对面板（它只在未连接状态可打开）。
-                HStack(spacing: 14) {
-                    Button {
-                        controller.disconnect()
-                    } label: {
-                        Label(L10n.language == .mandarin ? "断连" : "Disconnect", systemImage: "bolt.horizontal.circle")
-                            .flowCueFont(11.5, relativeTo: .caption, weight: .semibold)
-                            .foregroundStyle(FlowCueTheme.textSecondary)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        controller.disconnect()
-                        showingPairing = true
-                    } label: {
-                        Label(L10n.language == .mandarin ? "更换配对码" : "Change code", systemImage: "number.circle")
-                            .flowCueFont(11.5, relativeTo: .caption, weight: .semibold)
-                            .foregroundStyle(FlowCueTheme.accent)
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer(minLength: 0)
-                }
-                .padding(.horizontal, AgentsLayout.margin)
-                .padding(.top, 10)
+                deviceActions
+                    .padding(.horizontal, AgentsLayout.margin)
+                    .padding(.top, 10)
 
                 AgentsSectionHeader(title: "AGENTS ON THIS MAC")
                     .padding(.top, 16)
 
                 VStack(spacing: 0) {
                     if controller.agentInfos.isEmpty {
-                        // 刚连上时第一次统计要扫各家的会话目录，先给个占位，
-                        // 不要留一片空白让人以为没装上 Agent。
-                        HStack(spacing: 10) {
-                            ProgressView().controlSize(.small)
-                            Text("正在读取这台 Mac 上的 Agent…")
-                                .flowCueFont(12, relativeTo: .caption)
-                                .foregroundStyle(FlowCueTheme.textSecondary)
-                            Spacer(minLength: 0)
+                        if let agentsError = controller.agentsError {
+                            FlowCueInlineBanner(
+                                kind: .failure,
+                                title: "Couldn't load agents — \(agentsError)",
+                                actionTitle: "Retry",
+                                action: { Task { await controller.refreshAgents() } }
+                            )
+                            .padding(.horizontal, AgentsLayout.margin)
+                            .padding(.vertical, 12)
+                        } else {
+                            // 刚连上时第一次统计要扫各家的会话目录，先给个占位，
+                            // 不要留一片空白让人以为没装上 Agent。
+                            HStack(spacing: 10) {
+                                ProgressView().controlSize(.small)
+                                Text("正在读取这台 Mac 上的 Agent…")
+                                    .flowCueFont(12, relativeTo: .caption)
+                                    .foregroundStyle(FlowCueTheme.textSecondary)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, AgentsLayout.margin)
+                            .padding(.vertical, 16)
                         }
-                        .padding(.horizontal, AgentsLayout.margin)
-                        .padding(.vertical, 16)
                     }
                     ForEach(controller.agentInfos) { agent in
                         NavigationLink {
@@ -3961,7 +4208,7 @@ private struct AgentsView: View {
                             AgentsAgentRow(
                                 title: agent.displayName,
                                 meta: agentMeta(agent),
-                                isActive: !isOffline && agent.sessionCount > 0,
+                                isActive: controller.isOnline && !isOffline && agent.sessionCount > 0,
                                 agentID: agent.id
                             )
                         }
@@ -4234,8 +4481,8 @@ private struct PairMacSheet: View {
                 let digits = String(value.filter { "0123456789".contains($0) }.prefix(6))
                 if digits != value { controller.pairingCode = digits }
             }
-            .onChange(of: controller.isConnected) { _, connected in
-                if connected { dismiss() }
+            .onChange(of: controller.isPaired) { _, paired in
+                if paired { dismiss() }
             }
         }
     }
@@ -4475,12 +4722,12 @@ private struct PairMacSheet: View {
     private var remoteSection: some View {
         DisclosureGroup(isExpanded: $showingRemote) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("先在 Mac 的 FlowCue → 设置 → Remote 打开远程连接，然后把那里的 6 位码输进来。")
+                Text(L10n.text("先在 Mac 的 FlowCue → 设置 → Remote 打开远程连接，然后把那里的 6 位码输进来。"))
                     .flowCueFont(11, relativeTo: .caption2)
                     .foregroundStyle(FlowCueTheme.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
 
-                TextField("6 位配对码", text: $remoteCode)
+                TextField(L10n.text("6 位配对码"), text: $remoteCode)
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .font(.system(size: 20, weight: .semibold, design: .monospaced))
@@ -4521,7 +4768,7 @@ private struct PairMacSheet: View {
                         }
                     }
                 } label: {
-                    Text(remoteBusy ? "正在等待 Mac 批准…" : "通过中继配对")
+                    Text(L10n.text(remoteBusy ? "正在等待 Mac 批准…" : "通过中继配对"))
                         .flowCueFont(13.5, relativeTo: .subheadline, weight: .semibold)
                         .foregroundStyle(FlowCueTheme.onAccent)
                         .frame(maxWidth: .infinity)
@@ -4536,7 +4783,7 @@ private struct PairMacSheet: View {
             }
             .padding(.top, 8)
         } label: {
-            Text("不在同一 Wi-Fi？")
+            Text(L10n.text("不在同一 Wi-Fi？"))
                 .flowCueFont(12, relativeTo: .caption, weight: .semibold)
                 .foregroundStyle(FlowCueTheme.textSecondary)
         }
@@ -4619,7 +4866,7 @@ private struct PairMacSheet: View {
         } else if showingManual {
             await controller.connectManually()
         }
-        if controller.isConnected { dismiss() }
+        if controller.isPaired { dismiss() }
     }
 
 }
@@ -4728,23 +4975,34 @@ private struct RemoteDeviceView: View {
     @Bindable var controller: LANRemoteController
     @Binding var tab: FlowCueTab
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var reconnecting = false
 
     private var name: String {
         FlowCueLinkFormat.deviceName(controller.selected?.name ?? controller.lastAttempted?.name)
     }
 
-    private var isOnline: Bool {
-        controller.isConnected && controller.lastError == nil
-    }
+    private var isOnline: Bool { controller.isOnline }
 
     private var statusText: String {
-        if isOnline { return "Online · Wi-Fi" }
-        return controller.isConnected ? "Offline" : "Disconnected"
+        switch controller.linkState {
+        case .online: return controller.isRemote ? "Online · Remote" : "Online · Wi-Fi"
+        case .connecting: return "Connecting…"
+        case .disconnected: return "Disconnected"
+        case .offline: return "Offline"
+        }
     }
 
     private var statusTint: Color {
-        isOnline ? FlowCueTheme.mint : (controller.isConnected ? FlowCueTheme.failure : FlowCueTheme.textSecondary)
+        switch controller.linkState {
+        case .online: return FlowCueTheme.mint
+        case .connecting: return FlowCueTheme.accent
+        case .offline: return FlowCueTheme.failure
+        case .disconnected: return FlowCueTheme.textSecondary
+        }
     }
+
+    private var showsConnecting: Bool { controller.isConnecting || reconnecting }
 
     private var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0"
@@ -4770,14 +5028,12 @@ private struct RemoteDeviceView: View {
                         .foregroundStyle(FlowCueTheme.textPrimary)
                         .padding(.top, 14)
                     HStack(spacing: 5) {
-                        if isOnline || controller.isConnected {
+                        if showsConnecting {
+                            ProgressView().controlSize(.mini)
+                        } else {
                             Circle()
                                 .fill(statusTint)
                                 .frame(width: 5, height: 5)
-                        } else {
-                            Circle()
-                                .strokeBorder(statusTint, lineWidth: 1)
-                                .frame(width: 6, height: 6)
                         }
                         Text(statusText)
                     }
@@ -4785,13 +5041,22 @@ private struct RemoteDeviceView: View {
                     .foregroundStyle(statusTint)
                     .padding(.top, 6)
 
+                    if case .offline(let reason) = controller.linkState, !reason.isEmpty {
+                        Text(reason)
+                            .flowCueFont(11, relativeTo: .caption2)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 4)
+                            .padding(.horizontal, AgentsLayout.margin)
+                    }
+
                     VStack(spacing: 0) {
                         infoRow("Latency", FlowCueLinkFormat.latency(controller.lastLatencyMs) ?? "—")
                         infoRow("Last sync", FlowCueLinkFormat.relative(controller.lastRefreshAt))
                         infoRow("Version", controller.versionHandshakeText, monospaced: true)
                         infoRow(
                             "Pairing",
-                            FlowCueLinkFormat.fingerprint("\(name)|\(controller.pairingCode)"),
+                            FlowCueLinkFormat.fingerprint(pairingFingerprintSeed(name)),
                             monospaced: true
                         )
                     }
@@ -4814,39 +5079,60 @@ private struct RemoteDeviceView: View {
                             .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
                             .foregroundStyle(FlowCueTheme.onAccent)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 50)
+                            .frame(minHeight: 50)
                             .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Open chat")
 
-                    Button {
-                        controller.disconnect()
-                        dismiss()
-                    } label: {
-                        Text("Disconnect")
-                            .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
-                            .foregroundStyle(FlowCueTheme.textPrimary)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.surface))
-                            .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Disconnect from this Mac")
+                    disconnectButton
                 } else {
+                    // 掉线时也要能重连：以前这里调用 retryLastAttempt()，
+                    // 而远程模式没有 lastAttempted，点下去什么都不会发生。
                     Button {
-                        Task { await controller.retryLastAttempt() }
+                        guard !showsConnecting else { return }
+                        reconnecting = true
+                        Task {
+                            await controller.reconnect()
+                            reconnecting = false
+                        }
                     } label: {
-                        Text("Reconnect")
-                            .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
-                            .foregroundStyle(FlowCueTheme.onAccent)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.accent))
+                        HStack(spacing: 8) {
+                            if showsConnecting {
+                                ProgressView().controlSize(.small).tint(FlowCueTheme.onAccent)
+                            }
+                            Text(showsConnecting ? "Connecting…" : "Reconnect")
+                                .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                        }
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                        .background(
+                            RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
+                                .fill(FlowCueTheme.accent.opacity(showsConnecting ? 0.55 : 1))
+                        )
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Reconnect")
+                    .disabled(showsConnecting)
+                    .accessibilityLabel(showsConnecting ? "Connecting" : "Reconnect")
+
+                    if controller.isPaired {
+                        NavigationLink {
+                            chatDestination
+                        } label: {
+                            Text("Open saved sessions")
+                                .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                                .foregroundStyle(FlowCueTheme.textPrimary)
+                                .frame(maxWidth: .infinity)
+                                .frame(minHeight: 44)
+                                .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.surface))
+                                .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Open saved sessions")
+                    }
+
+                    disconnectButton
                 }
             }
             .padding(.horizontal, AgentsLayout.margin)
@@ -4854,6 +5140,23 @@ private struct RemoteDeviceView: View {
             .padding(.bottom, 10)
             .background(FlowCueTheme.canvas)
         }
+    }
+
+    private var disconnectButton: some View {
+        Button {
+            controller.disconnect()
+            dismiss()
+        } label: {
+            Text("Disconnect")
+                .flowCueFont(14, relativeTo: .subheadline, weight: .semibold)
+                .foregroundStyle(FlowCueTheme.textPrimary)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: 50)
+                .background(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).fill(FlowCueTheme.surface))
+                .overlay(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous).strokeBorder(FlowCueTheme.hairline))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Disconnect from this Mac")
     }
 
     private var remoteHeader: some View {
@@ -4889,17 +5192,32 @@ private struct RemoteDeviceView: View {
         }
     }
 
-    private func infoRow(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
-        HStack {
-            Text(label)
-                .flowCueFont(12.5, relativeTo: .caption)
-                .foregroundStyle(FlowCueTheme.textSecondary)
-            Spacer()
-            Text(value)
-                .font(.system(size: 12.5, design: monospaced ? .monospaced : .default))
-                .foregroundStyle(FlowCueTheme.textPrimary)
-                .lineLimit(1)
+    /// 远程模式没有 LAN 配对码；再用它做指纹会对所有 Mac 都显示同一串。
+    private func pairingFingerprintSeed(_ name: String) -> String {
+        if controller.isRemote {
+            return "remote|\(RemoteCredentials.pairID ?? "")|\(RemoteCredentials.macID ?? "")"
         }
+        return "\(name)|\(controller.pairingCode)"
+    }
+
+    @ViewBuilder
+    private func infoRow(_ label: String, _ value: String, monospaced: Bool = false) -> some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 3) {
+                    infoLabel(label)
+                    infoValue(value, monospaced: monospaced)
+                }
+            } else {
+                HStack {
+                    infoLabel(label)
+                    Spacer()
+                    infoValue(value, monospaced: monospaced)
+                        .lineLimit(1)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 11)
         .overlay(alignment: .bottom) {
             Rectangle()
@@ -4908,6 +5226,20 @@ private struct RemoteDeviceView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(label): \(value)")
+    }
+
+    private func infoLabel(_ label: String) -> some View {
+        Text(label)
+            .flowCueFont(12.5, relativeTo: .caption)
+            .foregroundStyle(FlowCueTheme.textSecondary)
+    }
+
+    private func infoValue(_ value: String, monospaced: Bool) -> some View {
+        // 用语义 caption 而不是固定 12.5pt：否则大字号下标签放大了、值还是小的。
+        Text(value)
+            .font(.system(.caption, design: monospaced ? .monospaced : .default))
+            .foregroundStyle(FlowCueTheme.textPrimary)
+            .multilineTextAlignment(.trailing)
     }
 }
 
@@ -5177,13 +5509,19 @@ private struct SessionsSkeleton: View {
 }
 
 private struct SessionsLoadError: View {
+    var detail: String?
     let retry: () -> Void
+
+    init(detail: String? = nil, retry: @escaping () -> Void) {
+        self.detail = detail
+        self.retry = retry
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             FlowCueInlineBanner(
                 kind: .failure,
-                title: "Couldn't load sessions",
+                title: detail.map { "Couldn't load sessions — \($0)" } ?? "Couldn't load sessions",
                 actionTitle: "Retry",
                 action: retry
             )
@@ -5450,7 +5788,7 @@ private struct CodexAgentView: View {
     }
 
     private var isOnline: Bool {
-        controller.isConnected && network.isOnline
+        controller.isOnline && network.isOnline
     }
 
     private var isLoading: Bool {
@@ -5605,7 +5943,7 @@ private struct DSHAgentView: View {
     }
 
     private var isOnline: Bool {
-        controller.isConnected && network.isOnline
+        controller.isOnline && network.isOnline
     }
 
     private var isLoading: Bool {
@@ -5832,6 +6170,7 @@ private struct ChatScreen: View {
     @State private var pending: PendingChatMessage?
     @State private var sending = false
     @State private var loading = false
+    @State private var loadError: String?
     @State private var network = FlowCueNetworkMonitor()
     @State private var showingSwitcher = false
     @State private var showingDevice = false
@@ -5852,7 +6191,7 @@ private struct ChatScreen: View {
     private var target: ChatTarget { switchedTarget ?? initialTarget }
 
     private var isOnline: Bool {
-        controller.isConnected && network.isOnline
+        controller.isOnline && network.isOnline
     }
 
     private var displayMessages: [RemoteConversationMessage] {
@@ -5916,6 +6255,15 @@ private struct ChatScreen: View {
                 )
                 .padding(.horizontal, 18)
                 .padding(.top, 8)
+            } else if let loadError, !displayMessages.isEmpty {
+                FlowCueInlineBanner(
+                    kind: .failure,
+                    title: "Couldn't refresh — \(loadError)",
+                    actionTitle: "Retry",
+                    action: { Task { await reloadOnce() } }
+                )
+                .padding(.horizontal, 18)
+                .padding(.top, 8)
             }
             content
             if isWorking {
@@ -5971,6 +6319,10 @@ private struct ChatScreen: View {
         .task { network.start() }
         .onDisappear { network.stop() }
         .task(id: target.id) { await runChat() }
+        .task(id: controller.isOnline) {
+            // 重连成功后补一次，不用等下一轮 3 秒轮询或重进页面。
+            if controller.isOnline { await reloadOnce() }
+        }
         .onChange(of: displayMessages.last?.id) { _, _ in updateLiveActivity() }
         .onChange(of: isWorking) { _, _ in updateLiveActivity() }
         .onChange(of: pending?.state == .failed) { _, _ in updateLiveActivity() }
@@ -6097,6 +6449,18 @@ private struct ChatScreen: View {
             ProgressView()
                 .tint(FlowCueTheme.textSecondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if let loadError, displayMessages.isEmpty, pending == nil {
+            VStack(spacing: 12) {
+                FlowCueInlineBanner(
+                    kind: .failure,
+                    title: "Couldn't load conversation — \(loadError)",
+                    actionTitle: "Retry",
+                    action: { Task { await reloadOnce() } }
+                )
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 16)
         } else if showsEmptyState {
             ChatEmptyState()
         } else {
@@ -6229,15 +6593,31 @@ private struct ChatScreen: View {
         loading = true
         await refreshApprovalsIfNeeded()
         await refreshSubagentsIfNeeded()
-        messages = await fetchMessages(for: target)
+        do {
+            messages = try await fetchMessages(for: target)
+            loadError = nil
+        } catch {
+            loadError = LANRemoteController.connectionMessage(for: error)
+        }
         loading = false
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled else { break }
             await refreshApprovalsIfNeeded()
             await refreshSubagentsIfNeeded()
-            let updated = await fetchMessages(for: target)
-            if updated != messages { messages = updated }
+            do {
+                let after = messages.count
+                let updated = try await fetchMessages(for: target, afterCount: after)
+                if case .dsh = target, after > 0 {
+                    if !updated.isEmpty { messages.append(contentsOf: updated) }
+                } else if updated != messages {
+                    messages = updated
+                }
+                loadError = nil
+            } catch {
+                // 保留已经显示的消息，只在顶部显示原因。
+                loadError = LANRemoteController.connectionMessage(for: error)
+            }
             if case .dsh(let session) = target {
                 let next = await controller.dshActivity(for: session)
                 if next?.label != activityLabel {
@@ -6250,8 +6630,12 @@ private struct ChatScreen: View {
 
     private func reloadOnce() async {
         await refreshApprovalsIfNeeded()
-        let updated = await fetchMessages(for: target)
-        messages = updated
+        do {
+            messages = try await fetchMessages(for: target)
+            loadError = nil
+        } catch {
+            loadError = LANRemoteController.connectionMessage(for: error)
+        }
     }
 
     private func refreshApprovalsIfNeeded() async {
@@ -6266,12 +6650,13 @@ private struct ChatScreen: View {
         }
     }
 
-    private func fetchMessages(for target: ChatTarget) async -> [RemoteConversationMessage] {
+    private func fetchMessages(for target: ChatTarget, afterCount: Int = 0) async throws -> [RemoteConversationMessage] {
         switch target {
         case .codex(let thread):
-            return await controller.messages(for: thread)
+            return try await controller.messages(for: thread)
         case .dsh(let session):
-            return await controller.dshMessages(for: session)
+            // afterCount > 0 时只取新增，避免每 3 秒重传 751KB 历史。
+            return try await controller.dshMessages(for: session, after: afterCount)
         }
     }
 
@@ -6334,17 +6719,23 @@ private struct ChatScreen: View {
         case .codex(let thread):
             ok = await controller.send(to: thread, text: item.text, images: item.images)
         case .dsh(let session):
-            ok = await controller.sendDSH(to: session, text: item.text, images: item.images)
+            ok = await controller.sendDSH(
+                to: session,
+                text: item.text,
+                images: item.images,
+                requestID: item.id.uuidString
+            )
         }
         if ok {
             if sessionTarget == target {
                 pending = nil
-                messages = await fetchMessages(for: sessionTarget)
+                messages = (try? await fetchMessages(for: sessionTarget)) ?? messages
+                loadError = nil
             }
         } else if sessionTarget == target {
             // 超时 ≠ 没送到：桥接转发前要先唤醒 DSH 的 agent，消息可能已经进队列。
             // 核对最近几条，命中就当已送达，避免用户反复重发。
-            let refreshed = await fetchMessages(for: sessionTarget)
+            let refreshed = (try? await fetchMessages(for: sessionTarget)) ?? []
             let delivered = !item.text.isEmpty
                 && refreshed.suffix(3).contains { $0.text.contains(item.text) }
             if delivered {
@@ -6352,6 +6743,7 @@ private struct ChatScreen: View {
                 messages = refreshed
             } else {
                 pending?.state = .failed
+                loadError = controller.lastError ?? L10n.text("发送失败。")
             }
         }
         sending = false
@@ -7183,6 +7575,7 @@ private struct MarkdownMessageView: View {
         case .heading(let level, let text):
             InlineMarkdownText(text: text)
                 .flowCueFont(level <= 2 ? 15 : 14, relativeTo: .subheadline, weight: .semibold)
+                .textSelection(.enabled)
                 .padding(.top, 2)
         case .code(let language, let text):
             CodeBlockView(language: language, code: text)
@@ -7194,6 +7587,7 @@ private struct MarkdownMessageView: View {
                         InlineMarkdownText(text: item)
                             .flowCueFont(13, relativeTo: .subheadline)
                             .lineSpacing(2)
+                            .textSelection(.enabled)
                     }
                 }
             }
@@ -7205,6 +7599,7 @@ private struct MarkdownMessageView: View {
                         InlineMarkdownText(text: item)
                             .flowCueFont(13, relativeTo: .subheadline)
                             .lineSpacing(2)
+                            .textSelection(.enabled)
                     }
                 }
             }
@@ -7215,6 +7610,7 @@ private struct MarkdownMessageView: View {
                         Text(cell)
                             .flowCueFont(11, relativeTo: .caption2, weight: .semibold)
                             .foregroundStyle(FlowCueTheme.textSecondary)
+                            .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -7226,6 +7622,7 @@ private struct MarkdownMessageView: View {
                         ForEach(Array(row.enumerated()), id: \.offset) { _, cell in
                             InlineMarkdownText(text: cell)
                                 .flowCueFont(12, relativeTo: .caption)
+                                .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
@@ -7237,6 +7634,7 @@ private struct MarkdownMessageView: View {
                 InlineMarkdownText(text: text)
                     .flowCueFont(13, relativeTo: .subheadline)
                     .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
             }
             .padding(.vertical, 2)
         case .rule:
@@ -7267,6 +7665,8 @@ private struct CodeBlockView: View {
                 } label: {
                     Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc")
                         .font(.caption2)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(FlowCueTheme.accent)
@@ -7494,7 +7894,7 @@ private struct MeView: View {
             divider
 
             Button {
-                if remoteController.isConnected {
+                if remoteController.isPaired {
                     showingDevice = true
                 } else {
                     showingPairing = true
@@ -7578,7 +7978,7 @@ private struct MeView: View {
     }
 
     private var agentCount: Int {
-        guard remoteController.isConnected else { return 0 }
+        guard remoteController.isPaired else { return 0 }
         return remoteController.dshBridgeAvailable ? 2 : 1
     }
 
@@ -7589,11 +7989,21 @@ private struct MeView: View {
     private var deviceValue: String {
         guard let selected = remoteController.selected else { return "Not paired" }
         let name = FlowCueLinkFormat.deviceName(selected.name)
-        return network.isOnline ? "\(name) · online" : "\(name) · offline"
+        switch remoteController.linkState {
+        case .online: return "\(name) · online"
+        case .connecting: return "\(name) · connecting"
+        case .offline: return "\(name) · offline"
+        case .disconnected: return "\(name) · disconnected"
+        }
     }
 
     private var deviceValueColor: Color {
-        remoteController.selected == nil ? FlowCueTheme.textSecondary : (network.isOnline ? FlowCueTheme.textPrimary : FlowCueTheme.warning)
+        guard remoteController.isPaired else { return FlowCueTheme.textSecondary }
+        switch remoteController.linkState {
+        case .online: return FlowCueTheme.textPrimary
+        case .connecting: return FlowCueTheme.textSecondary
+        case .offline, .disconnected: return FlowCueTheme.warning
+        }
     }
 
     private var versionString: String {
@@ -7651,6 +8061,7 @@ private struct MeRowLabel: View {
     let title: String
     var value: String?
     var valueColor: Color = FlowCueTheme.textSecondary
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(spacing: 8) {
@@ -7662,14 +8073,16 @@ private struct MeRowLabel: View {
                 Text(value)
                     .flowCueFont(10, relativeTo: .caption2)
                     .foregroundStyle(valueColor)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                    .multilineTextAlignment(.trailing)
             }
             Image(systemName: "chevron.right")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                .foregroundStyle(FlowCueTheme.textSecondary)
                 .accessibilityHidden(true)
         }
         .padding(.vertical, 13)
+        .background(FlowCueTheme.canvas)
         .contentShape(Rectangle())
     }
 }
@@ -7736,9 +8149,11 @@ private struct SettingsView: View {
                             Text("GitHub Releases")
                                 .flowCueFont(10, relativeTo: .caption2)
                                 .foregroundStyle(FlowCueTheme.textSecondary)
+                                .lineLimit(2)
+                                .multilineTextAlignment(.trailing)
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(FlowCueTheme.textSecondary.opacity(0.7))
+                                .foregroundStyle(FlowCueTheme.textSecondary)
                         }
                         .padding(.vertical, 13)
                         .contentShape(Rectangle())
@@ -8024,7 +8439,7 @@ private struct SettingsView: View {
         Device: \(UIDevice.current.name) · \(UIDevice.current.model) · iOS \(UIDevice.current.systemVersion)
         Theme: \(themeName)
         Language: \(languageName)
-        Mac: \(remoteController.isConnected ? "connected" : "not connected")
+        Mac: \(remoteController.isOnline ? "online" : (remoteController.isPaired ? "offline" : "not connected")) · \(remoteController.isRemote ? "remote" : "LAN")
         iCloud sync: \(syncController.isEnabled ? "on" : "off") · \(L10n.text(syncController.statusMessage))
         """
         UIPasteboard.general.string = diagnostics
@@ -8035,6 +8450,7 @@ private struct SettingsView: View {
 private struct SettingsValueRow: View {
     let title: String
     let value: String
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(spacing: 8) {
@@ -8045,7 +8461,8 @@ private struct SettingsValueRow: View {
             Text(value)
                 .flowCueFont(10, relativeTo: .caption2)
                 .foregroundStyle(FlowCueTheme.textSecondary)
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                .multilineTextAlignment(.trailing)
         }
         .padding(.vertical, 13)
     }
@@ -9931,6 +10348,7 @@ private struct AgentSessionsView: View {
 
     @State private var sessions: [RemoteAgentSession] = []
     @State private var loading = true
+    @State private var loadError: String?
     @State private var collapsed: Set<String> = []
     @State private var switchedAgent: RemoteAgentInfo?
     @State private var resume: RemoteAgentSession?
@@ -9960,9 +10378,24 @@ private struct AgentSessionsView: View {
             VStack(alignment: .leading, spacing: 0) {
                 if loading {
                     SessionsSkeleton()
+                } else if let loadError, sessions.isEmpty {
+                    SessionsLoadError(detail: loadError) {
+                        Task { await reload() }
+                    }
+                    .padding(.top, 8)
                 } else if sessions.isEmpty {
                     SessionsEmptyState(agent: agent.displayName)
                 } else {
+                    if let loadError {
+                        FlowCueInlineBanner(
+                            kind: .failure,
+                            title: "Couldn't refresh sessions — \(loadError)",
+                            actionTitle: "Retry",
+                            action: { Task { await reload() } }
+                        )
+                        .padding(.horizontal, AgentsLayout.margin)
+                        .padding(.top, 10)
+                    }
                     if let resume {
                         NavigationLink {
                             sessionDestination(resume)
@@ -10238,14 +10671,21 @@ private struct AgentSessionsView: View {
         // 先显示上次的列表，避免每次进来都看骨架屏。
         loadCachedSessions()
         if sessions.isEmpty { loading = true }
-        sessions = await controller.agentSessions(agent.id)
-        loading = false
-        saveCachedSessions()
-        // 记住上次位置，供切换器显示「上次：xxx」
-        if let id = UserDefaults.standard.string(forKey: lastKey),
-           let match = sessions.first(where: { $0.id == id }) {
-            resume = match
+        do {
+            sessions = try await controller.agentSessions(agent.id)
+            loadError = nil
+            saveCachedSessions()
+            // 记住上次位置，供切换器显示「上次：xxx」
+            if let id = UserDefaults.standard.string(forKey: lastKey),
+               let match = sessions.first(where: { $0.id == id }) {
+                resume = match
+            }
+        } catch {
+            // 失败必须落到 UI：以前这里返回空数组，页面不是「没有会话」
+            // 就是一直转圈，看不出是断线。
+            loadError = LANRemoteController.connectionMessage(for: error)
         }
+        loading = false
     }
 }
 
@@ -10259,8 +10699,14 @@ private struct AgentChatView: View {
     @State private var text = ""
     @State private var sending = false
     @State private var loading = true
+    @State private var loadError: String?
+    @State private var sendError: String?
     @State private var isAtBottom = true
     @State private var activity: String?
+    /// 已发出、但 Mac 的会话文件还没更新的消息；先本地显示，避免「桌面已收到、手机空白」。
+    @State private var optimistic: String?
+    @State private var optimisticRequestID: String?
+    @State private var optimisticFailed = false
 
     /// 以 `/` 开头且还没敲空格时，展示 skill 候选。
     private var slashQuery: String? {
@@ -10271,6 +10717,36 @@ private struct AgentChatView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if let loadError {
+                FlowCueInlineBanner(
+                    kind: .failure,
+                    title: "Couldn't load conversation — \(loadError)",
+                    actionTitle: "Retry",
+                    action: { Task { await load() } }
+                )
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+            }
+            if let sendError {
+                FlowCueInlineBanner(
+                    kind: .failure,
+                    title: sendError,
+                    actionTitle: L10n.text("好"),
+                    action: { self.sendError = nil }
+                )
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+            }
+            if !agent.canSend {
+                FlowCueInlineBanner(
+                    kind: .warning,
+                    title: agent.id == "claude"
+                        ? L10n.text("Claude Code 未登录。请在 Mac 终端运行 claude auth login。")
+                        : L10n.text("这个 Agent 当前不能发送。")
+                )
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+            }
             activityBar
             ScrollViewReader { proxy in
                 ScrollView {
@@ -10278,14 +10754,21 @@ private struct AgentChatView: View {
                         ForEach(messages) { message in
                             bubble(message)
                         }
+                        if let optimistic {
+                            optimisticBubble(optimistic)
+                        }
+                        Color.clear.frame(height: 1).id("agent-chat-bottom")
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                 }
+                .defaultScrollAnchor(.bottom)
+                .onAppear { scrollAgentToBottom(proxy) }
                 .onChange(of: messages.count) { _, _ in
-                    if let last = messages.last {
-                        withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
-                    }
+                    scrollAgentToBottom(proxy)
+                }
+                .onChange(of: optimistic) { _, _ in
+                    scrollAgentToBottom(proxy)
                 }
                 .overlay(alignment: .bottomTrailing) {
                     if !isAtBottom {
@@ -10308,13 +10791,21 @@ private struct AgentChatView: View {
                     }
                 }
                 .modifier(ScrollBottomTracking(isAtBottom: $isAtBottom))
-            }
-            if showsSlashMenu {
-                SlashSkillMenu(skills: controller.skills, query: slashQuery ?? "") { name in
-                    text = "/" + name + " "
-                }
-                .task(id: showsSlashMenu) {
-                    if controller.skills.isEmpty { await controller.refreshSkills() }
+                // 浮层而不是插进 VStack：菜单 + 键盘 + ScrollView 的
+                // 高度协商会在 iOS 26 模拟器上进入无限布局循环，主线程
+                // 卡死 30s+。浮层不改变聊天区高度，只覆盖最后一点内容。
+                .overlay(alignment: .bottom) {
+                    if showsSlashMenu {
+                        SlashSkillMenu(skills: controller.skills, query: slashQuery ?? "") { name in
+                            text = "/" + name + " "
+                        }
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 6)
+                        .transition(.opacity)
+                        .task(id: showsSlashMenu) {
+                            if controller.skills.isEmpty { await controller.refreshSkills() }
+                        }
+                    }
                 }
             }
             composer
@@ -10322,11 +10813,13 @@ private struct AgentChatView: View {
         .background { FlowCueScreenBackground() }
         .navigationTitle(session.title.isEmpty ? agent.displayName : session.title)
         .navigationBarTitleDisplayMode(.inline)
-        .task { await load() }
         .task {
-            // 轮询这一条会话正在执行什么（Mac 端只解压这一个日志）。
+            await load()
+            // 对齐 DSH 的 3 秒轮询：Codex/Claude 的 queue/send 只代表「已投递」，
+            // 会话文件写入有延迟；不轮询就会出现「桌面已收到、手机一直看不到」。
             while !Task.isCancelled {
                 activity = await controller.agentActivity(agentID: agent.id, sessionID: session.id)
+                await refreshMessages(afterCount: messages.count)
                 try? await Task.sleep(for: .seconds(3))
             }
         }
@@ -10354,17 +10847,77 @@ private struct AgentChatView: View {
         let isUser = message.role == "user"
         HStack {
             if isUser { Spacer(minLength: 40) }
-            Text(message.text)
-                .flowCueFont(13.5, relativeTo: .subheadline)
-                .foregroundStyle(isUser ? FlowCueTheme.onAccent : FlowCueTheme.textPrimary)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
-                        .fill(isUser ? FlowCueTheme.accent : FlowCueTheme.surface)
-                )
-                .id(message.id)
+            Group {
+                if isUser {
+                    Text(message.text)
+                        .flowCueFont(13.5, relativeTo: .subheadline)
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                        .textSelection(.enabled)
+                } else {
+                    // Codex / Claude 走通用 AgentChatView；以前这里直接 Text，
+                    // 助理回复里的 **bold** 和 `code` 会原样露出来，只有 DSH 的
+                    // ChatScreen 才经过 MarkdownMessageView。
+                    MarkdownMessageView(text: message.text)
+                }
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
+                    .fill(isUser ? FlowCueTheme.accent : FlowCueTheme.surface)
+            )
+            .id(message.id)
             if !isUser { Spacer(minLength: 40) }
+        }
+    }
+
+    /// 乐观气泡/新消息刚插入时布局还没完成，直接 scrollTo 可能落在旧位置。
+    private func scrollAgentToBottom(_ proxy: ScrollViewProxy) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            withAnimation(.easeOut(duration: 0.18)) {
+                proxy.scrollTo("agent-chat-bottom", anchor: .bottom)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func optimisticBubble(_ value: String) -> some View {
+        HStack {
+            Spacer(minLength: 40)
+            VStack(alignment: .trailing, spacing: 5) {
+                Text(value)
+                    .flowCueFont(13.5, relativeTo: .subheadline)
+                    .foregroundStyle(FlowCueTheme.onAccent)
+                    .textSelection(.enabled)
+                HStack(spacing: 5) {
+                    if optimisticFailed {
+                        Text(L10n.text("发送失败"))
+                            .foregroundStyle(FlowCueTheme.failure)
+                        Button(L10n.text("重试")) {
+                            let id = optimisticRequestID
+                            optimistic = nil
+                            optimisticFailed = false
+                            sendError = nil
+                            deliver(value, requestID: id)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("agent-retry")
+                        .foregroundStyle(FlowCueTheme.onAccent)
+                    } else {
+                        ProgressView().controlSize(.mini).tint(FlowCueTheme.onAccent)
+                        Text(L10n.text("已发送，等待同步…"))
+                            .foregroundStyle(FlowCueTheme.onAccent.opacity(0.8))
+                    }
+                }
+                .flowCueFont(10, relativeTo: .caption2)
+            }
+            .padding(.horizontal, 13)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
+                    .fill(FlowCueTheme.accent.opacity(optimisticFailed ? 0.6 : 0.85))
+            )
         }
     }
 
@@ -10372,6 +10925,7 @@ private struct AgentChatView: View {
         HStack(spacing: 8) {
             TextField("发消息…", text: $text, axis: .vertical)
                 .lineLimit(1...4)
+                .disabled(!agent.canSend)
                 .flowCueFont(13.5, relativeTo: .footnote)
                 .padding(.horizontal, 13)
                 .padding(.vertical, 10)
@@ -10383,21 +10937,18 @@ private struct AgentChatView: View {
                 let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !value.isEmpty, !sending else { return }
                 text = ""
-                sending = true
-                Task {
-                    _ = await controller.sendAgent(agentID: agent.id, sessionID: session.id, text: value)
-                    await load()
-                    sending = false
-                }
+                deliver(value)
             } label: {
                 Image(systemName: "arrow.up")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(FlowCueTheme.onAccent)
-                    .frame(width: 38, height: 38)
+                    .frame(width: 44, height: 44)
                     .background(Circle().fill(FlowCueTheme.accent))
             }
             .buttonStyle(.plain)
-            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending)
+            .accessibilityLabel("发送")
+            .accessibilityIdentifier("agent-send")
+            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending || !agent.canSend)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -10406,11 +10957,84 @@ private struct AgentChatView: View {
 
     private func load() async {
         loading = true
-        messages = await controller.agentMessages(agentID: agent.id, sessionID: session.id)
+        await refreshMessages()
         controller.loadCachedSkills()
         await controller.refreshSkills()
         loading = false
         UserDefaults.standard.set(session.id, forKey: "FlowCue.agentLast.\(agent.id)")
+    }
+
+    /// 拉一次消息；如果本地待同步消息已经出现在会话里，就撤掉乐观气泡。
+    private func refreshMessages(afterCount: Int = 0) async {
+        do {
+            let fetched = try await controller.agentMessages(
+                agentID: agent.id,
+                sessionID: session.id,
+                after: afterCount
+            )
+            if afterCount > 0 {
+                if !fetched.isEmpty { messages.append(contentsOf: fetched) }
+            } else {
+                messages = fetched
+            }
+            loadError = nil
+            if let optimistic, Self.containsUserMessage(optimistic, in: messages) {
+                self.optimistic = nil
+                self.optimisticRequestID = nil
+                optimisticFailed = false
+            }
+        } catch {
+            // 已有消息时不要把整页打成错误，只在顶部显示原因。
+            if messages.isEmpty {
+                loadError = LANRemoteController.connectionMessage(for: error)
+            }
+        }
+    }
+
+    private func deliver(_ value: String, requestID: String? = nil) {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !sending else { return }
+        let stableID = requestID ?? UUID().uuidString
+        optimisticRequestID = stableID
+        optimistic = trimmed
+        optimisticFailed = false
+        sendError = nil
+        sending = true
+        Task {
+            let ok = await controller.sendAgent(
+                agentID: agent.id,
+                sessionID: session.id,
+                text: trimmed,
+                requestID: stableID
+            )
+            sending = false
+            if ok {
+                loadError = nil
+                sendError = nil
+                await refreshMessages()
+            } else {
+                optimisticFailed = true
+                if agent.id == "claude" {
+                    sendError = L10n.text("Claude Code 发送失败。若测试机未登录，请在 Mac 终端运行 claude auth login。")
+                } else {
+                    sendError = controller.lastError ?? L10n.text("发送失败。")
+                }
+            }
+        }
+    }
+
+    private static func containsUserMessage(_ text: String, in messages: [RemoteAgentMessage]) -> Bool {
+        let target = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !target.isEmpty else { return true }
+        return messages.contains { message in
+            guard message.role == "user" else { return false }
+            let body = message.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !body.isEmpty else { return false }
+            // 只认「完全相等」或「会话文本包含本次发送文本」。不能反过来用
+            // target.contains(body)：会话里已有的 "ok" 会让任何含 ok 的新消息
+            // 被误判成已同步，乐观气泡随即消失。
+            return body == target || body.contains(target)
+        }
     }
 }
 
@@ -10519,29 +11143,32 @@ private struct SlashSkillMenu: View {
                 Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
             }
         } else {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(matches) { skill in
-                    Button {
-                        onPick(skill.name)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("/" + skill.name)
-                                .flowCueFont(12.5, relativeTo: .caption, weight: .semibold)
-                                .foregroundStyle(FlowCueTheme.textPrimary)
-                            if !skill.summary.isEmpty {
-                                Text(skill.summary)
-                                    .flowCueFont(10, relativeTo: .caption2)
-                                    .foregroundStyle(FlowCueTheme.textSecondary)
-                                    .lineLimit(1)
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(matches) { skill in
+                        Button {
+                            onPick(skill.name)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("/" + skill.name)
+                                    .flowCueFont(12.5, relativeTo: .caption, weight: .semibold)
+                                    .foregroundStyle(FlowCueTheme.textPrimary)
+                                if !skill.summary.isEmpty {
+                                    Text(skill.summary)
+                                        .flowCueFont(10, relativeTo: .caption2)
+                                        .foregroundStyle(FlowCueTheme.textSecondary)
+                                        .lineLimit(1)
+                                }
                             }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
                     }
-                    .buttonStyle(.plain)
-                    Rectangle().fill(FlowCueTheme.hairline).frame(height: 1)
                 }
             }
             .frame(maxHeight: 220)
@@ -10576,66 +11203,193 @@ private struct ScrollBottomTracking: ViewModifier {
 // MARK: - 远程隧道
 
 /// 中继上的加密通道。配对完成后由它接管所有 `/v1` 请求。
+///
+/// 它自己维护唯一的状态：只有「WebSocket 已确认（收到帧/心跳回显）」且
+/// 「中继报告 Mac 在线」时才算 `.online`。断线、Mac 离线、请求发送失败
+/// 都会立刻把状态改为 `.offline` 并让等待中的请求立即失败，而不是让
+/// 页面等 20 秒超时。
 @MainActor
 final class RemoteTunnel {
     private static var instance: RemoteTunnel?
 
-    /// 隧道就绪时返回它；未就绪返回 nil，调用方回退到 LAN。
-    static func active() -> RemoteTunnel? {
-        guard let instance, instance.isReady else { return nil }
-        return instance
-    }
+    /// 已安装的隧道（无论在线与否）。请求路径用它，离线时能立刻报错，
+    /// 而不是悄悄回退到无效的 LAN 地址。
+    static func current() -> RemoteTunnel? { instance }
 
     static func install(_ tunnel: RemoteTunnel) {
+        if let existing = instance, existing !== tunnel {
+            existing.disconnect()
+        }
         instance = tunnel
     }
 
+    static func teardown() {
+        instance?.disconnect()
+        instance = nil
+    }
+
+    private(set) var state: RemoteLinkState = .disconnected {
+        didSet {
+            guard state != oldValue else { return }
+            log("state → \(state)")
+            onStateChange?(state)
+        }
+    }
+    /// 控制器用它把链路状态同步到 UI。回调总在 MainActor 上。
+    var onStateChange: (@MainActor (RemoteLinkState) -> Void)?
+
     private var task: URLSessionWebSocketTask?
     private var session: RemoteCryptoSession?
-    private var pairID = ""
     private var pending: [String: CheckedContinuation<Data, Error>] = [:]
-    private(set) var isReady = false
+    private struct ChunkBuffer {
+        var parts: [Int: Data]
+        var total: Int
+        var at: Date
+    }
+    private var chunkBuffers: [String: ChunkBuffer] = [:]
+    private var relayURL: URL?
+    private var pairID = ""
+    private var pairToken = ""
+    private var macID = ""
+
+    /// WebSocket 本身是否已确认（resume 成功并收到 ping 回复）。
+    private var transportReady = false
+    /// 中继最近一次报告的 Mac 在线状态。旧版中继不报，默认在线。
+    private var macReachable = true
+    private var stopped = false
+    private var generation = 0
+    private var reconnectAttempt = 0
+    private var reconnectTask: Task<Void, Never>?
+    private var watchdogTask: Task<Void, Never>?
+    private var handshakeTask: Task<Void, Never>?
+    private var pingTask: Task<Void, Never>?
+    /// 串行发送链：保证 ios→mac 的 seq 按请求顺序落到 WebSocket。
+    /// 每个 request 单独起 Task 发送会被调度器乱序，Mac 的单调 seq 检查
+    /// 会把后到的低 seq 当 replay 丢掉。
+    private var sendChain: Task<Void, Never>?
+    private var offlineSince: Date?
+    private var connectingSince: Date?
 
     /// 连上中继并开始收帧。
-    func connect(relayURL: URL, pairID: String, pairToken: String, session: RemoteCryptoSession) {
+    func connect(relayURL: URL, pairID: String, pairToken: String, macID: String, session: RemoteCryptoSession) {
+        self.relayURL = relayURL
         self.pairID = pairID
+        self.pairToken = pairToken
+        self.macID = macID
         self.session = session
+        stopped = false
+        reconnectAttempt = 0
+        openSocket()
+        startWatchdog()
+    }
 
-        var components = URLComponents(url: relayURL, resolvingAgainstBaseURL: false)
-        components?.scheme = relayURL.scheme == "https" ? "wss" : "ws"
-        components?.path = "/v1/remote/ws"
-        components?.queryItems = [
+    /// 用户点 Reconnect：不等退避，立刻重开一次。
+    func reconnectNow() {
+        guard !stopped else { return }
+        reconnectTask?.cancel()
+        reconnectTask = nil
+        reconnectAttempt = 0
+        log("reconnect requested")
+        openSocket()
+        startWatchdog()
+    }
+
+    /// App 回到前台时调用：在线就 ping 一下，离线就重连。
+    func checkLiveness() {
+        guard !stopped else { return }
+        if state.isOnline {
+            ping()
+        } else if state.isConnecting {
+            // App 切后台时定时器会停；回前台若还卡在 connecting，直接重开，
+            // 不要等 socket 自己超时（实测能挂几分钟）。
+            if let since = connectingSince, Date().timeIntervalSince(since) > 10 {
+                reconnectNow()
+            }
+        } else {
+            reconnectNow()
+        }
+    }
+
+    func disconnect() {
+        stopped = true
+        generation += 1
+        reconnectTask?.cancel(); reconnectTask = nil
+        watchdogTask?.cancel(); watchdogTask = nil
+        handshakeTask?.cancel(); handshakeTask = nil
+        pingTask?.cancel(); pingTask = nil
+        transportReady = false
+        connectingSince = nil
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
+        failPending(RemoteLinkError.offline(L10n.text("连接已断开。")))
+        state = .disconnected
+    }
+
+    // MARK: 建立连接
+
+    private func openSocket() {
+        reconnectTask?.cancel(); reconnectTask = nil
+        handshakeTask?.cancel(); handshakeTask = nil
+        pingTask?.cancel(); pingTask = nil
+        failPending(RemoteLinkError.offline(L10n.text("连接已断开。")))
+
+        guard !stopped, let relayURL else { return }
+        guard var components = URLComponents(url: relayURL, resolvingAgainstBaseURL: false) else { return }
+        components.scheme = relayURL.scheme == "https" ? "wss" : "ws"
+        components.path = "/v1/remote/ws"
+        components.queryItems = [
             URLQueryItem(name: "role", value: "ios"),
-            URLQueryItem(name: "mac", value: UserDefaults.standard.string(forKey: "FlowCue.remoteMacID") ?? ""),
+            URLQueryItem(name: "mac", value: macID),
             URLQueryItem(name: "pair", value: pairID),
             URLQueryItem(name: "token", value: pairToken),
         ]
-        guard let url = components?.url else { return }
+        guard let url = components.url else { return }
+
+        generation += 1
+        let gen = generation
+        task?.cancel(with: .goingAway, reason: nil)
+        transportReady = false
+        macReachable = true
+        offlineSince = nil
+        connectingSince = Date()
+        state = .connecting
 
         let socket = URLSession.shared.webSocketTask(with: url)
         task = socket
         socket.resume()
-        isReady = true
-        receiveLoop()
-    }
+        log("opening ws (attempt \(reconnectAttempt))")
+        receiveLoop(gen, socket: socket)
 
-    func disconnect() {
-        isReady = false
-        task?.cancel(with: .goingAway, reason: nil)
-        task = nil
-        for (_, continuation) in pending {
-            continuation.resume(throwing: URLError(.cancelled))
+        // URLSession 没有「已连接」回调。不要 resume 后立刻 sendPing：
+        // 那时 TLS 握手还没完成，ping 会以 TLS 错误失败，反而把好连接掐掉。
+        // 新中继连上后会立刻发一帧 mac/online|mac/offline，收到帧就算就绪；
+        // 旧中继不发问候帧，所以 12 秒后仍未就绪再 ping 一次确认。
+        handshakeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(12))
+            guard let self, !Task.isCancelled, gen == self.generation,
+                  !self.transportReady, !self.stopped else { return }
+            self.ping()
         }
-        pending.removeAll()
     }
 
-    private func receiveLoop() {
-        task?.receive { [weak self] result in
+    /// 收到任何一帧都证明 WebSocket 真的通了（不只是 resume 成功）。
+    private func markTransportReady() {
+        guard !transportReady else { return }
+        transportReady = true
+        connectingSince = nil
+        handshakeTask?.cancel()
+        handshakeTask = nil
+        // 不要只收到 greeting 就把退避清零：否则服务器一连接就关时，
+        // 会以 1 秒间隔无限重连。等真正收到一次加密响应再清零。
+    }
+
+    private func receiveLoop(_ gen: Int, socket: URLSessionWebSocketTask) {
+        socket.receive { [weak self] result in
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, gen == self.generation, !self.stopped else { return }
                 switch result {
-                case .failure:
-                    self.isReady = false
+                case .failure(let error):
+                    self.handleTransportFailure(Self.describe(error))
                 case .success(let message):
                     let data: Data?
                     switch message {
@@ -10644,44 +11398,288 @@ final class RemoteTunnel {
                     @unknown default: data = nil
                     }
                     if let data { self.handle(data) }
-                    self.receiveLoop()
+                    self.receiveLoop(gen, socket: socket)
                 }
             }
         }
     }
 
+    private func evaluateState() {
+        guard !stopped else { state = .disconnected; return }
+        guard transportReady else { return }
+        if macReachable {
+            state = .online
+            offlineSince = nil
+        } else {
+            state = .offline(reason: L10n.text("Mac 不在线。FlowCue 可能已退出、睡眠或断网。"))
+            if offlineSince == nil { offlineSince = Date() }
+        }
+    }
+
+    private func handleTransportFailure(_ reason: String) {
+        guard !stopped else { return }
+        log("transport failure: \(reason)")
+        generation += 1
+        transportReady = false
+        connectingSince = nil
+        handshakeTask?.cancel(); handshakeTask = nil
+        pingTask?.cancel(); pingTask = nil
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
+        failPending(RemoteLinkError.offline(reason))
+        state = .offline(reason: reason)
+        scheduleReconnect()
+    }
+
+    private func scheduleReconnect() {
+        guard !stopped, reconnectTask == nil else { return }
+        reconnectAttempt = min(reconnectAttempt + 1, 6)
+        let delay = min(pow(2.0, Double(reconnectAttempt)) * 0.5, 30)
+        log("reconnect in \(Int(delay))s")
+        reconnectTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard let self, !Task.isCancelled, !self.stopped else { return }
+            self.reconnectTask = nil
+            self.openSocket()
+        }
+    }
+
+    // MARK: 心跳
+
+    private func startWatchdog() {
+        guard watchdogTask == nil else { return }
+        watchdogTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                guard let self, !Task.isCancelled, !self.stopped else { return }
+                if self.state.isOnline {
+                    self.ping()
+                } else if !self.state.isConnecting {
+                    // 已经在退避重连就交给它，别在这里抢跑。
+                    if self.reconnectTask != nil { continue }
+                    // 中继说 Mac 离线时 WebSocket 本身还活着，不必每 15 秒重开；
+                    // 但超过一分钟仍离线就重开一次，刷新中继侧状态。
+                    if let since = self.offlineSince, Date().timeIntervalSince(since) < 60 {
+                        continue
+                    }
+                    self.reconnectNow()
+                }
+            }
+        }
+    }
+
+    private func ping() {
+        guard let socket = task, !stopped else { return }
+        pingTask?.cancel()
+        pingTask = nil
+        let gen = generation
+        // Workers 对 WebSocket ping 控制帧的回复在 URLSession 上并不可靠，
+        // 用中继回显的 app/pong 做应用层心跳。
+        socket.send(.string(#"{"type":"app/ping"}"#)) { [weak self] error in
+            Task { @MainActor [weak self] in
+                guard let self, gen == self.generation, !self.stopped else { return }
+                if let error {
+                    self.handleTransportFailure(Self.describe(error))
+                }
+            }
+        }
+        pingTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(10))
+            guard let self, !Task.isCancelled, gen == self.generation, !self.stopped else { return }
+            self.handleTransportFailure(L10n.text("心跳超时。"))
+        }
+    }
+
+    // MARK: 帧
+
     private func handle(_ data: Data) {
+        markTransportReady()
+        // 任何一帧都证明链路活着，取消这一轮心跳超时。
+        pingTask?.cancel()
+        pingTask = nil
+
+        // 明文控制帧：中继报告 Mac 上/下线。
+        if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+           let type = object["type"] as? String {
+            switch type {
+            case "app/pong":
+                // 心跳回显；transport 已由 markTransportReady 标记。
+                evaluateState()
+            case "mac/offline":
+                log("relay says mac offline")
+                macReachable = false
+                failPending(RemoteLinkError.macOffline)
+                evaluateState()
+            case "mac/online":
+                log("relay says mac online")
+                macReachable = true
+                evaluateState()
+            case "pair/revoked", "revoked":
+                log("pair revoked by relay")
+                macReachable = false
+                failPending(RemoteLinkError.offline(L10n.text("配对已被撤销，请重新配对。")))
+                state = .offline(reason: L10n.text("配对已被撤销，请重新配对。"))
+                stopped = true
+                task?.cancel(with: .normalClosure, reason: nil)
+                task = nil
+                return
+            case "error":
+                let code = object["error"] as? String ?? ""
+                log("relay error frame: \(code)")
+                if code == "mac_offline" {
+                    macReachable = false
+                    failPending(RemoteLinkError.macOffline)
+                    evaluateState()
+                }
+            default:
+                break
+            }
+            evaluateState()
+            return
+        }
+
         // 加密信封
-        guard let envelope = try? JSONDecoder().decode(RemoteEnvelope.self, from: data),
-              var session,
-              let plaintext = try? session.open(envelope),
-              let response = try? JSONDecoder().decode(RemoteResponse.self, from: plaintext) else {
+        guard let envelope = try? JSONDecoder().decode(RemoteEnvelope.self, from: data) else {
+            log("envelope decode failed (\(data.count) bytes)")
+            return
+        }
+        guard var session else {
+            log("no crypto session for frame seq=\(envelope.seq)")
+            return
+        }
+        let plaintext: Data
+        do {
+            plaintext = try session.open(envelope)
+        } catch {
+            log("decrypt failed seq=\(envelope.seq): \(error)")
             return
         }
         self.session = session
-        pending.removeValue(forKey: response.id)?.resume(returning: response.body ?? Data())
+        // 大响应被 Mac 拆成多个 chunk；先按 id 重组，再当普通 response 处理。
+        if let chunk = try? JSONDecoder().decode(RemoteChunk.self, from: plaintext),
+           chunk.kind == "chunk" {
+            handleChunk(chunk)
+            return
+        }
+        guard let response = try? JSONDecoder().decode(RemoteResponse.self, from: plaintext) else {
+            log("response decode failed seq=\(envelope.seq)")
+            return
+        }
+        resolve(response)
     }
 
-    func request(method: String, path: String, headers: [String: String], body: Data?) async throws -> Data {
-        guard var session else { throw URLError(.notConnectedToInternet) }
-        let request = RemoteRequest(method: method, path: path, headers: headers, body: body)
+    private func handleChunk(_ chunk: RemoteChunk) {
+        guard chunk.total > 0, chunk.total <= 128,
+              chunk.index >= 0, chunk.index < chunk.total else {
+            log("bad chunk id=\(chunk.id) index=\(chunk.index)/\(chunk.total)")
+            return
+        }
+        var buffer = chunkBuffers[chunk.id] ?? ChunkBuffer(parts: [:], total: chunk.total, at: Date())
+        buffer.parts[chunk.index] = chunk.data
+        buffer.total = chunk.total
+        buffer.at = Date()
+        // 清理超过 60 秒的残片。
+        let now = Date()
+        chunkBuffers = chunkBuffers.filter { now.timeIntervalSince($0.value.at) < 60 }
+        if buffer.parts.count == chunk.total {
+            var data = Data()
+            for index in 0..<chunk.total {
+                guard let part = buffer.parts[index] else { return }
+                data.append(part)
+            }
+            chunkBuffers.removeValue(forKey: chunk.id)
+            guard let response = try? JSONDecoder().decode(RemoteResponse.self, from: data) else {
+                log("chunk response decode failed id=\(chunk.id)")
+                return
+            }
+            resolve(response)
+        } else {
+            chunkBuffers[chunk.id] = buffer
+        }
+    }
+
+    private func resolve(_ response: RemoteResponse) {
+        let body: Data
+        if response.encoding == "zlib" {
+            guard let raw = response.body,
+                  let inflated = try? (raw as NSData).decompressed(using: .zlib) as Data else {
+                log("response decompress failed id=\(response.id)")
+                return
+            }
+            body = inflated
+        } else {
+            body = response.body ?? Data()
+        }
+        pending.removeValue(forKey: response.id)?.resume(returning: body)
+        reconnectAttempt = 0
+        evaluateState()
+    }
+
+    func request(method: String, path: String, headers: [String: String], body: Data?, requestID: String? = nil) async throws -> Data {
+        guard state.isOnline else {
+            throw RemoteLinkError.offline(state.reason ?? L10n.text("Mac 不在线。"))
+        }
+        guard let socket = task, var session else {
+            throw RemoteLinkError.notReady
+        }
+        let request = RemoteRequest(id: requestID ?? UUID().uuidString, method: method, path: path, headers: headers, body: body)
         let encoded = try JSONEncoder().encode(request)
         let envelope = try session.seal(encoded)
         self.session = session
         let frame = try JSONEncoder().encode(envelope)
-        try await task?.send(.data(frame))
 
-        // 发送要等 Mac 的 agent 桥接返回，20 秒不够（实测会超时被判未送达）。
+        // 先登记 pending 再发：否则 Mac 的响应可能比登记还快，回调找不到
+        // continuation，请求只能干等到超时（表现为「消息没发出去」）。
+        // POST 要等 Mac 的 agent 桥接返回，90 秒；GET 20 秒。
         let timeout: TimeInterval = method == "POST" ? 90 : 20
         return try await withCheckedThrowingContinuation { continuation in
             pending[request.id] = continuation
-            Task {
-                try? await Task.sleep(for: .seconds(timeout))
-                if let waiting = pending.removeValue(forKey: request.id) {
-                    waiting.resume(throwing: URLError(.timedOut))
+            let gen = self.generation
+            let previous = sendChain
+            sendChain = Task { @MainActor [weak self] in
+                _ = await previous?.value
+                guard let self, !self.stopped, gen == self.generation else { return }
+                do {
+                    try await socket.send(.data(frame))
+                } catch {
+                    self.handleTransportFailure(String(format: L10n.text("发送失败：%@"), Self.describe(error)))
                 }
             }
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(timeout))
+                guard let self, let waiting = self.pending.removeValue(forKey: request.id) else { return }
+                waiting.resume(throwing: RemoteLinkError.offline(L10n.text("请求超时。")))
+            }
         }
+    }
+
+    private func failPending(_ error: Error) {
+        guard !pending.isEmpty else { return }
+        let waiting = pending
+        pending.removeAll()
+        for (_, continuation) in waiting {
+            continuation.resume(throwing: error)
+        }
+    }
+
+    // MARK: 工具
+
+    private static func describe(_ error: Error) -> String {
+        if let urlError = error as? URLError {
+            switch urlError.code {
+            case .timedOut: return L10n.text("连接超时。")
+            case .networkConnectionLost, .notConnectedToInternet: return L10n.text("网络已断开。")
+            case .cancelled: return L10n.text("连接已取消。")
+            case .badServerResponse, .userAuthenticationRequired: return L10n.text("中继拒绝了连接，配对可能已失效。")
+            default: return L10n.text("中继连接已断开。")
+            }
+        }
+        // 例如 POSIX "Socket is not connected"；不要把系统英文直接丢给用户。
+        return L10n.text("连接已断开。")
+    }
+
+    private func log(_ message: String) {
+        NSLog("[FlowCue Remote][iOS] %@", message)
     }
 }
 
@@ -10694,6 +11692,8 @@ struct RemoteEnvelope: Codable {
     let seq: UInt64
     let nonce: Data
     let ciphertext: Data
+    /// 会话标识：用来区分对端重启后的 seq 重新开始与真正的重放。
+    let epoch: String?
 }
 
 struct RemoteRequest: Codable {
@@ -10719,6 +11719,15 @@ struct RemoteResponse: Codable {
     let id: String
     let status: Int
     let body: Data?
+    let encoding: String?
+}
+
+struct RemoteChunk: Codable {
+    let kind: String
+    let id: String
+    let index: Int
+    let total: Int
+    let data: Data
 }
 
 struct RemoteCryptoSession {
@@ -10727,6 +11736,8 @@ struct RemoteCryptoSession {
     let pairID: String
     private var sendSeq: UInt64 = 0
     private var lastReceivedSeq: UInt64 = 0
+    private let sendEpoch = UUID().uuidString
+    private var receiveEpoch: String?
 
     init(localPrivate: Curve25519.KeyAgreement.PrivateKey,
          macPublic: Curve25519.KeyAgreement.PublicKey,
@@ -10752,11 +11763,19 @@ struct RemoteCryptoSession {
         return RemoteEnvelope(
             v: 1, pair: pairID, seq: sendSeq,
             nonce: Data(box.nonce),
-            ciphertext: box.ciphertext + box.tag
+            ciphertext: box.ciphertext + box.tag,
+            epoch: sendEpoch
         )
     }
 
     mutating func open(_ envelope: RemoteEnvelope) throws -> Data {
+        // Mac 重启后 sendSeq 从 1 重新开始；用 epoch 变化区分新会话与重放。
+        if let epoch = envelope.epoch, epoch != receiveEpoch {
+            receiveEpoch = epoch
+            lastReceivedSeq = 0
+        } else if envelope.epoch == nil, envelope.seq == 1, lastReceivedSeq > 1 {
+            lastReceivedSeq = 0
+        }
         guard envelope.seq > lastReceivedSeq,
               envelope.ciphertext.count > 16 else {
             throw URLError(.badServerResponse)
@@ -10799,6 +11818,22 @@ enum RemoteCredentials {
     static var deviceName: String? {
         get { UserDefaults.standard.string(forKey: "FlowCue.remoteDeviceName") }
         set { UserDefaults.standard.set(newValue, forKey: "FlowCue.remoteDeviceName") }
+    }
+
+    /// 跨重装尽量的稳定安装标识：优先 vendor ID；Mac 端用它自动替换旧配对。
+    static var installID: String {
+        let defaults = UserDefaults.standard
+        if let existing = defaults.string(forKey: "FlowCue.remoteInstallID"), !existing.isEmpty {
+            return existing
+        }
+        let id = UIDevice.current.identifierForVendor?.uuidString ?? UUID().uuidString
+        defaults.set(id, forKey: "FlowCue.remoteInstallID")
+        return id
+    }
+
+    static var phoneName: String {
+        let name = UIDevice.current.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? "iPhone" : name
     }
 
     static var phonePrivateKey: Curve25519.KeyAgreement.PrivateKey? {
@@ -10859,6 +11894,8 @@ extension LANRemoteController {
     func pairRemote(code: String) async -> String? {
         guard let relay = URL(string: "https://flowcue-remote.honaler.workers.dev") else { return nil }
 
+        let previousPairID = RemoteCredentials.pairID
+        let previousMacID = RemoteCredentials.macID
         let privateKey = Curve25519.KeyAgreement.PrivateKey()
         let publicKeyBase64 = privateKey.publicKey.rawRepresentation.base64EncodedString()
 
@@ -10881,7 +11918,9 @@ extension LANRemoteController {
         request.httpBody = try? JSONEncoder().encode([
             "code": code,
             "codeProof": code,
-            "phonePublicKey": publicKeyBase64
+            "phonePublicKey": publicKeyBase64,
+            "phoneID": RemoteCredentials.installID,
+            "phoneName": RemoteCredentials.phoneName
         ])
         guard let (data, _) = try? await URLSession.shared.data(for: request),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -10889,12 +11928,13 @@ extension LANRemoteController {
               let pairToken = object["pairToken"] as? String,
               let macPublicBase64 = object["macPublicKey"] as? String,
               let macPublicData = Data(base64Encoded: macPublicBase64) else {
-            return "配对码不正确，或 Mac 不在线。"
+            return L10n.text("配对码不正确，或 Mac 不在线。")
         }
 
         let macID = (object["macID"] as? String) ?? RemoteCredentials.macID ?? ""
 
         // 2. 等 Mac 批准
+        var approved = false
         for _ in 0..<60 {
             try? await Task.sleep(for: .seconds(1))
             var statusComponents = URLComponents(url: relay.appendingPathComponent("v1/remote/pair/status"), resolvingAgainstBaseURL: false)
@@ -10906,17 +11946,18 @@ extension LANRemoteController {
                   let (statusData, _) = try? await URLSession.shared.data(from: statusURL),
                   let statusObject = try? JSONSerialization.jsonObject(with: statusData) as? [String: Any],
                   let status = statusObject["status"] as? String else { continue }
-            if status == "approved" { break }
-            if status == "revoked" { return "这台 Mac 拒绝了配对。" }
-            if status == "rejected" { return "配对码已过期或已被使用，请在 Mac 上重新生成。" }
+            if status == "approved" { approved = true; break }
+            if status == "revoked" { return L10n.text("这台 Mac 拒绝了配对。") }
+            if status == "rejected" { return L10n.text("配对码已过期或已被使用，请在 Mac 上重新生成。") }
         }
+        guard approved else { return L10n.text("没有等到 Mac 批准，请确认 Mac 的 Remote 已打开后重试。") }
 
         // 3. 派生密钥、建立隧道
         guard let macPublic = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: macPublicData),
               let session = try? RemoteCryptoSession(
                 localPrivate: privateKey, macPublic: macPublic, pairID: pairID
               ) else {
-            return "密钥协商失败。"
+            return L10n.text("密钥协商失败。")
         }
         RemoteCredentials.macID = macID
         RemoteCredentials.pairID = pairID
@@ -10926,26 +11967,59 @@ extension LANRemoteController {
 
         let tunnel = RemoteTunnel()
         RemoteTunnel.install(tunnel)
-        tunnel.connect(relayURL: relay, pairID: pairID, pairToken: pairToken, session: session)
+        attachRemoteTunnel(tunnel)
+        isRemote = true
+        tunnel.connect(relayURL: relay, pairID: pairID, pairToken: pairToken, macID: macID, session: session)
+        // 等握手完成再回 UI，避免配对页刚关就闪一条「连接失败」。
+        for _ in 0..<30 where !tunnel.state.isOnline {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+
+        // 重新配对后主动撤掉手机记着的旧 pair；Mac 端也会按 phoneID 自动替换。
+        if let previousPairID, previousPairID != pairID {
+            var components = URLComponents(
+                url: relay.appendingPathComponent("v1/remote/pair/revoke"),
+                resolvingAgainstBaseURL: false
+            )
+            components?.queryItems = [URLQueryItem(name: "mac", value: previousMacID ?? macID)]
+            if let url = components?.url {
+                var revoke = URLRequest(url: url)
+                revoke.httpMethod = "POST"
+                revoke.setValue("application/json", forHTTPHeaderField: "content-type")
+                revoke.httpBody = try? JSONEncoder().encode(["pairID": previousPairID])
+                _ = try? await URLSession.shared.data(for: revoke)
+            }
+        }
         return nil
     }
 
-    /// 远程配对成功后，让 UI 进入「已连接」状态。
-    /// 隧道会接管所有 /v1 请求，endpoint 只在回退 LAN 时用到。
+    /// 远程配对成功后，让 UI 进入「连接中」状态；是否在线由隧道回调决定。
+    /// 隧道会接管所有 /v1 请求，endpoint 只作为占位。
     func adoptRemoteDevice() {
-        let name = RemoteCredentials.deviceName ?? "Mac"
+        let name = RemoteCredentials.deviceName ?? "FlowCue Mac"
+        let previous = selected
         selected = DiscoveredMac(
             id: RemoteCredentials.macID ?? name,
             name: name,
             endpoint: .hostPort(host: "remote.invalid", port: 47824)
         )
-        statusMessage = "Connected over Remote."
+        isRemote = true
+        if let tunnel = RemoteTunnel.current(), tunnel.state.isOnline {
+            linkState = .online
+            statusMessage = "Connected over Remote."
+        } else {
+            linkState = .connecting
+            statusMessage = "Connecting over Remote…"
+        }
         lastError = nil
-        lastRefreshAt = Date()
+        lastRefreshAt = previous == nil ? Date() : lastRefreshAt
+        lastLatencyMs = nil
     }
 
     /// 启动时若有凭据，直接恢复隧道（不需要在同一 Wi-Fi）。
-    func restoreRemoteIfPossible() {
+    /// 返回是否安装了隧道，调用方据此决定要不要进入「设备」界面。
+    @discardableResult
+    func restoreRemoteIfPossible() -> Bool {
         guard let pairID = RemoteCredentials.pairID,
               let pairToken = RemoteCredentials.pairToken,
               let macID = RemoteCredentials.macID,
@@ -10954,11 +12028,19 @@ extension LANRemoteController {
               let relay = URL(string: "https://flowcue-remote.honaler.workers.dev"),
               let macPublic = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: macPublicData),
               let session = try? RemoteCryptoSession(localPrivate: privateKey, macPublic: macPublic, pairID: pairID) else {
-            return
+            return false
         }
-        RemoteCredentials.macID = macID
+        // 已装过同一对凭据的隧道就不要重装，否则每次 onAppear 都断线重连。
+        if let existing = RemoteTunnel.current() {
+            attachRemoteTunnel(existing)
+            isRemote = true
+            return true
+        }
         let tunnel = RemoteTunnel()
         RemoteTunnel.install(tunnel)
-        tunnel.connect(relayURL: relay, pairID: pairID, pairToken: pairToken, session: session)
+        attachRemoteTunnel(tunnel)
+        isRemote = true
+        tunnel.connect(relayURL: relay, pairID: pairID, pairToken: pairToken, macID: macID, session: session)
+        return true
     }
 }
