@@ -716,9 +716,11 @@ final class LANRemoteController {
         }
 
         do {
+            // 这里显示的是链路延迟，不该把 /v1/threads 的 Codex 扫描时间算进去。
             let started = CFAbsoluteTimeGetCurrent()
-            let data = try await LANHTTP.request(endpoint: endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
+            _ = try await LANHTTP.request(endpoint: endpoint, method: "GET", path: "/v1/ping", token: code, body: nil, timeout: 5)
             lastLatencyMs = max(1, Int((CFAbsoluteTimeGetCurrent() - started) * 1000))
+            let data = try await LANHTTP.request(endpoint: endpoint, method: "GET", path: "/v1/threads", token: code, body: nil)
             let snapshots = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data)
             selected = DiscoveredMac(id: displayName, name: displayName, endpoint: endpoint)
             threads = snapshots.sorted { $0.updatedAt > $1.updatedAt }
@@ -1045,9 +1047,8 @@ final class LANRemoteController {
         isLoading = true
         defer { isLoading = false }
         do {
-            let started = CFAbsoluteTimeGetCurrent()
+            await updateLatency()
             let data = try await sendRequest(path: "/v1/threads")
-            lastLatencyMs = max(1, Int((CFAbsoluteTimeGetCurrent() - started) * 1000))
             threads = try JSONDecoder().decode([RemoteThreadSnapshot].self, from: data).sorted { $0.updatedAt > $1.updatedAt }
             await refreshDSHApprovals()
             await refreshDSHSessions()
@@ -1059,6 +1060,14 @@ final class LANRemoteController {
                 lastError = "Connection lost. Make sure FlowCue is still running on your Mac."
             }
         }
+    }
+
+    /// 用轻量 /v1/ping 单独测链路延迟；/v1/threads 要扫 Codex 会话，
+    /// 4.5s 是服务端处理时间，不是网络 RTT，不能拿来显示 latency。
+    private func updateLatency() async {
+        let started = CFAbsoluteTimeGetCurrent()
+        guard (try? await sendRequest(path: "/v1/ping", timeout: 5)) != nil else { return }
+        lastLatencyMs = max(1, Int((CFAbsoluteTimeGetCurrent() - started) * 1000))
     }
 
     private func refreshDSHSessions() async {

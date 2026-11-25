@@ -73,6 +73,9 @@ incremental fetch, Codex activity, Claude auth preflight.
   first run exposed a stale-offline state; a 3-second foreground
   `checkLiveness()` fallback was added and the retest passed. This is a
   process/relay drop, not a Wi-Fi radio-off test.
+- **Latency display fixed:** Devices showed `604ms`/`4.5s` because it used
+  `/v1/threads` (Codex session scan) as the latency sample. It now measures
+  `/v1/ping` separately and refreshes threads without overwriting the RTT.
 - **Codex 0 sessions fixed:** `/v1/agents` concurrently started multiple
   short-lived Codex `app-server` processes against the same state DB; they
   deadlocked, so `/v1/agents` reported Codex 0 while Claude/DSH loaded and
