@@ -4511,7 +4511,7 @@ private struct PairMacSheet: View {
     @State private var remoteCode = ""
     @State private var remoteBusy = false
     @State private var remoteError: String?
-    @State private var showingRemote = false
+    @State private var showingRemote = true
     @FocusState private var codeFocused: Bool
 
     private var canConnect: Bool {
@@ -4569,10 +4569,18 @@ private struct PairMacSheet: View {
     private var form: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                codeSection
-                nearbySection
-                manualSection
-                remoteSection
+                // 没有发现同一 Wi-Fi 的 Mac（典型是 5G）时，只显示远程配对：
+                // 不能再把“同一 Wi-Fi 配对码”输入框放在最前面，否则用户会把
+                // 本地码填进去，远程 claim 永远查不到。
+                if controller.discovered.isEmpty {
+                    remoteSection
+                    manualSection
+                } else {
+                    codeSection
+                    nearbySection
+                    manualSection
+                    remoteSection
+                }
                 FlowCueMacPairingCard()
                     .padding(.top, 22)
 
@@ -12073,31 +12081,85 @@ extension LANRemoteController {
         let privateKey = Curve25519.KeyAgreement.PrivateKey()
         let publicKeyBase64 = privateKey.publicKey.rawRepresentation.base64EncodedString()
 
-        // 1. 用户手动输入的 6 位码必须走 claim 让 Worker 解析 macID。
-        //    不能因为本地还留着旧 macID 就直连 /pair/create：Mac 重新登记或
-        //    换公钥后，旧 macID 会返回空 macPublicKey，手机只看到“码不正确”。
-        guard let createURL = URL(string: "https://flowcue-remote.honaler.workers.dev/v1/remote/pair/claim") else { return nil }
-        var request = URLRequest(url: createURL)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "content-type")
-        // code 给 claim 用，codeProof 给 Mac 的 create 用；两个都发，兼容两端
-        request.httpBody = try? JSONEncoder().encode([
+        // 1. 先试直连 Mac 的 /pair/create：它会在 Mac 本地校验 activeCode，
+        //    不依赖 Worker 是否成功登记 code。这样即使 announce 被网络/VPN
+        //    吞掉，已知 macID 的旧配对仍能重新审批。失败再回退 claim。
+        let payload = try? JSONEncoder().encode([
             "code": code,
             "codeProof": code,
             "phonePublicKey": publicKeyBase64,
             "phoneID": RemoteCredentials.installID,
             "phoneName": RemoteCredentials.phoneName
         ])
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let pairID = object["pairID"] as? String,
-              let pairToken = object["pairToken"] as? String,
-              let macPublicBase64 = object["macPublicKey"] as? String,
-              let macPublicData = Data(base64Encoded: macPublicBase64) else {
-            return L10n.text("配对码不正确，或 Mac 不在线。")
+        func postPair(_ url: URL) async -> (object: [String: Any]?, networkError: Bool) {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "content-type")
+            request.httpBody = payload
+            guard let (data, _) = try? await URLSession.shared.data(for: request) else {
+                return (nil, true)
+            }
+            return ((try? JSONSerialization.jsonObject(with: data) as? [String: Any]), false)
         }
 
-        let macID = (object["macID"] as? String) ?? RemoteCredentials.macID ?? ""
+        var object: [String: Any]?
+        var resolvedMacID = RemoteCredentials.macID
+        var lastFailure = L10n.text("无法连接配对中继，请检查网络后重试。")
+
+        if let existingMacID = RemoteCredentials.macID {
+            var components = URLComponents(
+                url: relay.appendingPathComponent("v1/remote/pair/create"),
+                resolvingAgainstBaseURL: false
+            )
+            components?.queryItems = [URLQueryItem(name: "mac", value: existingMacID)]
+            if let directURL = components?.url {
+                let result = await postPair(directURL)
+                if let value = result.object {
+                    if let error = value["error"] as? String {
+                        lastFailure = error == "invalidCode"
+                            ? L10n.text("这个远程码不正确或已过期，请用 Mac 的“远程配对码”重新生成。")
+                            : String(format: L10n.text("Mac 拒绝配对：%@"), error)
+                    } else {
+                        object = value
+                        resolvedMacID = existingMacID
+                    }
+                } else if result.networkError {
+                    lastFailure = L10n.text("无法连接配对中继，请检查网络后重试。")
+                }
+            }
+        }
+
+        if object == nil {
+            guard let claimURL = URL(string: "https://flowcue-remote.honaler.workers.dev/v1/remote/pair/claim") else { return nil }
+            let result = await postPair(claimURL)
+            if let value = result.object {
+                if let error = value["error"] as? String {
+                    switch error {
+                    case "unknown_code":
+                        lastFailure = L10n.text("这个远程码没有被 Mac 登记。请确认点的是 Mac 设置里的“远程配对码”生成，并稍等两秒再输入。")
+                    case "expired":
+                        lastFailure = L10n.text("远程码已过期，请在 Mac 上重新生成。")
+                    case "locked":
+                        lastFailure = L10n.text("这个远程码尝试次数过多，请重新生成。")
+                    default:
+                        lastFailure = String(format: L10n.text("配对失败：%@"), error)
+                    }
+                } else {
+                    object = value
+                }
+            } else if result.networkError {
+                lastFailure = L10n.text("无法连接配对中继，请检查网络后重试。")
+            }
+        }
+
+        guard let object else { return lastFailure }
+        guard let pairID = object["pairID"] as? String,
+              let pairToken = object["pairToken"] as? String,
+              let macPublicBase64 = object["macPublicKey"] as? String, !macPublicBase64.isEmpty,
+              let macPublicData = Data(base64Encoded: macPublicBase64) else {
+            return L10n.text("Mac 没有登记公钥。请重启 Mac 上的 FlowCue 后重新生成远程码。")
+        }
+        let macID = (object["macID"] as? String) ?? resolvedMacID ?? ""
 
         // 2. 等 Mac 批准
         var approved = false
