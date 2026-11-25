@@ -597,14 +597,29 @@ private extension String {
 
 private struct RemoteSettingsPage: View {
     private func refreshPairs() async {
-        activePairs = await LANRemoteServer.current?.activeRemotePairIDs ?? []
+        activePairs = await LANRemoteServer.current?.pairedPhones ?? []
+    }
+
+    private func revoke(_ pairID: String) async {
+        await LANRemoteServer.current?.revokeRemotePair(pairID)
+        await RemoteRelayClient.shared?.revokePairOnRelay(pairID)
+        await refreshPairs()
+    }
+
+    private func revokeAll() async {
+        let ids = await LANRemoteServer.current?.revokeAllRemotePairs() ?? []
+        for pairID in ids {
+            await RemoteRelayClient.shared?.revokePairOnRelay(pairID)
+        }
+        await refreshPairs()
     }
 
     @AppStorage("FlowCue.remoteContinuationEnabled") private var enabled = false
     @State private var code: String = UserDefaults.standard.string(forKey: "FlowCue.remotePairingCode") ?? "------"
     @State private var remoteCode: String?
     @State private var remoteBusy = false
-    @State private var activePairs: [String] = []
+    @State private var activePairs: [RemotePairingManager.PairedPhone] = []
+    @State private var showingRevokeAll = false
     @State private var relayOnline = false
 
     var body: some View {
@@ -677,24 +692,57 @@ private struct RemoteSettingsPage: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, 4)
                 } else {
-                    ForEach(activePairs, id: \.self) { pairID in
+                    ForEach(activePairs) { phone in
                         HStack(spacing: 8) {
                             Image(systemName: "iphone")
                                 .foregroundStyle(.secondary)
-                            Text(pairID.prefix(8) + "…")
-                                .font(.system(size: 11).monospaced())
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(L10n.text(phone.displayName))
+                                    .font(.system(size: 11, weight: .medium))
+                                    .lineLimit(1)
+                                Text(pairSubtitle(phone))
+                                    .font(.system(size: 10).monospaced())
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
                             Spacer()
                             Button(L10n.text("撤销")) {
-                                Task {
-                                    await LANRemoteServer.current?.revokeRemotePair(pairID)
-                                    await refreshPairs()
-                                }
+                                Task { await revoke(phone.pairID) }
                             }
                             .controlSize(.small)
                         }
-                        .frame(minHeight: 28)
+                        .frame(minHeight: 30)
                     }
+
+                    HStack {
+                        Text(L10n.text("同一台手机重新配对会自动替换旧记录，最多保留 8 台。"))
+                            .font(.system(size: 10))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                        Spacer()
+                        Button {
+                            showingRevokeAll = true
+                        } label: {
+                            Text(L10n.text("撤销全部"))
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .controlSize(.small)
+                    }
+                    .padding(.top, 2)
                 }
+            }
+            .confirmationDialog(
+                L10n.text("撤销全部远程配对？"),
+                isPresented: $showingRevokeAll,
+                titleVisibility: .visible
+            ) {
+                Button(L10n.text("撤销全部"), role: .destructive) {
+                    Task { await revokeAll() }
+                }
+                Button(L10n.text("取消"), role: .cancel) {}
+            } message: {
+                Text(L10n.text("所有已配对的手机都需要重新配对才能再连接。"))
             }
 
             Text(L10n.text("重新生成后，已配对的设备需要重新输入。"))
@@ -731,6 +779,14 @@ private struct RemoteSettingsPage: View {
                 await refreshPairs()
             }
         }
+    }
+
+    private func pairSubtitle(_ phone: RemotePairingManager.PairedPhone) -> String {
+        let shortID = String(phone.pairID.prefix(8)) + "…"
+        guard phone.pairedAt != .distantPast else { return shortID + " · " + L10n.text("旧记录") }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd HH:mm"
+        return shortID + " · " + formatter.string(from: phone.pairedAt)
     }
 }
 

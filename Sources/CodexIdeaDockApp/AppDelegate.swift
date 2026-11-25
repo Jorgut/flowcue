@@ -227,6 +227,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         store?.flushDraft()
         NSWorkspace.shared.notificationCenter.removeObserver(self)
         #if !FLOWCUE_APP_STORE
+        remoteRelay?.stop()
         remoteService?.stop()
         FoundationProcessRunner.terminateAllProcesses()
         #endif
@@ -625,6 +626,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if enabled {
             startRemoteContinuation()
         } else {
+            // 关掉开关就要真的断开中继；只停 LAN server 的话，
+            // 中继仍会显示在线，手机也还能继续发请求。
+            remoteRelay?.stop()
+            remoteRelay = nil
+            RemoteRelayClient.shared = nil
             remoteService?.stop()
             remoteService = nil
         }
