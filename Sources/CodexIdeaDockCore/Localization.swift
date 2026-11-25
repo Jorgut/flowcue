@@ -396,6 +396,7 @@ public enum L10n {
         "已连接（桥）": "Connected",
         "桥接未连接，iPhone 上的审批暂时收不到。": "Bridge is not connected; iPhone approvals are paused.",
         "重试": "Retry",
+        "加载更早的消息": "Load earlier messages",
         "重试投递": "Retry delivery",
         "被占用": "In use",
         "端口被别的进程占用；关掉它或到 DSH 里改用其他端口。": "Another process holds this port. Quit it, or change the port in DSH.",

@@ -622,18 +622,53 @@ public final class LANRemoteServer {
                 return Self.response(status: 400, body: Data("[]".utf8))
             }
             var after = 0
+            var tail: Int?
+            var before: Int?
+            var windowLimit = 60
+            var paginated = false
             if parts.count > 1 {
                 for item in parts[1].split(separator: "&") {
                     let pair = item.split(separator: "=", maxSplits: 1)
-                    if pair.count == 2, pair[0] == "after" {
-                        after = Int(pair[1]) ?? 0
+                    guard pair.count == 2 else { continue }
+                    let key = String(pair[0])
+                    let value = Int(pair[1])
+                    switch key {
+                    case "after": after = max(0, value ?? 0)
+                    case "tail": tail = value
+                    case "before": before = value
+                    case "limit": windowLimit = value ?? 60
+                    case "paginated": paginated = value != 0 || String(pair[1]) == "1"
+                    default: break
                     }
                 }
             }
             // 不能再用默认 limit=100：会话超过 100 条后 count 不再增长，
             // 客户端 after=count 永远取不到新消息。
-            let messages = dshSessions.messages(sessionID: sessionID, limit: 1000)
-            let sliced = after > 0 ? Array(messages.dropFirst(after)) : messages
+            let all = dshSessions.messages(sessionID: sessionID, limit: 1000)
+            let total = all.count
+            if paginated {
+                // 初始只取最近 tail 条；after 用绝对总数增量；before 向前翻页。
+                // 返回 total/start，客户端才能在不传 offset 的情况下继续分页。
+                let requested = min(max(windowLimit, 1), 200)
+                var start = 0
+                var end = total
+                if let value = tail {
+                    start = max(0, total - max(value, 1))
+                } else if let value = before {
+                    end = min(max(value, 0), total)
+                    start = max(0, end - requested)
+                } else if after > 0 {
+                    start = min(after, total)
+                }
+                let messages = start < end ? Array(all[start..<end]) : []
+                struct Page: Encodable {
+                    let messages: [RemoteConversationMessage]
+                    let total: Int
+                    let start: Int
+                }
+                return Self.response(status: 200, body: try JSONEncoder().encode(Page(messages: messages, total: total, start: start)))
+            }
+            let sliced = after > 0 ? Array(all.dropFirst(after)) : all
             return Self.response(status: 200, body: try JSONEncoder().encode(sliced))
         case ("GET", let path) where path.hasPrefix("/v1/dsh/activity/"):
             let encoded = String(path.dropFirst("/v1/dsh/activity/".count))

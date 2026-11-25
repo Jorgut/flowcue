@@ -332,6 +332,12 @@ enum RemoteLinkError: LocalizedError, Equatable {
     var errorDescription: String? { message }
 }
 
+struct DSHMessagePage: Decodable {
+    let messages: [RemoteConversationMessage]
+    let total: Int
+    let start: Int
+}
+
 @MainActor
 @Observable
 final class LANRemoteController {
@@ -1122,17 +1128,35 @@ final class LANRemoteController {
         selected?.endpoint ?? .hostPort(host: "remote.invalid", port: 47824)
     }
 
-    func dshMessages(for session: DSHSessionSnapshot, after: Int = 0) async throws -> [RemoteConversationMessage] {
+    /// DSH 历史分页窗口。老 Mac 不认识 `paginated` 时仍返回数组，客户端
+    /// 会退化为整段历史，保证新旧端都能读。
+    func dshMessagePage(
+        for session: DSHSessionSnapshot,
+        after: Int? = nil,
+        tail: Int? = nil,
+        before: Int? = nil,
+        limit: Int = 60
+    ) async throws -> DSHMessagePage {
         guard isPaired else { throw RemoteLinkError.offline(L10n.text("尚未连接 Mac。")) }
         let encoded = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
-        var path = "/v1/dsh/sessions/\(encoded)/messages"
-        if after > 0 { path += "?after=\(after)" }
-        // DSH 历史可能到 2MB+；给它比普通轮询更长的 deadline。
+        var query = ["paginated=1", "limit=\(limit)"]
+        if let after { query.append("after=\(after)") }
+        if let tail { query.append("tail=\(tail)") }
+        if let before { query.append("before=\(before)") }
+        let path = "/v1/dsh/sessions/\(encoded)/messages?" + query.joined(separator: "&")
         let data = try await sendRequest(path: path, timeout: 60)
-        guard let messages = try? JSONDecoder().decode([RemoteConversationMessage].self, from: data) else {
-            throw RemoteLinkError.offline(L10n.text("Mac 返回了无法解析的对话。"))
+        let decoder = JSONDecoder()
+        if let page = try? decoder.decode(DSHMessagePage.self, from: data) {
+            return page
         }
-        return messages
+        if let messages = try? decoder.decode([RemoteConversationMessage].self, from: data) {
+            return DSHMessagePage(messages: messages, total: messages.count, start: 0)
+        }
+        throw RemoteLinkError.offline(L10n.text("Mac 返回了无法解析的对话。"))
+    }
+
+    func dshMessages(for session: DSHSessionSnapshot, after: Int = 0) async throws -> [RemoteConversationMessage] {
+        try await dshMessagePage(for: session, after: after > 0 ? after : nil).messages
     }
 
     private func refreshDSHApprovals() async {
@@ -6203,6 +6227,9 @@ private struct ChatScreen: View {
     @Environment(\.dismiss) private var dismiss
     @State private var switchedTarget: ChatTarget?
     @State private var messages: [RemoteConversationMessage] = []
+    @State private var dshTotal = 0
+    @State private var dshOldestOffset = 0
+    @State private var loadingOlder = false
     @State private var subagents: [DSHSessionSnapshot] = []
     @State private var text = ""
     @State private var pending: PendingChatMessage?
@@ -6511,6 +6538,26 @@ private struct ChatScreen: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 10) {
+                    if case .dsh = target, dshOldestOffset > 0 {
+                        Button {
+                            Task { await loadOlder() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if loadingOlder {
+                                    ProgressView().controlSize(.mini)
+                                } else {
+                                    Image(systemName: "arrow.up.circle")
+                                }
+                                Text(L10n.text("加载更早的消息"))
+                            }
+                            .flowCueFont(11.5, relativeTo: .caption, weight: .medium)
+                            .foregroundStyle(FlowCueTheme.textSecondary)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(loadingOlder)
+                    }
                     ForEach(displayMessages) { message in
                         ChatMessageBubble(message: message)
                             .id(message.id)
@@ -6633,7 +6680,7 @@ private struct ChatScreen: View {
         await refreshApprovalsIfNeeded()
         await refreshSubagentsIfNeeded()
         do {
-            messages = try await fetchMessages(for: target)
+            try await loadInitialMessages()
             loadError = nil
         } catch {
             loadError = LANRemoteController.connectionMessage(for: error)
@@ -6645,13 +6692,7 @@ private struct ChatScreen: View {
             await refreshApprovalsIfNeeded()
             await refreshSubagentsIfNeeded()
             do {
-                let after = messages.count
-                let updated = try await fetchMessages(for: target, afterCount: after)
-                if case .dsh = target, after > 0 {
-                    if !updated.isEmpty { messages.append(contentsOf: updated) }
-                } else if updated != messages {
-                    messages = updated
-                }
+                try await loadIncrementalMessages()
                 loadError = nil
             } catch {
                 // 保留已经显示的消息，只在顶部显示原因。
@@ -6670,8 +6711,53 @@ private struct ChatScreen: View {
     private func reloadOnce() async {
         await refreshApprovalsIfNeeded()
         do {
-            messages = try await fetchMessages(for: target)
+            try await loadInitialMessages()
             loadError = nil
+        } catch {
+            loadError = LANRemoteController.connectionMessage(for: error)
+        }
+    }
+
+    /// 初始只取最近 60 条，避免 5G 首屏拉 2MB+ 历史。
+    private func loadInitialMessages() async throws {
+        switch target {
+        case .dsh(let session):
+            let page = try await controller.dshMessagePage(for: session, tail: 60)
+            messages = page.messages
+            dshTotal = page.total
+            dshOldestOffset = page.start
+        case .codex(let thread):
+            messages = try await controller.messages(for: thread)
+            dshTotal = 0
+            dshOldestOffset = 0
+        }
+    }
+
+    private func loadIncrementalMessages() async throws {
+        switch target {
+        case .dsh(let session):
+            let page = try await controller.dshMessagePage(for: session, after: dshTotal)
+            if !page.messages.isEmpty {
+                messages.append(contentsOf: page.messages)
+            }
+            dshTotal = page.total
+        case .codex(let thread):
+            let updated = try await controller.messages(for: thread)
+            if updated != messages { messages = updated }
+        }
+    }
+
+    private func loadOlder() async {
+        guard case .dsh(let session) = target, dshOldestOffset > 0, !loadingOlder else { return }
+        loadingOlder = true
+        defer { loadingOlder = false }
+        do {
+            let page = try await controller.dshMessagePage(
+                for: session, before: dshOldestOffset, limit: 40
+            )
+            messages = page.messages + messages
+            dshOldestOffset = page.start
+            dshTotal = page.total
         } catch {
             loadError = LANRemoteController.connectionMessage(for: error)
         }
@@ -6706,6 +6792,8 @@ private struct ChatScreen: View {
         }
         switchedTarget = newTarget
         messages = []
+        dshTotal = 0
+        dshOldestOffset = 0
         pending = nil
         subagents = []
         loading = true
