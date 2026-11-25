@@ -23,7 +23,9 @@ final class RemotePairingAPITests: XCTestCase {
             executorID: UUID(),
             pairingCode: code,
             bridge: SilentBridge2(),
-            ledgerURL: ledger
+            ledgerURL: ledger,
+            pairingStoreDirectory: FileManager.default.temporaryDirectory
+                .appendingPathComponent("flowcue-pairs-\(UUID().uuidString)")
         )
     }
 
