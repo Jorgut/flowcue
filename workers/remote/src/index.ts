@@ -39,6 +39,41 @@ export class MacSession {
     this.state = state;
   }
 
+  /** 把 Mac 的上/下线告诉所有已连接的手机。
+   *  没有这个通知，手机只能等请求超时，页面就会一直转圈。 */
+  private notifyIos(type: "mac/online" | "mac/offline", extra?: Record<string, unknown>) {
+    const message = JSON.stringify({ type, ...extra });
+    for (const [pairID, socket] of this.iosSockets) {
+      try {
+        socket.send(message);
+      } catch {
+        // 已失效的 socket 自己会触发 close，这里顺手清掉。
+        this.iosSockets.delete(pairID);
+      }
+    }
+  }
+
+  /** 应用层心跳：Workers 对 WebSocket ping 控制帧的回复在 URLSession
+   *  上并不可靠，所以自己走一对 JSON 帧。收到 app/ping 立刻回 app/pong。 */
+  private isHeartbeat(raw: string): boolean {
+    try {
+      return JSON.parse(raw)?.type === "app/ping";
+    } catch {
+      return false;
+    }
+  }
+
+  /** 引擎可能在半开连接上抛错；不要让一个坏 socket 打断其它转发。 */
+  private safeSend(socket: WebSocket | null | undefined, payload: string | ArrayBuffer): boolean {
+    if (!socket) return false;
+    try {
+      socket.send(payload);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
 
@@ -55,7 +90,12 @@ export class MacSession {
     }
 
     if (url.pathname === "/pair/create") {
-      const body = await request.json<{ codeProof: string; phonePublicKey: string }>();
+      const body = await request.json<{
+        codeProof: string;
+        phonePublicKey: string;
+        phoneID?: string;
+        phoneName?: string;
+      }>();
       const macID = url.searchParams.get("mac") ?? this.macID;
       if (macID) this.macID = macID;
       const macPublicKey = (await this.state.storage.get<string>(`macPublicKey:${macID}`)) ?? "";
@@ -64,16 +104,21 @@ export class MacSession {
       const pairToken = randomToken();
       await this.state.storage.put(`pair:${pairID}`, {
         phonePublicKey: body.phonePublicKey,
+        phoneID: body.phoneID ?? "",
+        phoneName: body.phoneName ?? "",
         pairToken,
         approved: false,
         code: body.codeProof ?? "",
       });
       // 让 Mac 的 WS 知道有新的配对请求，由 Mac 端自己弹批准
-      this.macSocket?.send(
+      this.safeSend(
+        this.macSocket,
         JSON.stringify({
           type: "pair/request",
           pairID,
           phonePublicKey: body.phonePublicKey,
+          phoneID: body.phoneID ?? "",
+          phoneName: body.phoneName ?? "",
           code: body.codeProof,
         }),
       );
@@ -96,8 +141,17 @@ export class MacSession {
     if (url.pathname === "/pair/revoke") {
       const body = await request.json<{ pairID: string }>();
       await this.state.storage.delete(`pair:${body.pairID}`);
-      this.iosSockets.get(body.pairID)?.close(4001, "revoked");
-      this.iosSockets.delete(body.pairID);
+      const socket = this.iosSockets.get(body.pairID);
+      if (socket) {
+        // 先给一个可读的原因，再关闭（只靠 close code 手机看不到文案）。
+        this.safeSend(socket, JSON.stringify({ type: "pair/revoked" }));
+        try {
+          socket.close(4001, "revoked");
+        } catch {
+          // already closed
+        }
+        this.iosSockets.delete(body.pairID);
+      }
       return json({ ok: true });
     }
 
@@ -125,6 +179,8 @@ export class MacSession {
           pending.push({
             pairID: key.replace("pair:", ""),
             phonePublicKey: record.phonePublicKey,
+            phoneID: record.phoneID ?? "",
+            phoneName: record.phoneName ?? "",
             code: record.code ?? "",
           });
         }
@@ -172,13 +228,36 @@ export class MacSession {
       if (!expected || expected !== token) return new Response("unauthorized", { status: 401 });
       const { 0: client, 1: server } = new WebSocketPair();
       server.accept();
+      // 重连时旧 socket 可能还挂在这里；先关掉它，避免两个 socket 抢转发。
+      const previous = this.macSocket;
       this.macSocket = server;
+      if (previous) {
+        try {
+          previous.close(4002, "replaced");
+        } catch {
+          // already closed
+        }
+      }
       server.addEventListener("message", (event) => {
-        this.routeFromMac(event.data as string | ArrayBuffer);
+        const text = typeof event.data === "string"
+          ? event.data
+          : new TextDecoder().decode(event.data as ArrayBuffer);
+        if (this.isHeartbeat(text)) {
+          this.safeSend(server, JSON.stringify({ type: "app/pong" }));
+          return;
+        }
+        this.routeFromMac(text);
       });
-      server.addEventListener("close", () => {
-        if (this.macSocket === server) this.macSocket = null;
-      });
+      const markOffline = () => {
+        if (this.macSocket === server) {
+          this.macSocket = null;
+          // 关键：通知手机 Mac 掉线，让请求立刻失败而不是等 20 秒超时。
+          this.notifyIos("mac/offline");
+        }
+      };
+      server.addEventListener("close", markOffline);
+      server.addEventListener("error", markOffline);
+      this.notifyIos("mac/online");
       return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -191,17 +270,39 @@ export class MacSession {
       }
       const { 0: client, 1: server } = new WebSocketPair();
       server.accept();
+      const previous = this.iosSockets.get(pairID);
       this.iosSockets.set(pairID, server);
+      if (previous && previous !== server) {
+        try {
+          previous.close(4002, "replaced");
+        } catch {
+          // already closed
+        }
+      }
       server.addEventListener("message", (event) => {
+        const text = typeof event.data === "string"
+          ? event.data
+          : new TextDecoder().decode(event.data as ArrayBuffer);
+        if (this.isHeartbeat(text)) {
+          this.safeSend(server, JSON.stringify({ type: "app/pong" }));
+          return;
+        }
         if (this.macSocket) {
-          this.macSocket.send(event.data as string);
+          if (!this.safeSend(this.macSocket, text)) {
+            this.safeSend(server, JSON.stringify({ type: "error", error: "mac_offline" }));
+          }
         } else {
-          server.send(JSON.stringify({ type: "error", error: "mac_offline" }));
+          this.safeSend(server, JSON.stringify({ type: "error", error: "mac_offline" }));
         }
       });
       server.addEventListener("close", () => {
         if (this.iosSockets.get(pairID) === server) this.iosSockets.delete(pairID);
       });
+      // 连上就告诉手机此刻的真相，UI 不用先假设在线再等超时。
+      this.safeSend(
+        server,
+        JSON.stringify({ type: this.macSocket ? "mac/online" : "mac/offline" }),
+      );
       return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -218,13 +319,17 @@ export class MacSession {
     } catch {
       return;
     }
-    const target = pairID ? this.iosSockets.get(pairID) : undefined;
-    if (target) {
-      target.send(text);
+    if (pairID) {
+      const target = this.iosSockets.get(pairID);
+      if (target && !this.safeSend(target, text)) {
+        this.iosSockets.delete(pairID);
+      }
       return;
     }
-    // 没有指定 pair（如 pair/request 事件）就广播给所有已连手机
-    for (const socket of this.iosSockets.values()) socket.send(text);
+    // 没有 pair 的只有控制帧；广播给已连手机（例如 pair/request 事件）。
+    for (const [id, socket] of this.iosSockets) {
+      if (!this.safeSend(socket, text)) this.iosSockets.delete(id);
+    }
   }
 }
 
@@ -298,7 +403,13 @@ export default {
 
     // 手机用码直接配对：不需要先在同一 Wi-Fi
     if (url.pathname === "/v1/remote/pair/claim") {
-      const body = await request.clone().json<{ code?: string; codeProof?: string; phonePublicKey: string }>();
+      const body = await request.clone().json<{
+        code?: string;
+        codeProof?: string;
+        phonePublicKey: string;
+        phoneID?: string;
+        phoneName?: string;
+      }>();
       // 手机与 Mac 用的字段名不同，两种都接受
       const code = body.code ?? body.codeProof ?? "";
       const resolved = await indexStub
@@ -318,7 +429,12 @@ export default {
       const result = await macStub.fetch(new Request(target.toString(), {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ codeProof: code, phonePublicKey: body.phonePublicKey }),
+        body: JSON.stringify({
+          codeProof: code,
+          phonePublicKey: body.phonePublicKey,
+          phoneID: body.phoneID,
+          phoneName: body.phoneName,
+        }),
       }));
       // 成功就消费掉这个码，防止重复使用
       if (result.ok) {
