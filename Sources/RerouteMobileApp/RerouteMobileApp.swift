@@ -6951,6 +6951,7 @@ private struct ChatPendingBubble: View {
                             .flowCueFont(13, relativeTo: .subheadline)
                             .foregroundStyle(failed ? FlowCueTheme.textPrimary : FlowCueTheme.onAccent)
                             .lineSpacing(2)
+                            .textSelection(.enabled)
                             .multilineTextAlignment(.leading)
                     }
                 }
@@ -7444,7 +7445,7 @@ private enum MarkdownBlock {
     case heading(level: Int, text: String)
     case code(language: String?, text: String)
     case bullet([String])
-    case numbered([String])
+    case numbered(start: Int, items: [String])
     case quote(String)
     case rule
     /// Markdown 表格：表头 + 数据行。手机上横向空间有限，按列等宽铺开。
@@ -7456,6 +7457,10 @@ private enum MarkdownParser {
         let lines = source.components(separatedBy: .newlines)
         var blocks: [MarkdownBlock] = []
         var index = 0
+        // Markdown allows every ordered item to be written as `1.`. Our
+        // renderer renumbers, but items separated by explanation paragraphs
+        // become separate blocks; keep one cursor so they still read 1,2,3…
+        var numberedCursor = 1
 
         while index < lines.count {
             let line = lines[index]
@@ -7484,6 +7489,7 @@ private enum MarkdownParser {
                 let heading = String(trimmed.dropFirst(hashes)).trimmingCharacters(in: .whitespaces)
                 if !heading.isEmpty {
                     blocks.append(.heading(level: min(hashes, 4), text: heading))
+                    numberedCursor = 1
                     index += 1
                     continue
                 }
@@ -7550,7 +7556,9 @@ private enum MarkdownParser {
                     items.append(value.replacingOccurrences(of: #"^[0-9]+[.)]\s"#, with: "", options: .regularExpression))
                     index += 1
                 }
-                blocks.append(.numbered(items))
+                let start = numberedCursor
+                numberedCursor += items.count
+                blocks.append(.numbered(start: start, items: items))
                 _ = range
                 continue
             }
@@ -7617,11 +7625,11 @@ private struct MarkdownMessageView: View {
                     }
                 }
             }
-        case .numbered(let items):
+        case .numbered(let start, let items):
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(Array(items.enumerated()), id: \.offset) { index, item in
                     HStack(alignment: .firstTextBaseline, spacing: 9) {
-                        Text("\(index + 1).").flowCueFont(13, relativeTo: .subheadline).monospacedDigit().foregroundStyle(.secondary)
+                        Text("\(start + index).").flowCueFont(13, relativeTo: .subheadline).monospacedDigit().foregroundStyle(.secondary)
                         InlineMarkdownText(text: item)
                             .flowCueFont(13, relativeTo: .subheadline)
                             .lineSpacing(2)
@@ -10916,27 +10924,33 @@ private struct AgentChatView: View {
                     .flowCueFont(13.5, relativeTo: .subheadline)
                     .foregroundStyle(FlowCueTheme.onAccent)
                     .textSelection(.enabled)
-                HStack(spacing: 5) {
-                    if optimisticFailed {
-                        Text(L10n.text("发送失败"))
+                if optimisticFailed {
+                    HStack(spacing: 8) {
+                        Label(L10n.text("发送失败"), systemImage: "exclamationmark.circle.fill")
+                            .flowCueFont(10, relativeTo: .caption2, weight: .medium)
                             .foregroundStyle(FlowCueTheme.failure)
-                        Button(L10n.text("重试")) {
-                            let id = optimisticRequestID
-                            optimistic = nil
-                            optimisticFailed = false
-                            sendError = nil
-                            deliver(value, requestID: id)
+                        Button(action: retryOptimistic) {
+                            Label(L10n.text("重试"), systemImage: "arrow.clockwise")
+                                .flowCueFont(12, relativeTo: .caption, weight: .semibold)
+                                .foregroundStyle(FlowCueTheme.failure)
+                                .padding(.horizontal, 12)
+                                .frame(minHeight: 44)
+                                .contentShape(Capsule())
+                                .background(Capsule().fill(FlowCueTheme.failure.opacity(0.14)))
+                                .overlay(Capsule().strokeBorder(FlowCueTheme.failure.opacity(0.4)))
                         }
                         .buttonStyle(.plain)
                         .accessibilityIdentifier("agent-retry")
-                        .foregroundStyle(FlowCueTheme.onAccent)
-                    } else {
+                        .accessibilityLabel(L10n.text("重试发送失败的消息"))
+                    }
+                } else {
+                    HStack(spacing: 5) {
                         ProgressView().controlSize(.mini).tint(FlowCueTheme.onAccent)
                         Text(L10n.text("已发送，等待同步…"))
                             .foregroundStyle(FlowCueTheme.onAccent.opacity(0.8))
                     }
+                    .flowCueFont(10, relativeTo: .caption2)
                 }
-                .flowCueFont(10, relativeTo: .caption2)
             }
             .padding(.horizontal, 13)
             .padding(.vertical, 10)
@@ -11015,6 +11029,12 @@ private struct AgentChatView: View {
                 loadError = LANRemoteController.connectionMessage(for: error)
             }
         }
+    }
+
+    private func retryOptimistic() {
+        guard let value = optimistic, let requestID = optimisticRequestID else { return }
+        sendError = nil
+        deliver(value, requestID: requestID)
     }
 
     private func deliver(_ value: String, requestID: String? = nil) {

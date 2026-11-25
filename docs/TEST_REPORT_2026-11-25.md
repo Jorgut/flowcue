@@ -73,6 +73,10 @@ incremental fetch, Codex activity, Claude auth preflight.
   first run exposed a stale-offline state; a 3-second foreground
   `checkLiveness()` fallback was added and the retest passed. This is a
   process/relay drop, not a Wi-Fi radio-off test.
+- **DSH message presentation fixes:** ordered-list numbering now continues
+  across explanation paragraphs (previously every item rendered as `1.`);
+  a failed pending message is text-selectable and has a 44pt Retry capsule.
+  Codex/Claude optimistic messages use the same 44pt retry affordance.
 - **Cellular LAN→relay fallback passed:** with the iPhone on cellular and the
   Mac reachable only through the relay, the page initially showed `12 LOCAL`;
   after the 3-failure fallback it switched to `Codex · 4.4s` and Worker health
