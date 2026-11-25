@@ -4,7 +4,10 @@ import Foundation
 /// 只读；发送走 `claude -p --resume`，暂未实现。
 public struct ClaudeCodeAdapter: AgentAdapter {
     public let agentID = "claude"
+
     private let root: URL
+    private static let authLock = NSLock()
+    private nonisolated(unsafe) static var authCache: (value: Bool, at: Date)?
 
     public init(root: URL? = nil) {
         self.root = root ?? URL(fileURLWithPath: NSHomeDirectory())
@@ -74,18 +77,102 @@ public struct ClaudeCodeAdapter: AgentAdapter {
         return Array(out.suffix(limit))
     }
 
+    /// 发送前预检：CLI 不存在或未登录时，/v1/agents 直接把 canSend 置 false。
+    /// 结果缓存 30 秒，避免每次 agentSummaries 都启动一个 CLI。
+    public static func isLoggedIn(force: Bool = false) -> Bool {
+        authLock.lock()
+        if !force, let cached = authCache,
+           Date().timeIntervalSince(cached.at) < 30 {
+            let value = cached.value
+            authLock.unlock()
+            return value
+        }
+        authLock.unlock()
+
+        guard let executable = executablePath() else {
+            authLock.lock(); authCache = (false, Date()); authLock.unlock()
+            return false
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: executable)
+        process.arguments = ["auth", "status"]
+        let pipe = Pipe()
+        process.standardOutput = pipe
+        process.standardError = pipe
+        do {
+            try process.run()
+        } catch {
+            authLock.lock(); authCache = (false, Date()); authLock.unlock()
+            return false
+        }
+        let deadline = Date().addingTimeInterval(3)
+        while process.isRunning, Date() < deadline {
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        if process.isRunning { process.terminate() }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let text = String(decoding: data, as: UTF8.self)
+        var loggedIn = false
+        if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            loggedIn = obj["loggedIn"] as? Bool ?? false
+        } else {
+            loggedIn = text.contains("\"loggedIn\"") && text.contains("true")
+        }
+        authLock.lock()
+        authCache = (loggedIn, Date())
+        authLock.unlock()
+        return loggedIn
+    }
+
+    /// `--resume` 要的是 session id（文件名 UUID），不是 JSONL 文件路径。
+    static func resumeArguments(sessionID: String, text: String) -> [String] {
+        ["-p", "--resume", sessionID, text]
+    }
+
+    /// 不同安装方式路径不同（npm 全局 / Homebrew / 官方安装器），都试一遍。
+    static func executablePath(
+        environment: [String: String] = ProcessInfo.processInfo.environment,
+        fileManager: FileManager = .default
+    ) -> String? {
+        var candidates = [
+            "\(NSHomeDirectory())/.local/bin/claude",
+            "/opt/homebrew/bin/claude",
+            "/usr/local/bin/claude",
+            "/usr/bin/claude"
+        ]
+        if let path = environment["PATH"] {
+            candidates.append(
+                contentsOf: path.split(separator: ":").map(String.init)
+                    .filter { !$0.isEmpty }
+                    .map { URL(fileURLWithPath: $0).appendingPathComponent("claude").path }
+            )
+        }
+        return candidates.first { fileManager.isExecutableFile(atPath: $0) }
+    }
+
     public func send(_ text: String, to session: AgentSession) async throws {
         // `claude -p --resume <session-id> <text>`：非交互续写一轮
-        let executable = "/Users/\(NSUserName())/.local/bin/claude"
-        guard FileManager.default.isExecutableFile(atPath: executable) else {
+        guard let executable = Self.executablePath() else {
             throw AgentAdapterError.notFound
         }
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = ["-p", "--resume", session.locator, text]
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
+        process.arguments = Self.resumeArguments(sessionID: session.id, text: text)
+
+        // 不要用 Pipe 直接接输出：长回答会填满管道缓冲区，进程永远不结束，
+        // 看起来就像「Claude 没有在 10 分钟内结束」。用临时文件只读回诊断前缀。
+        let logURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("flowcue-claude-\(UUID().uuidString).log")
+        FileManager.default.createFile(atPath: logURL.path, contents: nil)
+        guard let log = try? FileHandle(forWritingTo: logURL) else {
+            throw AgentAdapterError.malformed("无法创建 Claude 日志文件")
+        }
+        defer {
+            try? log.close()
+            try? FileManager.default.removeItem(at: logURL)
+        }
+        process.standardOutput = log
+        process.standardError = log
 
         try process.run()
         let deadline = Date().addingTimeInterval(600)
@@ -96,7 +183,14 @@ public struct ClaudeCodeAdapter: AgentAdapter {
             process.terminate()
             throw AgentAdapterError.malformed("Claude 没有在 10 分钟内结束")
         }
-        let output = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        let output: String
+        if let handle = try? FileHandle(forReadingFrom: logURL) {
+            let data = (try? handle.read(upToCount: 4096)) ?? Data()
+            try? handle.close()
+            output = String(decoding: data, as: UTF8.self)
+        } else {
+            output = ""
+        }
         if process.terminationStatus != 0 {
             throw AgentAdapterError.malformed(output.isEmpty ? "Claude 执行失败" : String(output.prefix(200)))
         }
