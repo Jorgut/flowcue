@@ -1524,6 +1524,12 @@ private struct RootTabView: View {
                 tick += 1
                 await remoteController.uploadPushTokenIfNeeded()
                 await remoteController.recoverConnectionIfNeeded()
+                // 中继链路：App 在前台但网络刚恢复/手机刚解锁时，
+                // scenePhase 不一定会再变；这里每 3 秒兜底一次，
+                // 避免界面一直停在 offline 直到用户手动 Reconnect。
+                if remoteController.isRemote, !remoteController.isOnline {
+                    RemoteTunnel.current()?.checkLiveness()
+                }
                 try? await Task.sleep(for: .seconds(3))
             }
         }
