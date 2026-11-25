@@ -60,6 +60,13 @@ incremental fetch, Codex activity, Claude auth preflight.
   keyboard/slash or DSH-approval tests were completed on hardware.
 - Earlier real-device evidence remains: Codex optimistic send, stored message,
   reply `ok`, idempotency.
+- **Real-device slash/keyboard passed:** a temporary DEBUG host opened a Codex
+  session on the physical iPhone, focused the composer, set `/atlas`, and the
+  keyboard plus `/skill-atlas` menu row were visible in a device screenshot.
+  The temporary host was removed and the Release build reinstalled. The
+  screenshot was taken while the Mac app was stopped, so the page displayed
+  “Mac 不在线”; this does not invalidate the menu/keyboard evidence but the
+  online state was verified separately after restarting the Mac.
 
 ### Accessibility
 
