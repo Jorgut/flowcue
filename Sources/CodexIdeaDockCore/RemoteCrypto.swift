@@ -8,13 +8,20 @@ public struct RemoteEnvelope: Codable, Hashable, Sendable {
     public let seq: UInt64
     public let nonce: Data
     public let ciphertext: Data
+    /// 每次建会话随机生成。对端重启后 seq 从 1 重新开始，
+    /// 靠 epoch 变化来区分「新会话」和「重放旧的 seq=1」。
+    public let epoch: String?
 
-    public init(pair: String, seq: UInt64, nonce: Data, ciphertext: Data, v: Int = 1) {
+    public init(
+        pair: String, seq: UInt64, nonce: Data, ciphertext: Data,
+        v: Int = 1, epoch: String? = nil
+    ) {
         self.v = v
         self.pair = pair
         self.seq = seq
         self.nonce = nonce
         self.ciphertext = ciphertext
+        self.epoch = epoch
     }
 }
 
@@ -34,6 +41,9 @@ public struct RemoteCryptoSession: Sendable {
     private var sendSeq: UInt64 = 0
     private var lastReceivedSeq: UInt64 = 0
     private let replayWindow: UInt64 = 64
+    /// 本端会话标识；对端据此判断 seq 是否重新开始。
+    private let sendEpoch = UUID().uuidString
+    private var receiveEpoch: String?
 
     /// 由 X25519 共享密钥派生两个方向的密钥。
     /// - Parameter isInitiator: iPhone 为 true，Mac 为 false，决定收发方向互换。
@@ -80,7 +90,8 @@ public struct RemoteCryptoSession: Sendable {
             pair: pairID,
             seq: sendSeq,
             nonce: Data(box.nonce),
-            ciphertext: box.ciphertext + box.tag
+            ciphertext: box.ciphertext + box.tag,
+            epoch: sendEpoch
         )
     }
 
@@ -88,6 +99,15 @@ public struct RemoteCryptoSession: Sendable {
 
     public mutating func open(_ envelope: RemoteEnvelope) throws -> Data {
         guard envelope.pair == pairID else { throw RemoteCryptoError.authenticationFailed }
+        // 对端 App 重启后 sendSeq 会从 1 重新开始。用 epoch 区分新会话：
+        // 只有 epoch 变化才清零序号；同一 epoch 内的重复 seq=1 仍按重放拒绝。
+        if let epoch = envelope.epoch, epoch != receiveEpoch {
+            receiveEpoch = epoch
+            lastReceivedSeq = 0
+        } else if envelope.epoch == nil, envelope.seq == 1, lastReceivedSeq > 1 {
+            // 兼容没有 epoch 的旧客户端。
+            lastReceivedSeq = 0
+        }
         if envelope.seq <= lastReceivedSeq {
             // 允许窗口内乱序，超窗或重复一律拒绝
             throw envelope.seq + replayWindow < lastReceivedSeq

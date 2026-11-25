@@ -83,4 +83,33 @@ final class RemoteCryptoTests: XCTestCase {
         XCTAssertFalse(envelope.ciphertext.contains(Data("API key".utf8)))
         XCTAssertNotEqual(envelope.ciphertext, plaintext)
     }
+
+    /// 对端进程重启后 seq 从 1 重新开始：接收侧必须接受，否则整轮请求
+    /// 都会被当成重放丢掉，手机界面表现为「一直加载」。
+    func testPeerRestartSequenceResetIsAccepted() throws {
+        let macKey = Curve25519.KeyAgreement.PrivateKey()
+        let phoneKey = Curve25519.KeyAgreement.PrivateKey()
+        let pairID = "pair-restart"
+        var mac = try RemoteCryptoSession(
+            localPrivate: macKey, peerPublic: phoneKey.publicKey,
+            pairID: pairID, isInitiator: false
+        )
+
+        var firstRun = try RemoteCryptoSession(
+            localPrivate: phoneKey, peerPublic: macKey.publicKey,
+            pairID: pairID, isInitiator: true
+        )
+        for index in 0..<3 {
+            let payload = Data("before-restart-\(index)".utf8)
+            XCTAssertEqual(try mac.open(try firstRun.seal(payload)), payload)
+        }
+
+        // 模拟手机 App 重启：同一对密钥、新的会话（sendSeq 归零）。
+        var secondRun = try RemoteCryptoSession(
+            localPrivate: phoneKey, peerPublic: macKey.publicKey,
+            pairID: pairID, isInitiator: true
+        )
+        let afterRestart = Data("after-restart".utf8)
+        XCTAssertEqual(try mac.open(try secondRun.seal(afterRestart)), afterRestart)
+    }
 }
