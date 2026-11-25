@@ -67,6 +67,12 @@ incremental fetch, Codex activity, Claude auth preflight.
   screenshot was taken while the Mac app was stopped, so the page displayed
   “Mac 不在线”; this does not invalidate the menu/keyboard evidence but the
   online state was verified separately after restarting the Mac.
+- **Real-device approval card passed:** injected one external approval through
+  `POST /v1/approvals`; the physical iPhone automatically presented the
+  Approvals sheet with Approve/Deny. Approving through
+  `/v1/approvals/<id>/decide` was reflected and the sheet dismissed. This
+  validates the approval UI/polling path, but it was a synthetic external
+  approval, not a live DSH bridge `approval/request`.
 
 ### Accessibility
 
