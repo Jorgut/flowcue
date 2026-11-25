@@ -10,6 +10,30 @@
 
 本项目遵循语义化版本号。公开发布前的构建记录在本文件中维护。
 
+## 1.1.18 (109) — 远程状态一致性 / 重连 / 请求报错
+
+- **会话一直加载（根因）**：Mac 用 `session(for:)` 返回的 struct 副本加密响应，每条响应的 seq 都是 1；手机只认第一条，其余全部按重放丢弃。改为在配对管理器里原地收发并写回 seq。
+- **两端重启后序列号归零**：envelope 增加随机 `epoch`，只有 epoch 变化才重置接收序号；同一 epoch 内的重复帧仍拒绝。
+- **统一连接状态**：iPhone 用 `RemoteLinkState` 作为唯一真相，`isPaired` 与 `isOnline` 分开；Agents 卡片、设备详情、Me 页、对话状态都读同一状态。Mac 中继只在收到帧/心跳回显后才显示在线。
+- **Reconnect 真正可用**：设备页掉线时按钮可点、有连接中状态；远程模式不再调用无目标的 `retryLastAttempt()`。
+- **请求失败要报错**：核心请求失败立即标离线并抛出，会话列表/对话页显示具体原因和 Retry，不再用空数组或长时间转圈糊过去。
+- **中继**：Mac 断开/恢复通知手机；Mac 离线时请求立即回 `mac_offline`；`app/ping`/`app/pong` 应用层心跳；撤销配对先发可读原因。关闭「允许远程会话」会真正停止中继客户端。
+- **Agent 读取/发送**：Codex 真实 app-server 读取通过（84 会话 / 80 条消息）；用户从手机实发消息验证 Codex 发送、`/skill-atlas` 加载与执行通过；原生斜杠菜单也用 UI 测试点验（输入 `/atlas` 能列出并点击 `/skill-atlas`）。Claude 30 会话 / 13 条消息读取通过；Claude 发送修了 `--resume` 误传文件路径、Pipe 死锁和可执行文件发现，但本机 Claude CLI 未登录，发送验收待登录后补。Codex/Claude 对话页的 Markdown 渲染也已修复（原 `**`/反引号原样显示）。
+- **已配对的手机不再越积越多**：测试曾把配对写进真实 `~/.flowcue/remote-pairs.json`（一次 `swift test` 加一条）。测试改用临时目录；配对记录带手机名/时间，同一台手机重配自动替换，最多保留 8 台，设置页可「撤销全部」。
+- **Claude Code 保持支持**：本机 CLI 未登录只是本机环境限制，不撤下 Agent。测试用户若已登录自己的 Claude Code CLI，仍应能列出/读取/发送；没有订阅也可选 Anthropic Console API billing。Claude Desktop（`claude-app`）是独立 Agent，需单独的 UI 自动化适配器，不能与 CLI 混用。
+- **Skill 菜单全量**：空 query 不再只显示前 30 个；菜单可滚动，Skill Atlas 可找到（索引 82），不是软链问题。
+- **Slash 菜单卡死修复**：菜单改为 ScrollView 底部 overlay，避免菜单+键盘+ScrollView 布局循环；`/atlas` UI 测试通过。
+- **Codex/Claude 增量消息**：Agent 消息接口支持 `?after=count`，首次全量、后续只取新增；Codex full=65 → after=64 返回 1 条。
+- **Claude 登录预检**：`/v1/agents` 读取 `claude auth status`，未登录时 canSend=false；iOS 禁用发送并提示 `claude auth login`。
+- **Codex activity**：从 Codex 会话 JSONL 的 task_started/task_complete 推断，90 秒无更新视为中断；/activity 对 Codex 生效。
+- **幂等发送验证**：同一 DSH requestID 连续发送两次，Mac 回放缓存，会话只新增一条用户消息；Codex 同一 requestID 连续两次发送也只产生一条 user 消息。
+- **幂等发送、增量 DSH、协议 v2**：Codex/Claude + DSH 发送复用 request id，Mac 去重回放；DSH `?after=count` 只拉新增；协议升到 2，旧端明确提示升级。
+- **幂等发送与增量 DSH**：AgentChatView Retry 复用 request id，Mac POST 响应缓存去重；DSH 轮询改 `?after=count`，首次全量、后续只取新增。
+- **远程稳定性**：修复 DSH 大响应超过 Cloudflare 1MiB 导致的断线/重连循环；响应分块 + zlib 压缩；Mac/iOS 串行解密/发送；pending 先登记再发；重连退避只在真实响应后清零。
+- **Codex/Claude 发送可见性与复制**：发送后立即显示乐观气泡，并 3 秒轮询会话文件；失败可重试；用户/助理消息可长按选择复制；助理 Markdown 统一渲染。真机自测确认发送后 4 秒内可见乐观气泡；修复了已有 “ok” 消息导致乐观气泡误清除、以及聊天页未滚到底的问题；模拟器 UI 测试确认发送消息和 `ok` 回复都在底部可见；发送失败→Retry→重新发送也通过故障注入测试；发送失败横幅与读取失败分开，Claude Code 未登录时提示 `claude auth login`。新增 `docs/AGENT_PARITY.md`，以 DSH 为参考逐项验收。
+- **UI/UX**：大字号下 tab bar 限幅 + Large Content Viewer；Disconnect/Change code 纵向排列；设备页 info 值跟随字号；Me/Settings 值允许换行；筛选 chip 实心底；亮色主题状态色与按钮文字对比度修正；远程文案中英双语；Pairing 指纹按远程 pairID 生成。
+- 验证：`swift test` 153 项、2 跳过、0 失败；中继 Node 协议测试 13/13；模拟器 Reconnect UI 测试通过；故障注入 3 轮 Offline 0.6s / Online 1.6–1.9s；真机 1.1.18 (109) Online → Offline → 手动 Reconnect → Online，DSH 对话正常加载。
+
 ## Mac 1.1.11 补丁 — 局域网接口鉴权修复（安全）
 
 - **严重**：`/v1/agents`、`/v1/agents/*`、`/v1/skills` 原先在鉴权 guard 之前处理，
