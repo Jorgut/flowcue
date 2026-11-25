@@ -67,6 +67,12 @@ incremental fetch, Codex activity, Claude auth preflight.
   screenshot was taken while the Mac app was stopped, so the page displayed
   “Mac 不在线”; this does not invalidate the menu/keyboard evidence but the
   online state was verified separately after restarting the Mac.
+- **Real-device Mac process drop/recovery passed after a fix:** stopping the
+  Mac app changed the phone header from `Codex · 5.xs` to `12 LOCAL`; restarting
+  the Mac restored `Codex · 7.5s` **without relaunching the phone app**. The
+  first run exposed a stale-offline state; a 3-second foreground
+  `checkLiveness()` fallback was added and the retest passed. This is a
+  process/relay drop, not a Wi-Fi radio-off test.
 - **Real-device approval card passed:** injected one external approval through
   `POST /v1/approvals`; the physical iPhone automatically presented the
   Approvals sheet with Approve/Deny. Approving through
