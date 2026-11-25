@@ -6,9 +6,12 @@ public struct CodexAgentAdapter: AgentAdapter {
     public let agentID = "codex"
     private let executableURL: URL
     private let timeout: TimeInterval
+    private static let pathLock = NSLock()
+    private nonisolated(unsafe) static var pathCache: [String: String] = [:]
 
     public init(executableURL: URL? = nil, timeout: TimeInterval = 20) {
         self.executableURL = executableURL
+            ?? (try? CodexBridge.resolveCodexExecutable())
             ?? URL(fileURLWithPath: "/opt/homebrew/bin/codex")
         self.timeout = timeout
     }
@@ -34,6 +37,11 @@ public struct CodexAgentAdapter: AgentAdapter {
             guard let id = thread["id"] as? String else { return nil }
             let title = (thread["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
                 ?? cleanPreview(thread["preview"] as? String)
+            if let path = thread["path"] as? String {
+                Self.pathLock.lock()
+                Self.pathCache[id] = path
+                Self.pathLock.unlock()
+            }
             let seconds = (thread["updatedAt"] as? Double) ?? Double(thread["updatedAt"] as? Int ?? 0)
             return AgentSession(
                 id: id,
@@ -84,6 +92,48 @@ public struct CodexAgentAdapter: AgentAdapter {
             }
         }
         return Array(out.suffix(limit))
+    }
+
+    /// Codex 没有 app-server 的实时 activity 字段；从会话 JSONL 尾部的
+    /// task_started/task_complete 推断。超过 90 秒没有新事件就视为中断，
+    /// 避免被中断的 turn 永远显示“正在执行”。
+    public func activity(in session: AgentSession) -> String? {
+        let path: String?
+        Self.pathLock.lock()
+        path = Self.pathCache[session.id]
+        Self.pathLock.unlock()
+        guard let path else { return nil }
+        let url = URL(fileURLWithPath: path)
+        guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }
+        defer { try? handle.close() }
+        let size = (try? handle.seekToEnd()) ?? 0
+        let start = size > 512 * 1024 ? size - 512 * 1024 : 0
+        try? handle.seek(toOffset: start)
+        let data = handle.readDataToEndOfFile()
+        var active = false
+        var sawEvent = false
+        for line in data.split(separator: 0x0A) {
+            guard let obj = try? JSONSerialization.jsonObject(with: Data(line)) as? [String: Any],
+                  let payload = obj["payload"] as? [String: Any],
+                  let type = payload["type"] as? String else { continue }
+            switch type {
+            case "task_started":
+                active = true
+                sawEvent = true
+            case "task_complete", "task_failed", "turn_aborted":
+                active = false
+                sawEvent = true
+            default:
+                break
+            }
+        }
+        guard sawEvent, active else { return nil }
+        if let attrs = try? FileManager.default.attributesOfItem(atPath: path),
+           let modified = attrs[.modificationDate] as? Date,
+           Date().timeIntervalSince(modified) > 90 {
+            return nil
+        }
+        return L10n.text("Codex 正在执行…")
     }
 
     public func send(_ text: String, to session: AgentSession) async throws {
