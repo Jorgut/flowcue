@@ -73,6 +73,12 @@ incremental fetch, Codex activity, Claude auth preflight.
   first run exposed a stale-offline state; a 3-second foreground
   `checkLiveness()` fallback was added and the retest passed. This is a
   process/relay drop, not a Wi-Fi radio-off test.
+- **Codex 0 sessions fixed:** `/v1/agents` concurrently started multiple
+  short-lived Codex `app-server` processes against the same state DB; they
+  deadlocked, so `/v1/agents` reported Codex 0 while Claude/DSH loaded and
+  `/v1/agents/codex/sessions` timed out. Serialized app-server calls with a
+  static lock; after restart `/v1/agents` reports Codex 87 and the session list
+  loads in 0.28s.
 - **5G DSH load/flap fix:** the chat view fired two concurrent full-history
   fetches (2,289,377 bytes / 10 chunks each); a 20s GET timeout then marked the
   whole link offline even though heartbeats were healthy. Removed the duplicate

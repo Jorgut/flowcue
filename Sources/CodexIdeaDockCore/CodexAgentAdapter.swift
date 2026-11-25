@@ -7,6 +7,9 @@ public struct CodexAgentAdapter: AgentAdapter {
     private let executableURL: URL
     private let timeout: TimeInterval
     private static let pathLock = NSLock()
+    /// Codex app-server uses the shared state DB; two concurrent short-lived
+    /// app-servers can deadlock each other and both time out. Serialize calls.
+    private static let callLock = NSLock()
     private nonisolated(unsafe) static var pathCache: [String: String] = [:]
 
     public init(executableURL: URL? = nil, timeout: TimeInterval = 20) {
@@ -150,6 +153,8 @@ public struct CodexAgentAdapter: AgentAdapter {
     // MARK: JSON-RPC over stdio
 
     private func call(method: String, id: Int, params: [String: Any]) throws -> [String: Any] {
+        Self.callLock.lock()
+        defer { Self.callLock.unlock() }
         let process = Process()
         process.executableURL = executableURL
         process.arguments = ["app-server"]
