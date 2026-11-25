@@ -260,6 +260,9 @@ public struct DSHSessionReader: Sendable {
             || trimmed.contains("<compacted-summary>")
             || trimmed.contains("This is an automatically generated checkpoint")
             || trimmed.contains("Time sampled while preparing turn")
+            // DSH 把后台任务完成/失败结果作为 user/message 写进会话；
+            // 这些是工具日志，不是用户消息，FlowCue 的 DSH 聊天不显示。
+            || trimmed.hasPrefix("background job ")
     }
 
     private func logURL(sessionID: String) -> URL? {
