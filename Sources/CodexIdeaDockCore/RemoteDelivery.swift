@@ -190,11 +190,14 @@ public struct DSHRemoteMessage: Codable, Sendable {
     public let sessionId: String
     public let text: String
     public let images: [String]?
+    /// 客户端重试复用同一个 id；Mac 据此避免重复发 DSH turn。
+    public let requestID: String?
 
-    public init(sessionId: String, text: String, images: [String]? = nil) {
+    public init(sessionId: String, text: String, images: [String]? = nil, requestID: String? = nil) {
         self.sessionId = sessionId
         self.text = text
         self.images = images
+        self.requestID = requestID
     }
 }
 

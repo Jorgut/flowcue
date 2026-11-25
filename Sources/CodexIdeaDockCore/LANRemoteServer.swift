@@ -32,7 +32,8 @@ public final class LANRemoteServer {
         ledgerURL: URL,
         sessionsDirectory: URL? = nil,
         dshBridge: DSHBridgeClient = DSHBridgeClient(),
-        store: IdeaDockStore? = nil
+        store: IdeaDockStore? = nil,
+        pairingStoreDirectory: URL? = nil
     ) throws {
         self.executorID = executorID
         self.pairingCode = pairingCode
@@ -42,6 +43,9 @@ public final class LANRemoteServer {
         self.dshBridge = dshBridge
         self.dshSessions = DSHSessionReader()
         self.store = store
+        let pairingDirectory = pairingStoreDirectory
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".flowcue")
+        self.pairing = RemotePairingManager(storeDirectory: pairingDirectory)
     }
 
     public func start() throws {
@@ -135,7 +139,7 @@ public final class LANRemoteServer {
     }
 
     /// 协议版本：只在「老客户端会解读错」时才 +1。Mac 作为服务端至少兼容上一版。
-    public static let protocolVersion = 1
+    public static let protocolVersion = 2
     public static var appVersion: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
     }
@@ -215,7 +219,7 @@ public final class LANRemoteServer {
     private var externalApprovals: [ExternalApproval] = []
     /// Remote 配对：6 位码、批准、撤销都在这里。
     /// 中继客户端需要读取会话，所以暴露为 internal 可读。
-    let pairing = RemotePairingManager()
+    let pairing: RemotePairingManager
 
     /// 当前运行的服务实例：设置页要读远程配对码和中继状态。
     public static weak var current: LANRemoteServer?
@@ -255,14 +259,27 @@ public final class LANRemoteServer {
         get async { await pairing.activePairIDs }
     }
 
+    /// 设置页用：手机名、配对/最近使用时间。
+    public var pairedPhones: [RemotePairingManager.PairedPhone] {
+        get async { await pairing.pairedPhoneInfos }
+    }
+
     /// 撤销某个远程配对。
     public func revokeRemotePair(_ pairID: String) async {
         await pairing.revoke(pairID: pairID)
+    }
+
+    /// 撤销全部远程配对，返回被撤销的 pairID（设置页用）。
+    @discardableResult
+    public func revokeAllRemotePairs() async -> [String] {
+        await pairing.revokeAll()
     }
     /// 各 Agent 的会话列表缓存（30 秒）：手机上反复进出同一个 Agent 不必重扫。
     private var agentSessionsCache: [String: (items: [RemoteAgentSession], at: Date)] = [:]
     /// 各会话的消息缓存（5 秒）：读一条消息要解压日志，实测 0.9 秒。
     private var agentMessagesCache: [String: (items: [RemoteAgentMessage], at: Date)] = [:]
+    /// DSH /v1/dsh/send 的幂等缓存：同一 requestID 只真正转发一次。
+    private var dshSendResponses: [String: Date] = [:]
     /// 手机轮询审批接口的次数。用来判断「手机是否已经自己连回来」——
     /// 这个接口只有手机会调，本机测试不会干扰计数。
     private var phonePollCount = 0
@@ -309,7 +326,9 @@ public final class LANRemoteServer {
                 displayName: record.displayName,
                 sessionCount: sessions.count,
                 projectCount: projects.count,
-                canSend: record.capabilities.contains(.drive)
+                canSend: record.id == "claude"
+                    ? ClaudeCodeAdapter.isLoggedIn()
+                    : record.capabilities.contains(.drive)
             )
         }
         // 支持的适配器即使没被目录扫到，也列出来（例如 DSH 靠桥接）
@@ -321,7 +340,7 @@ public final class LANRemoteServer {
                 displayName: id.capitalized,
                 sessionCount: sessions.count,
                 projectCount: projects.count,
-                canSend: true
+                canSend: id == "claude" ? ClaudeCodeAdapter.isLoggedIn() : true
             )
         }
         agentSummaryCache = result
@@ -437,32 +456,51 @@ public final class LANRemoteServer {
                 }
                 if parts.count >= 4 {
                     let sessionID = parts[2].removingPercentEncoding ?? parts[2]
-                    let action = parts[3]
+                    let actionParts = parts[3].split(separator: "?", maxSplits: 1).map(String.init)
+                    let action = actionParts.first ?? parts[3]
+                    let actionQuery = actionParts.count > 1 ? actionParts[1] : ""
                     let sessions = (try? await agentService.sessions(for: agentID, limit: 1000)) ?? []
                     guard let session = sessions.first(where: { $0.id == sessionID }) else {
                         return Self.response(status: 404, body: Data("{}".utf8))
                     }
                     if action == "activity", request.method == "GET" {
-                        let label = (agentService.adapter(for: agentID) as? DSHAgentAdapter)?
-                            .activity(in: session)
+                        let adapter = agentService.adapter(for: agentID)
+                        let label: String?
+                        if let dsh = adapter as? DSHAgentAdapter {
+                            label = dsh.activity(in: session)
+                        } else if let codex = adapter as? CodexAgentAdapter {
+                            label = codex.activity(in: session)
+                        } else {
+                            label = nil
+                        }
                         let payload = ["activity": label ?? ""]
                         return Self.response(status: 200, body: (try? Self.encoder.encode(payload)) ?? Data("{}".utf8))
                     }
                     if action == "messages", request.method == "GET" {
                         let key = "\(agentID)/\(session.id)"
-                        if let cached = agentMessagesCache[key],
-                           Date().timeIntervalSince(cached.at) < 5 {
-                            return Self.response(status: 200, body: (try? Self.encoder.encode(cached.items)) ?? Data("[]".utf8))
+                        let cached: (items: [RemoteAgentMessage], at: Date)?
+                        if let entry = agentMessagesCache[key],
+                           Date().timeIntervalSince(entry.at) < 5 {
+                            cached = entry
+                        } else {
+                            let messages = (try? await agentService.messages(session, limit: 1000)) ?? []
+                            let items = messages.map(Self.remoteMessage)
+                            agentMessagesCache[key] = (items, Date())
+                            cached = (items, Date())
+                            // 每个会话最多留 30 条缓存，避免内存无限增长
+                            if agentMessagesCache.count > 30 {
+                                let oldest = agentMessagesCache.min { $0.value.at < $1.value.at }?.key
+                                if let oldest { agentMessagesCache.removeValue(forKey: oldest) }
+                            }
                         }
-                        let messages = (try? await agentService.messages(session)) ?? []
-                        let items = messages.map(Self.remoteMessage)
-                        agentMessagesCache[key] = (items, Date())
-                        // 每个会话最多留 30 条缓存，避免内存无限增长
-                        if agentMessagesCache.count > 30 {
-                            let oldest = agentMessagesCache.min { $0.value.at < $1.value.at }?.key
-                            if let oldest { agentMessagesCache.removeValue(forKey: oldest) }
+                        var after = 0
+                        for item in actionQuery.split(separator: "&") {
+                            let pair = item.split(separator: "=", maxSplits: 1)
+                            if pair.count == 2, pair[0] == "after" { after = Int(pair[1]) ?? 0 }
                         }
-                        return Self.response(status: 200, body: (try? Self.encoder.encode(items)) ?? Data("[]".utf8))
+                        let items = cached?.items ?? []
+                        let sliced = after > 0 ? Array(items.dropFirst(after)) : items
+                        return Self.response(status: 200, body: (try? Self.encoder.encode(sliced)) ?? Data("[]".utf8))
                     }
                     if action == "send", request.method == "POST" {
                         // 发完立刻让消息缓存失效，下一条拉取能看到新内容
@@ -498,7 +536,9 @@ public final class LANRemoteServer {
             // 任何途径生成的码都要登记到中继，手机才能用码找到这台 Mac
             await announcePairingCode(code)
             let macKey = await pairing.publicKey
-            let macID = await pairing.macID
+            // 必须与中继注册用的 ID 一致（executorID）；pairing.macID 是
+            // 随机身份，用它会让手机把配对请求发到另一个 Durable Object。
+            let macID = executorID.uuidString
             let payload: [String: String] = [
                 "code": code,
                 "macID": macID,
@@ -510,13 +550,20 @@ public final class LANRemoteServer {
             struct Body: Decodable {
                 let code: String
                 let phonePublicKey: String
+                let phoneID: String?
+                let phoneName: String?
             }
             guard let body = try? JSONDecoder().decode(Body.self, from: request.body),
                   let phoneKey = Data(base64Encoded: body.phonePublicKey) else {
                 return Self.response(status: 400, body: Data("{}".utf8))
             }
             do {
-                let pairID = try await pairing.request(code: body.code, phonePublicKey: phoneKey)
+                let pairID = try await pairing.request(
+                    code: body.code,
+                    phonePublicKey: phoneKey,
+                    phoneID: body.phoneID,
+                    phoneName: body.phoneName
+                )
                 return Self.response(status: 200, body: try JSONEncoder().encode(["pairID": pairID]))
             } catch {
                 let reason = String(describing: error)
@@ -564,13 +611,30 @@ public final class LANRemoteServer {
         case ("GET", "/v1/dsh/sessions"):
             let sessions = dshSessions.sessions()
             return Self.response(status: 200, body: try JSONEncoder().encode(sessions))
-        case ("GET", let path) where path.hasPrefix("/v1/dsh/sessions/") && path.hasSuffix("/messages"):
-            let encoded = String(path.dropFirst("/v1/dsh/sessions/".count).dropLast("/messages".count))
+        case ("GET", let path) where path.hasPrefix("/v1/dsh/sessions/") && path.contains("/messages"):
+            let parts = path.split(separator: "?", maxSplits: 1).map(String.init)
+            let bare = parts.first ?? path
+            guard bare.hasSuffix("/messages") else {
+                return Self.response(status: 404, body: Data("{}".utf8))
+            }
+            let encoded = String(bare.dropFirst("/v1/dsh/sessions/".count).dropLast("/messages".count))
             guard let sessionID = encoded.removingPercentEncoding, !sessionID.isEmpty else {
                 return Self.response(status: 400, body: Data("[]".utf8))
             }
-            let messages = dshSessions.messages(sessionID: sessionID)
-            return Self.response(status: 200, body: try JSONEncoder().encode(messages))
+            var after = 0
+            if parts.count > 1 {
+                for item in parts[1].split(separator: "&") {
+                    let pair = item.split(separator: "=", maxSplits: 1)
+                    if pair.count == 2, pair[0] == "after" {
+                        after = Int(pair[1]) ?? 0
+                    }
+                }
+            }
+            // 不能再用默认 limit=100：会话超过 100 条后 count 不再增长，
+            // 客户端 after=count 永远取不到新消息。
+            let messages = dshSessions.messages(sessionID: sessionID, limit: 1000)
+            let sliced = after > 0 ? Array(messages.dropFirst(after)) : messages
+            return Self.response(status: 200, body: try JSONEncoder().encode(sliced))
         case ("GET", let path) where path.hasPrefix("/v1/dsh/activity/"):
             let encoded = String(path.dropFirst("/v1/dsh/activity/".count))
             guard let sessionID = encoded.removingPercentEncoding, !sessionID.isEmpty else {
@@ -686,8 +750,18 @@ public final class LANRemoteServer {
             }
         case ("POST", "/v1/dsh/send"):
             let message = try JSONDecoder().decode(DSHRemoteMessage.self, from: request.body)
+            if let requestID = message.requestID {
+                dshSendResponses = dshSendResponses.filter { Date().timeIntervalSince($0.value) < 600 }
+                if dshSendResponses[requestID] != nil {
+                    NSLog("[FlowCue Remote] idempotent DSH replay id=%@", requestID)
+                    return Self.response(status: 200, body: Data("{}".utf8))
+                }
+            }
             do {
                 try await dshBridge.send(sessionID: message.sessionId, text: message.text, images: message.images ?? [])
+                if let requestID = message.requestID {
+                    dshSendResponses[requestID] = Date()
+                }
                 return Self.response(status: 200, body: Data("{}".utf8))
             } catch {
                 return Self.response(status: 409, body: Data("{}".utf8))
@@ -857,7 +931,9 @@ private final class HTTPConnection {
         let parts = requestLine.split(separator: " ")
         guard parts.count >= 2 else { return nil }
         let method = String(parts[0])
-        let path = String(parts[1].split(separator: "?").first ?? "")
+        // 保留 query：DSH 消息增量拉取用 ?after=N；之前在这里被截掉，
+        // 局域网模式会退化成每 3 秒拉完整历史。
+        let path = String(parts[1])
         var headers: [String: String] = [:]
         for line in lines.dropFirst() {
             guard let colon = line.firstIndex(of: ":") else { continue }
