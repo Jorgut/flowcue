@@ -16,9 +16,9 @@ export default {
     target.pathname = incoming.pathname;
     target.search = incoming.search;
 
-    // Passing the original Request preserves method, headers, body and the
-    // WebSocket Upgrade handshake. Do not forward a Host header: the runtime
-    // must derive it from the target URL.
+    // Passing the original method/headers/body preserves the WebSocket
+    // Upgrade handshake. Do not forward a Host header: the runtime derives it
+    // from the target URL.
     const headers = new Headers(request.headers);
     headers.delete("host");
 

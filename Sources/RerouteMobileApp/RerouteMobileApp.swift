@@ -11670,7 +11670,7 @@ final class RemoteTunnel {
             }
         }
         pingTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(10))
+            try? await Task.sleep(for: .seconds(20))
             guard let self, !Task.isCancelled, gen == self.generation, !self.stopped else { return }
             self.handleTransportFailure(L10n.text("心跳超时。"))
         }

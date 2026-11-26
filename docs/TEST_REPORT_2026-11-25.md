@@ -116,6 +116,11 @@ incremental fetch, Codex activity, Claude auth preflight.
   after the 3-failure fallback it switched to `Codex · 4.4s` and Worker health
   changed to `iphones:1`. The failed-message row now exposes a 44pt Retry
   button instead of a 9.5pt text link.
+- **Pages heartbeat tolerance:** the Pages proxy path showed transient
+  heartbeat timeouts under a 1MB DSH load; app-level heartbeat deadlines on
+  both sides were raised from 10s to 20s. A service-binding Pages variant was
+  tested and reverted because the real WebSocket did not connect; the public
+  HTTP/WebSocket proxy remains the working Pages implementation.
 - **iOS-origin DSH send through Pages passed:** after the switch, a message
   typed on the iPhone reached `POST /v1/dsh/send` with HTTP 200 and appeared in
   the DSH conversation; health remained `iphones:1`. The first paginated loads

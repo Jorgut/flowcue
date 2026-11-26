@@ -309,7 +309,7 @@ public final class RemoteRelayClient: @unchecked Sendable {
             return
         }
         let gen = generation
-        heartbeatDeadline = Date().addingTimeInterval(10)
+        heartbeatDeadline = Date().addingTimeInterval(20)
         socket.send(.string(#"{"type":"app/ping"}"#)) { [weak self] error in
             guard let self, let error else { return }
             self.queue.async {
@@ -317,7 +317,7 @@ public final class RemoteRelayClient: @unchecked Sendable {
                 self.handleDrop("心跳发送失败：\(error.localizedDescription)")
             }
         }
-        queue.asyncAfter(deadline: .now() + 10) { [weak self] in
+        queue.asyncAfter(deadline: .now() + 20) { [weak self] in
             guard let self, gen == self.generation, !self.stopped else { return }
             guard let deadline = self.heartbeatDeadline, Date() >= deadline else { return }
             self.handleDrop("心跳超时。")
