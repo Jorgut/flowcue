@@ -116,6 +116,12 @@ incremental fetch, Codex activity, Claude auth preflight.
   after the 3-failure fallback it switched to `Codex · 4.4s` and Worker health
   changed to `iphones:1`. The failed-message row now exposes a 44pt Retry
   button instead of a 9.5pt text link.
+- **5G without VPN passed through Pages:** after installing the Pages build
+  and switching the iPhone to 5G with Wi-Fi and VPN off, FlowCue showed
+  `Codex · online` and the Pages health endpoint returned
+  `{"macOnline":true,"iphones":1}`. The Pages entry (`flowcue-relay.pages.dev`)
+  proxies the same Worker/Durable Objects; the `workers.dev` deployment remains
+  in place as the backup.
 - **Real-device approval card passed:** injected one external approval through
   `POST /v1/approvals`; the physical iPhone automatically presented the
   Approvals sheet with Approve/Deny. Approving through
