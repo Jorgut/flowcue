@@ -1,0 +1,13 @@
+name = "flowcue-relay"
+pages_build_output_dir = "."
+compatibility_date = "2026-01-01"
+
+[[durable_objects.bindings]]
+name = "MAC_SESSION"
+class_name = "MacSession"
+script_name = "flowcue-remote"
+
+[[durable_objects.bindings]]
+name = "CODE_INDEX"
+class_name = "CodeIndex"
+script_name = "flowcue-remote"

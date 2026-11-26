@@ -88,6 +88,11 @@ incremental fetch, Codex activity, Claude auth preflight.
   or Mac offline”. It now always uses `/v1/remote/pair/claim` for a manually
   entered code, and the foreground watchdog restores remote credentials every
   15s after wake.
+- **Pages direct Durable Object relay:** the Pages Worker now binds the
+  existing `MAC_SESSION` / `CODE_INDEX` objects and calls their stubs directly
+  instead of proxying a second public Worker. `/health` and `/v1/remote/health`
+  pass, a WebSocket upgrade returns the expected 401 for invalid auth, and the
+  Mac registers online through this endpoint.
 - **DSH text-only history:** paginated history now requests `textOnly=1`
   for the initial/older pages, dropping inline base64 images. The 20-message
   page fell from 620,093 bytes / 3 chunks to 14,732 bytes; new incremental
