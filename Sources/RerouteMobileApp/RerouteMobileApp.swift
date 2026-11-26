@@ -6747,7 +6747,7 @@ private struct ChatScreen: View {
     private func loadInitialMessages() async throws {
         switch target {
         case .dsh(let session):
-            let page = try await controller.dshMessagePage(for: session, tail: 60)
+            let page = try await controller.dshMessagePage(for: session, tail: 20)
             messages = page.messages
             dshTotal = page.total
             dshOldestOffset = page.start
@@ -6779,7 +6779,7 @@ private struct ChatScreen: View {
         defer { loadingOlder = false }
         do {
             let page = try await controller.dshMessagePage(
-                for: session, before: dshOldestOffset, limit: 40
+                for: session, before: dshOldestOffset, limit: 20
             )
             messages = page.messages + messages
             dshOldestOffset = page.start

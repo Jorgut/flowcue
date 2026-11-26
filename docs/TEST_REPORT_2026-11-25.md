@@ -88,6 +88,10 @@ incremental fetch, Codex activity, Claude auth preflight.
   or Mac offline”. It now always uses `/v1/remote/pair/claim` for a manually
   entered code, and the foreground watchdog restores remote credentials every
   15s after wake.
+- **DSH spinner mitigation:** the first 60-message page still reached
+  1,285,371 bytes / 6 chunks and the phone stayed on the loading spinner.
+  The initial window is now 20 messages (older pages 20) to keep the
+  Pages/5G payload small.
 - **DSH history pagination:** initial load now requests the newest 60 messages
   instead of the full 126-message / 2.29MB history; “Load earlier messages”
   fetches 40-message windows with absolute `total`/`start`. API verified:
