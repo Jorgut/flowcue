@@ -12086,7 +12086,7 @@ extension LANRemoteController {
     /// 远程配对：用 6 位码在中继上建立隧道。
     /// 前提是本机之前通过 LAN 配对过（有 remoteMacID 和最后的设备地址）。
     func pairRemote(code: String) async -> String? {
-        guard let relay = URL(string: "https://flowcue-relay.pages.dev") else { return nil }
+        guard let relay = URL(string: "https://flowcue-remote.honaler.workers.dev") else { return nil }
 
         let previousPairID = RemoteCredentials.pairID
         let previousMacID = RemoteCredentials.macID
@@ -12142,7 +12142,7 @@ extension LANRemoteController {
         }
 
         if object == nil {
-            guard let claimURL = URL(string: "https://flowcue-relay.pages.dev/v1/remote/pair/claim") else { return nil }
+            guard let claimURL = URL(string: "https://flowcue-remote.honaler.workers.dev/v1/remote/pair/claim") else { return nil }
             let result = await postPair(claimURL)
             if let value = result.object {
                 if let error = value["error"] as? String {
@@ -12265,7 +12265,7 @@ extension LANRemoteController {
               let macID = RemoteCredentials.macID,
               let macPublicData = RemoteCredentials.macPublicKey,
               let privateKey = RemoteCredentials.phonePrivateKey,
-              let relay = URL(string: "https://flowcue-relay.pages.dev"),
+              let relay = URL(string: "https://flowcue-remote.honaler.workers.dev"),
               let macPublic = try? Curve25519.KeyAgreement.PublicKey(rawRepresentation: macPublicData),
               let session = try? RemoteCryptoSession(localPrivate: privateKey, macPublic: macPublic, pairID: pairID) else {
             return false

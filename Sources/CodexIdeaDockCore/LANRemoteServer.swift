@@ -235,7 +235,7 @@ public final class LANRemoteServer {
     }
 
     private func announcePairingCode(_ code: String) async {
-        guard let url = URL(string: "https://flowcue-relay.pages.dev/v1/remote/code/announce") else { return }
+        guard let url = URL(string: "https://flowcue-remote.honaler.workers.dev/v1/remote/code/announce") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.timeoutInterval = 3
