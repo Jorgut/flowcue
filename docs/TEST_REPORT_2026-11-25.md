@@ -116,6 +116,11 @@ incremental fetch, Codex activity, Claude auth preflight.
   after the 3-failure fallback it switched to `Codex · 4.4s` and Worker health
   changed to `iphones:1`. The failed-message row now exposes a 44pt Retry
   button instead of a 9.5pt text link.
+- **iOS-origin DSH send through Pages passed:** after the switch, a message
+  typed on the iPhone reached `POST /v1/dsh/send` with HTTP 200 and appeared in
+  the DSH conversation; health remained `iphones:1`. The first paginated loads
+  were duplicated (1,006,665 bytes / 5 chunks twice); `reloadOnce` is now
+  suppressed during/just after the initial load.
 - **5G without VPN passed through Pages:** after installing the Pages build
   and switching the iPhone to 5G with Wi-Fi and VPN off, FlowCue showed
   `Codex · online` and the Pages health endpoint returned

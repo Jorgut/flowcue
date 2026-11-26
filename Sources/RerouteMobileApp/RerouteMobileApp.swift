@@ -6251,6 +6251,7 @@ private struct ChatScreen: View {
     @State private var messages: [RemoteConversationMessage] = []
     @State private var dshTotal = 0
     @State private var dshOldestOffset = 0
+    @State private var lastInitialLoadAt = Date.distantPast
     @State private var loadingOlder = false
     @State private var subagents: [DSHSessionSnapshot] = []
     @State private var text = ""
@@ -6731,6 +6732,8 @@ private struct ChatScreen: View {
     }
 
     private func reloadOnce() async {
+        // 首屏与“刚重连”可能同时触发；1MB 历史不能并发拉两遍。
+        guard !loading, Date().timeIntervalSince(lastInitialLoadAt) > 2 else { return }
         await refreshApprovalsIfNeeded()
         do {
             try await loadInitialMessages()
@@ -6753,6 +6756,7 @@ private struct ChatScreen: View {
             dshTotal = 0
             dshOldestOffset = 0
         }
+        lastInitialLoadAt = Date()
     }
 
     private func loadIncrementalMessages() async throws {
