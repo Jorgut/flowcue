@@ -1588,6 +1588,12 @@ private struct RootTabView: View {
                 tick += 1
                 await remoteController.uploadPushTokenIfNeeded()
                 await remoteController.recoverConnectionIfNeeded()
+                // 中继隧道已经存在但 UI 还停在 LOCAL：直接接管，
+                // 不要再等一次局域网失败。否则会显示 12 LOCAL 但其实中继是通的。
+                if !remoteController.isRemote, let tunnel = RemoteTunnel.current() {
+                    remoteController.attachRemoteTunnel(tunnel)
+                    remoteController.adoptRemoteDevice()
+                }
                 // App 前台但网络刚恢复/手机刚解锁时，scenePhase 不一定再变。
                 // 每 15 秒兜底一次：优先恢复远程凭据，其次再走局域网重连。
                 if !remoteController.isOnline,

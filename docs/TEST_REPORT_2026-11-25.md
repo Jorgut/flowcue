@@ -88,6 +88,9 @@ incremental fetch, Codex activity, Claude auth preflight.
   or Mac offline”. It now always uses `/v1/remote/pair/claim` for a manually
   entered code, and the foreground watchdog restores remote credentials every
   15s after wake.
+- **Remote adoption on foreground:** when a relay tunnel already exists but
+  the controller is still in LOCAL mode, the root foreground loop now attaches
+  that tunnel and adopts the remote device instead of waiting for a LAN failure.
 - **Pages direct Durable Object relay:** the Pages Worker now binds the
   existing `MAC_SESSION` / `CODE_INDEX` objects and calls their stubs directly
   instead of proxying a second public Worker. `/health` and `/v1/remote/health`
