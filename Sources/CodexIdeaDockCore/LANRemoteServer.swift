@@ -626,6 +626,7 @@ public final class LANRemoteServer {
             var before: Int?
             var windowLimit = 60
             var paginated = false
+            var textOnly = false
             if parts.count > 1 {
                 for item in parts[1].split(separator: "&") {
                     let pair = item.split(separator: "=", maxSplits: 1)
@@ -638,6 +639,7 @@ public final class LANRemoteServer {
                     case "before": before = value
                     case "limit": windowLimit = value ?? 60
                     case "paginated": paginated = value != 0 || String(pair[1]) == "1"
+                    case "textOnly": textOnly = value != 0 || String(pair[1]) == "1"
                     default: break
                     }
                 }
@@ -660,7 +662,15 @@ public final class LANRemoteServer {
                 } else if after > 0 {
                     start = min(after, total)
                 }
-                let messages = start < end ? Array(all[start..<end]) : []
+                var messages = start < end ? Array(all[start..<end]) : []
+                if textOnly {
+                    messages = messages.map {
+                        RemoteConversationMessage(
+                            id: $0.id, role: $0.role, text: $0.text,
+                            timestamp: $0.timestamp, images: nil
+                        )
+                    }
+                }
                 struct Page: Encodable {
                     let messages: [RemoteConversationMessage]
                     let total: Int

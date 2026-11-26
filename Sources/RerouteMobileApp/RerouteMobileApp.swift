@@ -1140,11 +1140,13 @@ final class LANRemoteController {
         after: Int? = nil,
         tail: Int? = nil,
         before: Int? = nil,
-        limit: Int = 60
+        limit: Int = 60,
+        textOnly: Bool = false
     ) async throws -> DSHMessagePage {
         guard isPaired else { throw RemoteLinkError.offline(L10n.text("尚未连接 Mac。")) }
         let encoded = session.id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? session.id
         var query = ["paginated=1", "limit=\(limit)"]
+        if textOnly { query.append("textOnly=1") }
         if let after { query.append("after=\(after)") }
         if let tail { query.append("tail=\(tail)") }
         if let before { query.append("before=\(before)") }
@@ -6747,7 +6749,7 @@ private struct ChatScreen: View {
     private func loadInitialMessages() async throws {
         switch target {
         case .dsh(let session):
-            let page = try await controller.dshMessagePage(for: session, tail: 20)
+            let page = try await controller.dshMessagePage(for: session, tail: 20, textOnly: true)
             messages = page.messages
             dshTotal = page.total
             dshOldestOffset = page.start
@@ -6779,7 +6781,7 @@ private struct ChatScreen: View {
         defer { loadingOlder = false }
         do {
             let page = try await controller.dshMessagePage(
-                for: session, before: dshOldestOffset, limit: 20
+                for: session, before: dshOldestOffset, limit: 20, textOnly: true
             )
             messages = page.messages + messages
             dshOldestOffset = page.start
