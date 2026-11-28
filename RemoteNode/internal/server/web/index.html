@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0B0B0F">
+<title>FlowCue</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body class="screen-chat">
+
+<!-- ================= DESKTOP ================= -->
+<div class="desktop">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark">↵</div>
+      <div class="brand-name">FlowCue<span class="chip-web">WEB</span></div>
+      <button class="icon-btn" id="logout" title="断开这台设备">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 4H5v16h4M14 8l4 4-4 4M18 12H9"/></svg>
+      </button>
+    </div>
+
+    <button class="device" id="deviceCard">
+      <span class="device-icon"><span class="win-grid"><i></i><i></i><i></i><i></i></span></span>
+      <span class="device-text">
+        <span class="device-name" id="deviceName">正在连接…</span>
+        <span class="device-meta"><span class="dot" id="deviceDot"></span><span id="deviceMeta">节点</span></span>
+      </span>
+      <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6"/></svg>
+    </button>
+
+    <label class="search">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <input id="search" placeholder="搜索会话…" autocomplete="off">
+    </label>
+
+    <div class="section-head"><span>SESSIONS</span><span id="sessionCount">0</span></div>
+    <div class="sessions" id="sessions"></div>
+
+    <div class="sidebar-foot">
+      <div class="conn" id="conn">未连接</div>
+    </div>
+  </aside>
+
+  <main class="chat">
+    <header class="chat-head" id="chatHead" hidden>
+      <span class="badge codex">C</span>
+      <div class="chat-heading">
+        <div class="chat-title" id="chatTitle">会话</div>
+        <div class="chat-sub"><span class="dot ok"></span><span id="chatSub">Codex</span></div>
+      </div>
+      <div class="head-actions">
+        <span class="status-pill"><span class="pulse"></span>在线</span>
+      </div>
+    </header>
+
+    <div class="messages">
+      <div class="messages-inner" id="messagesInner">
+        <div class="empty" id="emptyChat">
+          <div class="empty-mark">↵</div>
+          <div class="empty-title">选择一个会话</div>
+          <div class="empty-sub">从左边选择这台节点上的 Codex 会话，查看对话或继续工作。</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="approval-panel" id="approvalPanel" hidden></div>
+
+    <footer class="composer" id="composer" hidden>
+      <div class="composer-box">
+        <input id="composerInput" placeholder="给 Codex 发消息…" autocomplete="off">
+        <button class="send" id="send" title="发送">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+        </button>
+      </div>
+      <div class="composer-hint">Enter 发送 · 消息会进入当前 Codex 会话</div>
+    </footer>
+  </main>
+
+  <aside class="inspector">
+    <div class="kicker">SESSION</div>
+    <div class="insp-title" id="inspTitle">未选择会话</div>
+    <div class="kv-list">
+      <div class="kv"><span>Agent</span><b id="inspAgent">—</b></div>
+      <div class="kv"><span>节点</span><b id="inspNode">—</b></div>
+      <div class="kv"><span>工作区</span><b class="mono" id="inspWorkspace">—</b></div>
+      <div class="kv"><span>状态</span><b id="inspStatus">—</b></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="kicker">AGENTS ON THIS NODE</div>
+    <div id="inspAgents"></div>
+
+    <div class="divider"></div>
+
+    <div class="kicker">NODE</div>
+    <div class="node-card">
+      <div class="node-name" id="nodeName">—</div>
+      <div class="node-meta" id="nodeMeta">—</div>
+      <div class="node-status"><span class="dot ok"></span><span id="nodeStatus">局域网直连</span></div>
+    </div>
+  </aside>
+</div>
+
+<!-- ================= MOBILE ================= -->
+<div class="mobile">
+  <section class="m-shell m-list" id="mList">
+    <header class="m-head">
+      <h1>Agents</h1>
+      <button class="icon-btn" id="mLogout" title="断开这台设备">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 4H5v16h4M14 8l4 4-4 4M18 12H9"/></svg>
+      </button>
+    </header>
+
+    <div class="m-body">
+      <button class="device" id="mDevice">
+        <span class="device-icon"><span class="win-grid"><i></i><i></i><i></i><i></i></span></span>
+        <span class="device-text">
+          <span class="device-name" id="mDeviceName">正在连接…</span>
+          <span class="device-meta"><span class="dot" id="mDeviceDot"></span><span id="mDeviceMeta">节点</span></span>
+        </span>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+
+      <div class="m-label">AGENTS</div>
+      <div id="mAgents"></div>
+
+      <div class="m-label">SESSIONS</div>
+      <div id="mSessions"></div>
+    </div>
+
+    <nav class="tabbar">
+      <span class="tab"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h7"/></svg>Ideas</span>
+      <span class="tab active"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m4 12 16-7-7 16-2.5-6.5L4 12Z"/></svg>Agents</span>
+      <span class="tab"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M9 18h6"/></svg>Devices</span>
+      <span class="tab"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.2-3.4 3.8-5 7-5s5.8 1.6 7 5"/></svg>Me</span>
+    </nav>
+  </section>
+
+  <section class="m-chat" id="mChat">
+    <header class="m-chat-head">
+      <button class="icon-btn" id="mBack" title="返回">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="m15 6-6 6 6 6"/></svg>
+      </button>
+      <div class="m-chat-title">
+        <div class="name" id="mChatTitle">Codex</div>
+        <div class="sub"><span class="dot ok"></span><span id="mChatSub">在线</span></div>
+      </div>
+      <span style="width:28px"></span>
+    </header>
+
+    <div class="m-messages" id="mMessages"></div>
+
+    <div class="approval-panel mobile-approval" id="mApprovalPanel" hidden></div>
+
+    <footer class="m-composer">
+      <div class="composer-box">
+        <input id="mInput" placeholder="给 Codex 发消息…" autocomplete="off">
+        <button class="send" id="mSend" title="发送">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+        </button>
+      </div>
+    </footer>
+  </section>
+</div>
+
+<!-- ================= PAIRING ================= -->
+<div class="pairing" id="pairing" hidden>
+  <div class="pairing-card">
+    <div class="mark">↵</div>
+    <h2>连接这台节点</h2>
+    <p>输入节点窗口里显示的 6 位配对码。这台设备会记住连接，除非你主动断开。</p>
+    <form id="pairForm">
+      <input id="codeInput" inputmode="numeric" maxlength="6" placeholder="000000" autocomplete="one-time-code" aria-label="6 位配对码">
+      <button type="submit" class="btn primary" id="pairBtn">连接</button>
+    </form>
+    <div class="pairing-error" id="pairError"></div>
+    <div class="pairing-foot">节点 <span class="mono" id="pairHost"></span></div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>
