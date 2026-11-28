@@ -33,7 +33,8 @@ public final class LANRemoteServer {
         sessionsDirectory: URL? = nil,
         dshBridge: DSHBridgeClient = DSHBridgeClient(),
         store: IdeaDockStore? = nil,
-        pairingStoreDirectory: URL? = nil
+        pairingStoreDirectory: URL? = nil,
+        dshSessions: DSHSessionReader = DSHSessionReader()
     ) throws {
         self.executorID = executorID
         self.pairingCode = pairingCode
@@ -41,7 +42,7 @@ public final class LANRemoteServer {
         self.executor = try RemoteCommandExecutor(executorID: executorID, ledgerURL: ledgerURL, bridge: bridge)
         self.reader = CodexSessionReplyReader(sessionsDirectory: sessionsDirectory ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".codex/sessions"))
         self.dshBridge = dshBridge
-        self.dshSessions = DSHSessionReader()
+        self.dshSessions = dshSessions
         self.store = store
         let pairingDirectory = pairingStoreDirectory
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".flowcue")
@@ -365,7 +366,8 @@ public final class LANRemoteServer {
             id: message.id,
             role: message.role.rawValue,
             text: message.text,
-            timestamp: message.timestamp
+            timestamp: message.timestamp,
+            progress: message.progress
         )
     }
 
@@ -403,6 +405,21 @@ public final class LANRemoteServer {
             .first
             .flatMap { Int($0) } ?? 500
         return (status, Data(raw[separator.upperBound...]))
+    }
+
+    private func externalApprovalResponse(index: Int, decision: String) -> Data {
+        let status: String
+        switch decision {
+        case "allow", "allowed-once": status = "approved"
+        case "deny", "rejected": status = "denied"
+        default: return Self.response(status: 400, body: Data("{}".utf8))
+        }
+        let current = externalApprovals[index].status
+        guard current == "pending" || current == status else {
+            return Self.response(status: 409, body: Data("{}".utf8))
+        }
+        externalApprovals[index].status = status
+        return Self.response(status: 200, body: Data("{}".utf8))
     }
 
     private func respond(to request: HTTPRequest) async throws -> Data {
@@ -459,6 +476,32 @@ public final class LANRemoteServer {
                     let actionParts = parts[3].split(separator: "?", maxSplits: 1).map(String.init)
                     let action = actionParts.first ?? parts[3]
                     let actionQuery = actionParts.count > 1 ? actionParts[1] : ""
+                    if agentID == "codex", action == "image-batch", parts.count >= 5,
+                       let sessionUUID = UUID(uuidString: sessionID),
+                       let batchID = UUID(uuidString: parts[4]) {
+                        let batch = CodexAgentAdapter.ImageBatch(sessionID: sessionUUID, batchID: batchID)
+                        switch (request.method, parts.count) {
+                        case ("GET", 5):
+                            return Self.response(status: 200, body: try Self.encoder.encode(batch.uploaded()))
+                        case ("GET", 6) where parts[5] == "delivery":
+                            return Self.response(status: batch.deliveryStatus(), body: Data("{}".utf8))
+                        case ("PUT", 6):
+                            let status = try batch.stage(request.body, at: Int(parts[5]) ?? -1)
+                            return Self.response(status: status, body: Data("{}".utf8))
+                        case ("POST", 5):
+                            guard let manifest = try? JSONDecoder().decode(RemoteCodexImageBatch.self, from: request.body) else {
+                                return Self.response(status: 400, body: Data("{}".utf8))
+                            }
+                            let status = try await batch.submit(manifest)
+                            if status == 200 {
+                                agentMessagesCache["\(agentID)/\(sessionID)"] = nil
+                                agentMessagesCache["\(agentID)/\(sessionID)/timeline"] = nil
+                            }
+                            return Self.response(status: status, body: Data("{}".utf8))
+                        default:
+                            return Self.response(status: 405, body: Data("{}".utf8))
+                        }
+                    }
                     let sessions = (try? await agentService.sessions(for: agentID, limit: 1000)) ?? []
                     guard let session = sessions.first(where: { $0.id == sessionID }) else {
                         return Self.response(status: 404, body: Data("{}".utf8))
@@ -477,13 +520,24 @@ public final class LANRemoteServer {
                         return Self.response(status: 200, body: (try? Self.encoder.encode(payload)) ?? Data("{}".utf8))
                     }
                     if action == "messages", request.method == "GET" {
-                        let key = "\(agentID)/\(session.id)"
+                        let query = URLComponents(string: "?" + actionQuery)?.queryItems ?? []
+                        let timeline = query.contains { $0.name == "timeline" && $0.value == "1" }
+                            ? agentService.adapter(for: agentID) as? CodexAgentAdapter : nil
+                        let key = "\(agentID)/\(session.id)\(timeline == nil ? "" : "/timeline")"
                         let cached: (items: [RemoteAgentMessage], at: Date)?
                         if let entry = agentMessagesCache[key],
                            Date().timeIntervalSince(entry.at) < 5 {
                             cached = entry
                         } else {
-                            let messages = (try? await agentService.messages(session, limit: 1000)) ?? []
+                            let messages: [AgentMessage]?
+                            if let timeline {
+                                messages = try? timeline.timeline(in: session, limit: 1000)
+                            } else {
+                                messages = try? await agentService.messages(session, limit: 1000)
+                            }
+                            guard let messages else {
+                                return Self.response(status: 503, body: Data("{}".utf8))
+                            }
                             let items = messages.map(Self.remoteMessage)
                             agentMessagesCache[key] = (items, Date())
                             cached = (items, Date())
@@ -499,12 +553,41 @@ public final class LANRemoteServer {
                             if pair.count == 2, pair[0] == "after" { after = Int(pair[1]) ?? 0 }
                         }
                         let items = cached?.items ?? []
+                        if query.contains(where: { $0.name == "paged" && $0.value == "1" }) {
+                            let before = query.first(where: { $0.name == "beforeID" })?.value
+                            let afterID = query.first(where: { $0.name == "afterID" })?.value
+                            let page = RemoteAgentMessagePage.window(in: items, before: before, after: afterID)
+                            return Self.response(status: 200, body: try Self.encoder.encode(page))
+                        }
                         let sliced = after > 0 ? Array(items.dropFirst(after)) : items
                         return Self.response(status: 200, body: (try? Self.encoder.encode(sliced)) ?? Data("[]".utf8))
+                    }
+                    if action == "send-images", request.method == "POST",
+                       let codex = agentService.adapter(for: agentID) as? CodexAgentAdapter {
+                        guard let body = try? JSONDecoder().decode(RemoteCodexImageMessage.self, from: request.body),
+                              !body.images.isEmpty else {
+                            return Self.response(status: 400, body: Data("{}".utf8))
+                        }
+                        guard body.images.count <= RemoteCodexImageMessage.maxImages,
+                              body.images.reduce(0, { $0 + $1.count }) <= RemoteCodexImageMessage.maxImageBytes,
+                              body.text.utf8.count <= RemoteCodexImageMessage.maxTextBytes else {
+                            return Self.response(status: 413, body: Data("{}".utf8))
+                        }
+                        guard body.images.allSatisfy(CodexAgentAdapter.isValidAttachment) else {
+                            return Self.response(status: 415, body: Data("{}".utf8))
+                        }
+                        agentMessagesCache["\(agentID)/\(session.id)"] = nil
+                        agentMessagesCache["\(agentID)/\(session.id)/timeline"] = nil
+                        switch try await codex.sendImages(body, to: session) {
+                        case .queued: return Self.response(status: 200, body: Data("{}".utf8))
+                        case .failed: return Self.response(status: 422, body: Data("{}".utf8))
+                        case .unknown: return Self.response(status: 409, body: Data("{}".utf8))
+                        }
                     }
                     if action == "send", request.method == "POST" {
                         // 发完立刻让消息缓存失效，下一条拉取能看到新内容
                         agentMessagesCache["\(agentID)/\(session.id)"] = nil
+                        agentMessagesCache["\(agentID)/\(session.id)/timeline"] = nil
                         struct SendBody: Decodable { let text: String }
                         guard let body = try? JSONDecoder().decode(SendBody.self, from: request.body),
                               !body.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -759,8 +842,7 @@ public final class LANRemoteServer {
                   let index = externalApprovals.firstIndex(where: { $0.id == id }) else {
                 return Self.response(status: 404, body: Data("{}".utf8))
             }
-            externalApprovals[index].status = payload.decision == "allow" ? "approved" : "denied"
-            return Self.response(status: 200, body: Data("{}".utf8))
+            return externalApprovalResponse(index: index, decision: payload.decision)
 
         case ("GET", "/v1/dsh/approvals"):
             struct Response: Encodable {
@@ -779,7 +861,8 @@ public final class LANRemoteServer {
                         reason: item.title,
                         // 标题 + 参数一起给手机，否则卡片上只有一个 JSON 片段
                         displayReason: item.detail.map { "\(item.title)\n\($0)" } ?? item.title,
-                        createdAt: ISO8601DateFormatter().string(from: item.createdAt)
+                        createdAt: ISO8601DateFormatter().string(from: item.createdAt),
+                        agentID: item.agent
                     )
                 }
             guard dshBridge.isConfigured else {
@@ -815,8 +898,7 @@ public final class LANRemoteServer {
             let decision = try JSONDecoder().decode(DSHRemoteDecision.self, from: request.body)
             // 外部通道（Claude hooks）的审批也走这个入口，手机端不必区分来源。
             if let index = externalApprovals.firstIndex(where: { $0.id == decision.id }) {
-                externalApprovals[index].status = decision.decision == "allow" ? "approved" : "denied"
-                return Self.response(status: 200, body: Data("{}".utf8))
+                return externalApprovalResponse(index: index, decision: decision.decision)
             }
             do {
                 try await dshBridge.decide(id: decision.id, decision: decision.decision)

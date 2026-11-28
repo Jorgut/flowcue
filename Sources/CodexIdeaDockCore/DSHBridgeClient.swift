@@ -9,6 +9,7 @@ public struct DSHRemoteApproval: Codable, Identifiable, Hashable, Sendable {
     public let reason: String?
     public let displayReason: String?
     public let createdAt: String?
+    public let agentID: String?
 
     public init(
         id: String,
@@ -17,7 +18,8 @@ public struct DSHRemoteApproval: Codable, Identifiable, Hashable, Sendable {
         callId: String? = nil,
         reason: String? = nil,
         displayReason: String? = nil,
-        createdAt: String? = nil
+        createdAt: String? = nil,
+        agentID: String? = nil
     ) {
         self.id = id
         self.sessionId = sessionId
@@ -26,10 +28,11 @@ public struct DSHRemoteApproval: Codable, Identifiable, Hashable, Sendable {
         self.reason = reason
         self.displayReason = displayReason
         self.createdAt = createdAt
+        self.agentID = agentID
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, sessionId, toolName, callId, reason, displayReason, createdAt
+        case id, sessionId, toolName, callId, reason, displayReason, createdAt, agentID
     }
 
     /// Auto review 会把原因写成多语言对象；旧版是字符串。两种都要能解。
@@ -40,6 +43,7 @@ public struct DSHRemoteApproval: Codable, Identifiable, Hashable, Sendable {
         toolName = try? container.decode(String.self, forKey: .toolName)
         callId = try? container.decode(String.self, forKey: .callId)
         createdAt = try? container.decode(String.self, forKey: .createdAt)
+        agentID = try container.decodeIfPresent(String.self, forKey: .agentID)
         reason = Self.text(from: container, forKey: .reason)
         displayReason = Self.text(from: container, forKey: .displayReason)
     }

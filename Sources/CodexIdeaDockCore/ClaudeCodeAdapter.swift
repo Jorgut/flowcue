@@ -50,7 +50,7 @@ public struct ClaudeCodeAdapter: AgentAdapter {
         }
 
         var out: [AgentMessage] = []
-        for line in text.split(separator: "\n") {
+        for (lineIndex, line) in text.split(separator: "\n").enumerated() {
             guard let data = line.data(using: .utf8),
                   let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   let type = obj["type"] as? String,
@@ -68,7 +68,7 @@ public struct ClaudeCodeAdapter: AgentAdapter {
                   !Self.isSystemPrompt(body) else { continue }
 
             out.append(AgentMessage(
-                id: obj["uuid"] as? String ?? UUID().uuidString,
+                id: obj["uuid"] as? String ?? "claude-\(lineIndex)",
                 role: type == "user" ? .user : .assistant,
                 text: body,
                 timestamp: (obj["timestamp"] as? String).flatMap(Self.parseDate)
