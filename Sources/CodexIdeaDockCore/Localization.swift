@@ -150,6 +150,8 @@ public enum L10n {
         "失败": "Failed",
         "待确认": "Unconfirmed",
         "已送达，等待同步": "Delivered, waiting to sync",
+        "已保存，等待联网": "Saved, waiting for network",
+        "离线时文字留在输入框，连接 Mac 后再发送。": "Offline. Your text stays in the box; send it once your Mac is reachable.",
         "已归档": "Archived",
         "重试排队": "Retry queue",
         "Reroute（全局快捷键注册失败）": "Reroute (global shortcut unavailable)",

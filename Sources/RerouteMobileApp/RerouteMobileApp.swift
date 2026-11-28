@@ -11377,6 +11377,8 @@ private struct AgentChatView: View {
     @State private var optimisticRequestID: String?
     @State private var optimisticFailed = false
     @State private var optimisticUnconfirmed = false
+    /// 离线点按时批次已落盘，等重连后自动续传；此时不显示失败，也不给重试按钮。
+    @State private var waitingForNetwork = false
     @State private var optimisticHistoryIDs: Set<String> = []
 
     /// 以 `/` 开头且还没敲空格时，展示 skill 候选。
@@ -11551,6 +11553,7 @@ private struct AgentChatView: View {
                     }
                     #endif
                     optimisticUnconfirmed = false
+                    waitingForNetwork = false
                     rememberAttachmentPhase(.acknowledged)
                     return
                 }
@@ -11695,7 +11698,18 @@ private struct AgentChatView: View {
                     .flowCueFont(13.5, relativeTo: .subheadline)
                     .foregroundStyle(FlowCueTheme.onAccent)
                     .textSelection(.enabled)
-                if optimisticFailed {
+                if waitingForNetwork {
+                    // 批次已落盘，等重连后自动续传；离线时按重试没有意义，
+                    // 所以这里只说明状态，不给按钮。
+                    HStack(spacing: 5) {
+                        Image(systemName: "wifi.slash")
+                            .accessibilityHidden(true)
+                        Text(L10n.text("已保存，等待联网"))
+                    }
+                    .flowCueFont(10, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.onAccent.opacity(0.8))
+                    .accessibilityIdentifier("agent-saved-offline")
+                } else if optimisticFailed {
                     HStack(spacing: 8) {
                         Label(uploadInterrupted ? "Upload interrupted" : L10n.text("发送失败"),
                               systemImage: "exclamationmark.circle.fill")
@@ -11732,19 +11746,26 @@ private struct AgentChatView: View {
             .padding(.vertical, 10)
             .background(
                 RoundedRectangle(cornerRadius: FlowCueTheme.radiusPanel, style: .continuous)
-                    .fill(FlowCueTheme.accent.opacity(optimisticFailed ? 0.6 : 0.85))
+                    .fill(FlowCueTheme.accent.opacity(optimisticFailed && !waitingForNetwork ? 0.6 : 0.85))
             )
         }
     }
 
     private var composer: some View {
         ChatComposer(
-            text: $text, sending: sending || optimistic != nil || !controller.isOnline,
+            // 离线时不再禁用发送：附件批次会先落盘、等重连续传，
+            // 否则 5G 抖动时点按等于什么都没发生（Mac 端一直 0 张）。
+            text: $text, sending: sending || optimistic != nil,
             imageLimit: agent.id == "codex" ? RemoteCodexImageMessage.batchMaxImages : 0,
             imageByteLimit: RemoteCodexImageMessage.maxImageBytes,
             editable: agent.canSend, sendIdentifier: "agent-send"
         ) { images in
             let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if OfflineSendPlan.resolve(isOnline: controller.isOnline, hasAttachments: !images.isEmpty) == .keepDraft {
+                // 纯文字没有本地草稿可续传，宁可留住输入框内容，也不清空后丢失。
+                sendError = L10n.text("离线时文字留在输入框，连接 Mac 后再发送。")
+                return
+            }
             text = ""
             deliver(value, images: images)
         }
@@ -11802,6 +11823,7 @@ private struct AgentChatView: View {
                 self.optimisticRequestID = nil
                 optimisticFailed = false
                 optimisticUnconfirmed = false
+                waitingForNetwork = false
             }
         } catch {
             // 已有消息时不要把整页打成错误，只在顶部显示原因。
@@ -11859,6 +11881,7 @@ private struct AgentChatView: View {
         optimisticImages = images
         optimisticFailed = false
         optimisticUnconfirmed = false
+        waitingForNetwork = false
         if batchID == nil { optimisticHistoryIDs = Set(messages.map(\.id)) }
         sendError = nil
         sending = true
@@ -11874,6 +11897,15 @@ private struct AgentChatView: View {
                     catch { throw CodexImageUploadError(detail: "Couldn’t save the image upload on this iPhone.") }
                     pendingAttachments = draft
                     pendingAttachmentURL = draftURL
+                    if OfflineSendPlan.resolve(isOnline: controller.isOnline, hasAttachments: true) == .persistBatchAndWait {
+                        // 批次已经在盘上：先给用户明确反馈，重连后由
+                        // .task(id: controller.isOnline) 自动续传，不等超时。
+                        optimisticFailed = true
+                        uploadInterrupted = true
+                        resumeUploadOnReconnect = true
+                        waitingForNetwork = true
+                        return
+                    }
                 }
                 try await controller.sendAgent(
                     agentID: agent.id,
@@ -11906,7 +11938,10 @@ private struct AgentChatView: View {
                 #endif
                 loadError = nil
                 sendError = nil
-                if optimisticRequestID == stableID { rememberAttachmentPhase(.acknowledged) }
+                if optimisticRequestID == stableID {
+                    waitingForNetwork = false
+                    rememberAttachmentPhase(.acknowledged)
+                }
                 await refreshMessages(afterID: messages.last?.id)
             } catch {
                 guard optimisticRequestID == stableID else { return }

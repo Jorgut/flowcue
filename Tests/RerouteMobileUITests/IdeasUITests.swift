@@ -186,3 +186,26 @@ final class AgentSessionsUITests: XCTestCase {
         add(shot)
     }
 }
+
+/// 离线点按发送：按钮不该被链路状态禁用；纯文字留在输入框，避免「点了没反应」。
+final class AgentChatOfflineUITests: XCTestCase {
+    func testOfflineTapKeepsTextInComposer() {
+        let app = XCUIApplication()
+        // 直接打开 Codex 对话页；模拟器没有配对 Mac，链路状态是 disconnected。
+        app.launchEnvironment["FLOWCUE_QA_IMAGE_SESSION"] = "6F1C2A44-0C1B-4B7E-9C55-1F0D2E3A4B5C"
+        app.launch()
+
+        let composer = app.textFields["chatComposer"]
+        XCTAssertTrue(composer.waitForExistence(timeout: 15), "没有打开 Agent 对话页")
+
+        composer.tap()
+        composer.typeText("offline draft")
+
+        let send = app.buttons["agent-send"]
+        XCTAssertTrue(send.waitForExistence(timeout: 5), "找不到发送按钮")
+        XCTAssertTrue(send.isEnabled, "离线时发送按钮被禁用了")
+
+        send.tap()
+        XCTAssertEqual(composer.value as? String, "offline draft", "离线点按后输入框被清空了")
+    }
+}
