@@ -40,3 +40,13 @@ site/downloads/
 
 # 本地 worktree（git worktree add 的检出目录）
 worktrees/
+
+# Remote node build output
+RemoteNode/bin/
+
+# Real-session demo screenshots (contain personal data)
+docs/design/web-console/real-*.png
+
+# 本地 Agent 状态与 Wrangler 缓存，不入库
+.agent-state/
+.wrangler/
