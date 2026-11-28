@@ -11727,12 +11727,12 @@ private struct AgentChatView: View {
                     .accessibilityIdentifier("agent-saved-offline")
                 } else if optimisticFailed {
                     HStack(spacing: 8) {
-                        Label(uploadInterrupted ? "Upload interrupted" : L10n.text("发送失败"),
+                        Label(uploadInterrupted ? L10n.text("上传中断") : L10n.text("发送失败"),
                               systemImage: "exclamationmark.circle.fill")
                             .flowCueFont(10, relativeTo: .caption2, weight: .medium)
                             .foregroundStyle(FlowCueTheme.failure)
                         Button(action: retryOptimistic) {
-                            Label(uploadInterrupted ? "Resume upload" : L10n.text("重试"), systemImage: "arrow.clockwise")
+                            Label(uploadInterrupted ? L10n.text("继续上传") : L10n.text("重试"), systemImage: "arrow.clockwise")
                                 .flowCueFont(12, relativeTo: .caption, weight: .semibold)
                                 .foregroundStyle(FlowCueTheme.failure)
                                 .padding(.horizontal, 12)

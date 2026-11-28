@@ -151,6 +151,8 @@ public enum L10n {
         "待确认": "Unconfirmed",
         "已送达，等待同步": "Delivered, waiting to sync",
         "已保存，等待联网": "Saved, waiting for network",
+        "上传中断": "Upload interrupted",
+        "继续上传": "Resume upload",
         "离线时文字留在输入框，连接 Mac 后再发送。": "Offline. Your text stays in the box; send it once your Mac is reachable.",
         "已归档": "Archived",
         "重试排队": "Retry queue",
