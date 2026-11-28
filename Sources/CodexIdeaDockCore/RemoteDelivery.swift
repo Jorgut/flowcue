@@ -648,6 +648,20 @@ public struct RemoteCodexImageBatch: Codable, Sendable {
     }
 }
 
+/// 点按发送时的处理方式。
+/// 在线照常发送；离线时附件批次先落盘等重连续传，纯文字保留在输入框，
+/// 避免出现「点了发送但什么都没发生」。
+public enum OfflineSendPlan: Sendable, Equatable {
+    case sendImmediately
+    case persistBatchAndWait
+    case keepDraft
+
+    public static func resolve(isOnline: Bool, hasAttachments: Bool) -> Self {
+        if isOnline { return .sendImmediately }
+        return hasAttachments ? .persistBatchAndWait : .keepDraft
+    }
+}
+
 public struct PendingCodexImageBatch: Codable, Sendable {
     public enum Phase: String, Codable, Sendable { case uploading, submitted, acknowledged }
 

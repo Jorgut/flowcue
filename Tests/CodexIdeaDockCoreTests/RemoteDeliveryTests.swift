@@ -52,6 +52,13 @@ final class RemoteDeliveryTests: XCTestCase {
         let calls = await bridge.calls
         XCTAssertEqual(calls, 1)
     }
+
+    func testOfflineSendPlanKeepsDraftAndPersistsBatches() {
+        XCTAssertEqual(OfflineSendPlan.resolve(isOnline: true, hasAttachments: false), .sendImmediately)
+        XCTAssertEqual(OfflineSendPlan.resolve(isOnline: true, hasAttachments: true), .sendImmediately)
+        XCTAssertEqual(OfflineSendPlan.resolve(isOnline: false, hasAttachments: true), .persistBatchAndWait)
+        XCTAssertEqual(OfflineSendPlan.resolve(isOnline: false, hasAttachments: false), .keepDraft)
+    }
 }
 
 private actor DeliveryTestBridge: CodexBridging {
