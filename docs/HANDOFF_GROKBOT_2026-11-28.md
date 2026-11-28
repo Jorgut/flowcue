@@ -39,7 +39,7 @@
 
 ## 第二轮：真机验收结果与未解决项（2026-11-28，agent 驱动）
 
-用户确认关闭 Wi-Fi 与 VPN、仅 5G。iPhone 17 Pro（`00008150-001934981E99401C`）装 Debug 签名包，Mac 用当前 HEAD 重新构建并签名的 CloudKit Production 包。
+用户确认关闭 Wi-Fi 与 VPN、仅 5G。iPhone 17 Pro（`<iPhone-UDID>`）装 Debug 签名包，Mac 用当前 HEAD 重新构建并签名的 CloudKit Production 包。
 
 ### 验收结果（20 张合成图，App 内 QA 探针）
 

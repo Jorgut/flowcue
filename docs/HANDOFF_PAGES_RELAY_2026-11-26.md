@@ -38,9 +38,9 @@ Build/install used during this work:
 ```bash
 zsh Scripts/build-app.sh
 xcodebuild -project RerouteMobile.xcodeproj -scheme RerouteMobile \
-  -destination "id=00008150-001934981E99401C" -configuration Release \
+  -destination "id=<iPhone-UDID>" -configuration Release \
   -derivedDataPath .build/release-derived -allowProvisioningUpdates build
-xcrun devicectl device install app --device 00008150-001934981E99401C \
+xcrun devicectl device install app --device <iPhone-UDID> \
   .build/release-derived/Build/Products/Release-iphoneos/Reroute.app
 ```
 
