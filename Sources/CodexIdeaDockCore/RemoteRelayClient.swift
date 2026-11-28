@@ -41,6 +41,10 @@ public final class RemoteRelayClient: @unchecked Sendable {
     private var deviceFixtureDidSend = false
     #endif
     private var cloudKitPoll: Task<Void, Never>?
+    /// 已生成但还没写进 CloudKit 的回执。落盘保存，避免 Mac 在写回执前
+    /// 退出时手机永远查不到结果（领取记录会阻止重复执行，回执却没了）。
+    private var pendingCloudKitReceipts: [UUID: Data] = [:]
+    private var pendingReceiptsLoaded = false
     /// POST 幂等缓存：客户端重试复用同一个 request id，Mac 直接回放上次响应，
     /// 避免「第一次其实已执行、客户端超时后重试」造成重复消息/turn。
     private var postResponses: [String: (response: RemoteResponse, at: Date)] = [:]
@@ -333,6 +337,38 @@ public final class RemoteRelayClient: @unchecked Sendable {
         }
     }
 
+    // MARK: 回执落盘
+
+    private static var pendingReceiptsURL: URL {
+        URL(fileURLWithPath: NSHomeDirectory())
+            .appendingPathComponent(".flowcue/cloudkit-pending-receipts.json")
+    }
+
+    static func loadPendingReceipts(from url: URL = RemoteRelayClient.pendingReceiptsURL) -> [UUID: Data] {
+        guard let raw = try? Data(contentsOf: url),
+              let decoded = try? JSONDecoder().decode([String: String].self, from: raw) else { return [:] }
+        var out: [UUID: Data] = [:]
+        for (key, value) in decoded {
+            guard let id = UUID(uuidString: key), let data = Data(base64Encoded: value) else { continue }
+            out[id] = data
+        }
+        return out
+    }
+
+    static func savePendingReceipts(_ receipts: [UUID: Data],
+                                    to url: URL = RemoteRelayClient.pendingReceiptsURL) {
+        var encoded: [String: String] = [:]
+        for (id, data) in receipts { encoded[id.uuidString] = data.base64EncodedString() }
+        guard !encoded.isEmpty else {
+            try? FileManager.default.removeItem(at: url)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(encoded) else { return }
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(),
+                                                 withIntermediateDirectories: true)
+        try? data.write(to: url, options: .atomic)
+    }
+
     // MARK: 帧处理
 
     /// 写 ~/.flowcue/relay.log：open 启动时 NSLog 不进系统日志，排查全靠它。
@@ -474,7 +510,10 @@ public final class RemoteRelayClient: @unchecked Sendable {
             #endif
             guard let mailbox = selected else { return }
             var seen: [UUID: Date] = [:]
-            var pendingReceipts: [UUID: Data] = [:]
+            if self?.pendingReceiptsLoaded == false {
+                self?.pendingReceiptsLoaded = true
+                self?.pendingCloudKitReceipts = Self.loadPendingReceipts()
+            }
             var prepared = false
             while !Task.isCancelled, let self {
                 do {
@@ -482,11 +521,15 @@ public final class RemoteRelayClient: @unchecked Sendable {
                         try await mailbox.prepare()
                         prepared = true
                     }
-                    for (id, receipt) in pendingReceipts {
-                        if try await mailbox.read(.receipt, id: id) == nil {
-                            try await mailbox.create(.receipt, id: id, payload: receipt)
+                    if !self.pendingCloudKitReceipts.isEmpty {
+                        let retrying = self.pendingCloudKitReceipts
+                        for (id, receipt) in retrying {
+                            if try await mailbox.read(.receipt, id: id) == nil {
+                                try await mailbox.create(.receipt, id: id, payload: receipt)
+                            }
+                            self.pendingCloudKitReceipts.removeValue(forKey: id)
                         }
-                        pendingReceipts.removeValue(forKey: id)
+                        Self.savePendingReceipts(self.pendingCloudKitReceipts)
                     }
                     let cutoff = Date().addingTimeInterval(-120)
                     seen = seen.filter { $0.value >= cutoff }
@@ -498,9 +541,12 @@ public final class RemoteRelayClient: @unchecked Sendable {
                         seen[id] = Date()
                         guard claimed else { continue }
                         guard let receipt = await self.processCloudKitClaim(frame, id: id) else { continue }
-                        pendingReceipts[id] = receipt
+                        // 先落盘再写 CloudKit：写到一半退出时下次启动还能补。
+                        self.pendingCloudKitReceipts[id] = receipt
+                        Self.savePendingReceipts(self.pendingCloudKitReceipts)
                         try await mailbox.create(.receipt, id: id, payload: receipt)
-                        pendingReceipts.removeValue(forKey: id)
+                        self.pendingCloudKitReceipts.removeValue(forKey: id)
+                        Self.savePendingReceipts(self.pendingCloudKitReceipts)
                     }
                 } catch {
                     // Pending requests are reloaded on the next poll.
