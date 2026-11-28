@@ -11,12 +11,14 @@ public struct AgentMessage: Identifiable, Hashable, Sendable {
     public let role: Role
     public let text: String
     public let timestamp: Date?
+    public let progress: AgentProgress?
 
-    public init(id: String, role: Role, text: String, timestamp: Date?) {
+    public init(id: String, role: Role, text: String, timestamp: Date?, progress: AgentProgress? = nil) {
         self.id = id
         self.role = role
         self.text = text
         self.timestamp = timestamp
+        self.progress = progress
     }
 }
 
