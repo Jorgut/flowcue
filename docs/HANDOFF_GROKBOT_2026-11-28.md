@@ -96,7 +96,7 @@ zsh Scripts/build-app.sh release
 
 ### 仓库与备份
 
-`Jorgut/flowcue` 是**公开**仓库，推分支等于公开。本地另有一个私有全量镜像（位置见 `PROJECT_STATE.md`，不写进公开文档），已覆盖 9 条分支与全部 tag；接手后做增量备份用 `git push backup --mirror`，不要往公开仓库推 WIP 分支。
+`Jorgut/flowcue` 是**公开**仓库，推分支等于公开。本地另有一个私有全量镜像（位置见 `PROJECT_STATE.md`，不写进公开文档），已覆盖 9 条分支与全部 tag；接手后做增量备份用 `git push backup 'refs/heads/*:refs/heads/*' 'refs/tags/*:refs/tags/*'`（`--mirror` 会把跟踪引用也推上去），不要往公开仓库推 WIP 分支。
 
 ### 现场状态（接手前先确认）
 
