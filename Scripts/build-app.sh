@@ -6,6 +6,13 @@ script_directory="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 project_directory="$(cd -- "$script_directory/.." && pwd -P)"
 configuration="${1:-release}"
 code_sign_identity="${FLOWCUE_CODE_SIGN_IDENTITY:--}"
+if [[ "${FLOWCUE_CLOUDKIT_CHAT_ENABLED:-NO}" == "YES" ]]; then
+    FLOWCUE_MAC_ENTITLEMENTS="${FLOWCUE_MAC_ENTITLEMENTS:-$project_directory/Support/MacCloudKit.entitlements}"
+    if [[ "$code_sign_identity" == "-" || -z "${FLOWCUE_MAC_PROVISIONING_PROFILE:-}" ]]; then
+        printf '%s\n' "CloudKit chat requires an Apple signing identity and provisioning profile." >&2
+        exit 1
+    fi
+fi
 
 sign_bundle() {
     local target="$1"
@@ -40,7 +47,7 @@ run_swift_build() {
 }
 
 cd "$project_directory"
-dist_directory="$project_directory/dist"
+dist_directory="${FLOWCUE_DIST_DIRECTORY:-$project_directory/dist}"
 app_directory="$dist_directory/FlowCue.app"
 bundle_identifier="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$project_directory/Support/Info.plist")"
 
@@ -89,6 +96,9 @@ if [[ -n "${FLOWCUE_MAC_BUNDLE_ID:-}" ]]; then
 fi
 if [[ -n "${FLOWCUE_MAC_PROVISIONING_PROFILE:-}" ]]; then
     cp "$FLOWCUE_MAC_PROVISIONING_PROFILE" "$contents_directory/embedded.provisionprofile"
+fi
+if [[ "${FLOWCUE_CLOUDKIT_CHAT_ENABLED:-NO}" == "YES" ]]; then
+    /usr/libexec/PlistBuddy -c "Add :FlowCueCloudKitChatEnabled bool true" "$contents_directory/Info.plist"
 fi
 cp "$project_directory/Support/PrivacyInfo.xcprivacy" "$contents_directory/Resources/PrivacyInfo.xcprivacy"
 cp "$project_directory/Support/FlowCue.icns" "$contents_directory/Resources/FlowCue.icns"
