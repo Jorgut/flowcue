@@ -37,9 +37,19 @@ public protocol ProcessRunning: Sendable {
         standardInput: Data?,
         timeout: TimeInterval
     ) async throws -> ProcessExecutionResult
+
+    func runAttachmentTurn(executableURL: URL, resume: Data, start: Data, threadID: String, count: Int, timeout: TimeInterval, onRecorded: @escaping @Sendable () -> Void) async throws -> ProcessExecutionResult
+}
+
+public extension ProcessRunning {
+    func runAttachmentTurn(executableURL: URL, resume: Data, start: Data, threadID: String, count: Int, timeout: TimeInterval, onRecorded: @escaping @Sendable () -> Void) async throws -> ProcessExecutionResult {
+        throw CodexBridgeError.invalidResponse
+    }
 }
 
 public struct FoundationProcessRunner: ProcessRunning, Sendable {
+    private static let attachmentTurnLock = NSLock()
+    private nonisolated(unsafe) static var attachmentThreads = Set<String>()
     private let processLauncherURLOverride: URL?
     private let processRegistry: ActiveProcessRegistry
     private let processGroupHandshakeTimeout: TimeInterval
@@ -74,6 +84,36 @@ public struct FoundationProcessRunner: ProcessRunning, Sendable {
         standardInput: Data?,
         timeout: TimeInterval
     ) async throws -> ProcessExecutionResult {
+        try await run(executableURL: executableURL, arguments: arguments, standardInput: standardInput, timeout: timeout, attachment: nil)
+    }
+
+    public func runAttachmentTurn(executableURL: URL, resume: Data, start: Data, threadID: String, count: Int, timeout: TimeInterval, onRecorded: @escaping @Sendable () -> Void) async throws -> ProcessExecutionResult {
+        guard Self.attachmentTurnLock.withLock({ Self.attachmentThreads.insert(threadID).inserted }) else {
+            throw AttachmentTurnError.alreadyRunning
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            let signal = AttachmentTurnSignal(continuation)
+            let attachment = AttachmentTurnInput(start: start, threadID: threadID, count: count, signal: signal, onRecorded: onRecorded)
+            Task {
+                defer { _ = Self.attachmentTurnLock.withLock { Self.attachmentThreads.remove(threadID) } }
+                do {
+                    let result = try await run(executableURL: executableURL, arguments: ["app-server"],
+                                               standardInput: resume, timeout: timeout, attachment: attachment)
+                    signal.finish(.success(result))
+                } catch {
+                    signal.finish(.failure(error))
+                }
+            }
+        }
+    }
+
+    private func run(
+        executableURL: URL,
+        arguments: [String],
+        standardInput: Data?,
+        timeout: TimeInterval,
+        attachment: AttachmentTurnInput?
+    ) async throws -> ProcessExecutionResult {
         let controller = ProcessTerminationController()
         let processLauncherURL = processLauncherURLOverride ?? Self.processLauncherURL()
         guard processRegistry.insert(controller) else {
@@ -96,7 +136,8 @@ public struct FoundationProcessRunner: ProcessRunning, Sendable {
                     controller: controller,
                     processLauncherURL: processLauncherURL,
                     processGroupHandshakeTimeout: processGroupHandshakeTimeout,
-                    baseEnvironment: baseEnvironment
+                    baseEnvironment: baseEnvironment,
+                    attachment: attachment
                 )
         }
         return try await withTaskCancellationHandler {
@@ -114,7 +155,8 @@ public struct FoundationProcessRunner: ProcessRunning, Sendable {
         controller: ProcessTerminationController,
         processLauncherURL: URL?,
         processGroupHandshakeTimeout: TimeInterval,
-        baseEnvironment: [String: String]
+        baseEnvironment: [String: String],
+        attachment: AttachmentTurnInput?
     ) throws -> ProcessExecutionResult {
         guard timeout > 0 else {
             throw ProcessRunnerError.invalidTimeout
@@ -245,14 +287,55 @@ public struct FoundationProcessRunner: ProcessRunning, Sendable {
         var responseReceived = false
 
         if arguments.first == "app-server" {
+            var sentTurn = false
+            var recordedTurn = false
+            var outputSize = 0
+            let receiptDeadline = Date().addingTimeInterval(20)
             while process.isRunning, Date() < deadline, !controller.isCancellationRequested {
-                if outputReader.containsJSONResponse(id: 2) {
+                if let attachment {
+                    let snapshot = outputReader.snapshot()
+                    if Date() >= receiptDeadline {
+                        attachment.signal.finish(.success(ProcessExecutionResult(
+                            stdout: snapshot, stderr: Data(), exitCode: -1, timedOut: true
+                        )))
+                        // Do not start a new turn after reporting its outcome as unknown.
+                        if !sentTurn { break }
+                    }
+                    if snapshot.count == outputSize {
+                        Thread.sleep(forTimeInterval: 0.01)
+                        continue
+                    }
+                    outputSize = snapshot.count
+                    let output = AttachmentTurnOutput(snapshot)
+                    if sentTurn, !recordedTurn,
+                       output.recorded(threadID: attachment.threadID, attachmentCount: attachment.count) {
+                        recordedTurn = true
+                        attachment.onRecorded()
+                        attachment.signal.finish(.success(ProcessExecutionResult(
+                            stdout: snapshot, stderr: Data(), exitCode: 0, timedOut: false
+                        )))
+                    }
+                    if let resume = output.resume, !sentTurn {
+                        guard AttachmentTurnOutput.canStart(resume) else {
+                            responseReceived = true
+                            break
+                        }
+                        // A partial write may still submit the turn. Preserve the unknown outcome.
+                        sentTurn = true
+                        do { try inputPipe.fileHandleForWriting.write(contentsOf: attachment.start) }
+                        catch { break }
+                    }
+                    if output.rejected || output.finished {
+                        responseReceived = true
+                        break
+                    }
+                } else if outputReader.containsJSONResponse(id: 2) {
                     responseReceived = true
-                    try? inputPipe.fileHandleForWriting.close()
                     break
                 }
                 Thread.sleep(forTimeInterval: 0.01)
             }
+            if responseReceived { try? inputPipe.fileHandleForWriting.close() }
 
             cancelled = controller.isCancellationRequested
             if !responseReceived, !cancelled, process.isRunning {
@@ -775,33 +858,48 @@ public struct CodexBridge: CodexBridging, Sendable {
     }
 
     public func queue(message: String, to threadID: String, imagePaths: [String]) async -> QueueDeliveryOutcome {
-        let text = message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Image attachment" : message
-        guard !threadID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.emptyTarget.rawValue)
-        }
-        guard UUID(uuidString: threadID) != nil else {
+        await queue(message: message, to: threadID, imagePaths: imagePaths, onRecorded: {})
+    }
+
+    func queue(message: String, to threadID: String, imagePaths: [String],
+               onRecorded: @escaping @Sendable () -> Void) async -> QueueDeliveryOutcome {
+        guard !imagePaths.isEmpty else { return await queue(message: message, to: threadID) }
+        guard let threadID = UUID(uuidString: threadID)?.uuidString.lowercased() else {
             return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.invalidTarget.rawValue)
         }
-        let executableURL: URL
+        let text = message.trimmingCharacters(in: .whitespacesAndNewlines)
         do {
-            executableURL = try executableResolver()
-        } catch {
-            return .failed(exitCode: nil, message: CodexBridgeError.executableNotFound.localizedDescription)
-        }
-        do {
-            var arguments = ["queue", "--thread", threadID, "--message", text]
-            for path in imagePaths { arguments += ["--image", path] }
-            let result = try await processRunner.run(
-                executableURL: executableURL,
-                arguments: arguments,
-                standardInput: nil,
-                timeout: queueTimeout
+            let resume = try AttachmentTurnOutput.jsonLines([
+                ["id": 1, "method": "initialize", "params": ["clientInfo": [
+                    "name": "codex_idea_dock", "title": "FlowCue", "version": "0.1.0"
+                ]]],
+                ["method": "initialized"],
+                ["id": 2, "method": "thread/resume", "params": ["threadId": threadID]]
+            ])
+            let input = [["type": "text", "text": text.isEmpty ? RemoteCodexImageMessage.imageOnlyText : text]]
+                + imagePaths.map { ["type": "localImage", "path": $0] }
+            let start = try AttachmentTurnOutput.jsonLines([
+                ["id": 3, "method": "turn/start", "params": ["threadId": threadID, "input": input]]
+            ])
+            let executable = try executableResolver()
+            let result = try await processRunner.runAttachmentTurn(
+                executableURL: executable, resume: resume, start: start, threadID: threadID,
+                count: imagePaths.count, timeout: max(queueTimeout, 180), onRecorded: onRecorded
             )
-            if result.timedOut { return .unknown(message: QueueDeliveryDiagnostic.confirmationTimedOut.rawValue) }
-            if result.terminationReason != .exit { return .unknown(message: QueueDeliveryDiagnostic.resultUnclear.rawValue) }
-            if result.exitCode == 0 { return .queued(exitCode: result.exitCode) }
-            if let diagnostic = Self.classifyQueueFailure(result.stderr) { return .failed(exitCode: result.exitCode, message: diagnostic.rawValue) }
-            return .unknown(message: QueueDeliveryDiagnostic.resultUnclear.rawValue)
+            let output = AttachmentTurnOutput(result.stdout)
+            if output.recorded(threadID: threadID, attachmentCount: imagePaths.count) {
+                return .queued(exitCode: 0)
+            }
+            if let resume = output.resume, !AttachmentTurnOutput.canStart(resume) {
+                let diagnostic: QueueDeliveryDiagnostic = AttachmentTurnOutput.isActive(resume) ? .targetBusy : .targetUnavailable
+                return .failed(exitCode: nil, message: diagnostic.rawValue)
+            }
+            if output.rejected {
+                return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.queueFailed.rawValue)
+            }
+            return .unknown(message: QueueDeliveryDiagnostic.confirmationTimedOut.rawValue)
+        } catch AttachmentTurnError.alreadyRunning {
+            return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.targetBusy.rawValue)
         } catch {
             return .failed(exitCode: nil, message: QueueDeliveryDiagnostic.launchFailed.rawValue)
         }
@@ -976,6 +1074,105 @@ public struct CodexBridge: CodexBridging, Sendable {
     }
 }
 
+private enum AttachmentTurnError: Error {
+    case alreadyRunning
+}
+
+private struct AttachmentTurnInput: Sendable {
+    let start: Data
+    let threadID: String
+    let count: Int
+    let signal: AttachmentTurnSignal
+    let onRecorded: @Sendable () -> Void
+}
+
+private final class AttachmentTurnSignal: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<ProcessExecutionResult, Error>?
+
+    init(_ continuation: CheckedContinuation<ProcessExecutionResult, Error>) {
+        self.continuation = continuation
+    }
+
+    func finish(_ result: Result<ProcessExecutionResult, Error>) {
+        let waiting = lock.withLock {
+            defer { continuation = nil }
+            return continuation
+        }
+        waiting?.resume(with: result)
+    }
+}
+
+private struct AttachmentTurnOutput {
+    let messages: [[String: Any]]
+
+    init(_ data: Data) {
+        messages = data.split(separator: 0x0A).compactMap {
+            (try? JSONSerialization.jsonObject(with: Data($0))) as? [String: Any]
+        }
+    }
+
+    var resume: [String: Any]? { response(2) }
+    var rejected: Bool { response(3)?["error"] != nil }
+
+    private func response(_ id: Int) -> [String: Any]? {
+        messages.first { ($0["id"] as? Int) == id }
+    }
+
+    private var turnID: String? {
+        let result = response(3)?["result"] as? [String: Any]
+        return (result?["turn"] as? [String: Any])?["id"] as? String
+    }
+
+    var finished: Bool {
+        guard let turnID else { return false }
+        return messages.contains {
+            let params = $0["params"] as? [String: Any]
+            return $0["method"] as? String == "turn/completed"
+                && (params?["turn"] as? [String: Any])?["id"] as? String == turnID
+        }
+    }
+
+    func recorded(threadID: String, attachmentCount: Int) -> Bool {
+        guard let turnID else { return false }
+        return messages.contains {
+            guard $0["method"] as? String == "item/completed",
+                  let params = $0["params"] as? [String: Any],
+                  (params["threadId"] as? String)?.lowercased() == threadID,
+                  params["turnId"] as? String == turnID,
+                  let item = params["item"] as? [String: Any],
+                  item["type"] as? String == "userMessage",
+                  let content = item["content"] as? [[String: Any]] else { return false }
+            return content.filter { ["localImage", "image"].contains($0["type"] as? String ?? "") }.count == attachmentCount
+        }
+    }
+
+    static func canStart(_ resume: [String: Any]) -> Bool { status(resume) == "idle" && !isActive(resume) }
+
+    static func isActive(_ resume: [String: Any]) -> Bool {
+        if status(resume) == "active" { return true }
+        let result = resume["result"] as? [String: Any]
+        let thread = result?["thread"] as? [String: Any]
+        let turns = thread?["turns"] as? [[String: Any]]
+        return turns?.last?["status"] as? String == "inProgress"
+    }
+
+    private static func status(_ resume: [String: Any]) -> String? {
+        let result = resume["result"] as? [String: Any]
+        let thread = result?["thread"] as? [String: Any]
+        return (thread?["status"] as? [String: Any])?["type"] as? String
+    }
+
+    static func jsonLines(_ messages: [[String: Any]]) throws -> Data {
+        var data = Data()
+        for message in messages {
+            data.append(try JSONSerialization.data(withJSONObject: message))
+            data.append(0x0A)
+        }
+        return data
+    }
+}
+
 private final class DataReader: @unchecked Sendable {
     private let fileHandle: FileHandle
     private let maximumByteCount: Int
@@ -1014,6 +1211,8 @@ private final class DataReader: @unchecked Sendable {
             return responseIDs.contains(id)
         }
     }
+
+    func snapshot() -> Data { lock.withLock { data } }
 
     func finish(waitingUpTo timeout: TimeInterval) -> Data {
         if group.wait(timeout: .now() + timeout) == .timedOut {

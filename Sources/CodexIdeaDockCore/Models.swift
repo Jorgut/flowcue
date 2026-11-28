@@ -160,6 +160,7 @@ enum QueueDeliveryDiagnostic: String, CaseIterable, Sendable {
     case cliUnavailable = "Codex CLI is unavailable."
     case queueUnsupported = "This Codex CLI does not support queue."
     case targetUnavailable = "The target Codex task is unavailable."
+    case targetBusy = "The target Codex task is already running."
     case permissionDenied = "Codex does not have permission to queue this message."
     case launchFailed = "Codex could not be launched."
     case queueFailed = "Codex could not queue the message."

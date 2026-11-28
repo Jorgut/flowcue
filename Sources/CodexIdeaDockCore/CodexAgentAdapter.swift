@@ -1,7 +1,9 @@
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 /// Codex：通过 `codex app-server` 的 JSON-RPC 读会话与对话。
-/// 只读；发送（turn/start）留待下一步。
+/// 图片由 CodexBridge 通过 App Server 投递。
 public struct CodexAgentAdapter: AgentAdapter {
     public let agentID = "codex"
     private let executableURL: URL
@@ -59,6 +61,14 @@ public struct CodexAgentAdapter: AgentAdapter {
     }
 
     public func messages(in session: AgentSession, limit: Int = 80) async throws -> [AgentMessage] {
+        try threadMessages(in: session, limit: limit, includeProgress: false)
+    }
+
+    func timeline(in session: AgentSession, limit: Int) throws -> [AgentMessage] {
+        try threadMessages(in: session, limit: limit, includeProgress: true)
+    }
+
+    private func threadMessages(in session: AgentSession, limit: Int, includeProgress: Bool) throws -> [AgentMessage] {
         let response = try call(method: "thread/read", id: 3, params: [
             "threadId": session.locator,
             "includeTurns": true
@@ -69,12 +79,16 @@ public struct CodexAgentAdapter: AgentAdapter {
             throw AgentAdapterError.malformed("thread/read")
         }
 
+        return Self.parseTurns(turns, limit: limit, includeProgress: includeProgress)
+    }
+
+    static func parseTurns(_ turns: [[String: Any]], limit: Int, includeProgress: Bool) -> [AgentMessage] {
         var out: [AgentMessage] = []
-        for turn in turns {
+        for (turnIndex, turn) in turns.enumerated() {
             guard let items = turn["items"] as? [[String: Any]] else { continue }
-            for item in items {
+            for (itemIndex, item) in items.enumerated() {
                 guard let type = item["type"] as? String else { continue }
-                let id = item["id"] as? String ?? UUID().uuidString
+                let id = item["id"] as? String ?? "codex-\(turnIndex)-\(itemIndex)"
                 switch type {
                 case "userMessage":
                     let text = (item["content"] as? [[String: Any]])?
@@ -90,11 +104,39 @@ public struct CodexAgentAdapter: AgentAdapter {
                         out.append(AgentMessage(id: id, role: .assistant, text: text, timestamp: nil))
                     }
                 default:
-                    continue
+                    if includeProgress, let progress = Self.progress(from: item, type: type) {
+                        out.append(AgentMessage(id: id, role: .tool, text: "", timestamp: nil, progress: progress))
+                    }
                 }
             }
         }
         return Array(out.suffix(limit))
+    }
+
+    private static func progress(from item: [String: Any], type: String) -> AgentProgress? {
+        if type == "plan" { return .init(kind: .plan, state: .completed) }
+        guard let rawState = item["status"] as? String,
+              let state = AgentProgress.State(rawValue: rawState) else { return nil }
+        switch type {
+        case "commandExecution": return .init(kind: .command, state: state)
+        case "fileChange": return .init(kind: .edit, state: state)
+        case "mcpToolCall", "dynamicToolCall":
+            let tool = item["tool"] as? String
+            let namespace = ((item["server"] ?? item["namespace"]) as? String)?
+                .lowercased().filter(\.isLetter)
+            let isSummary = tool == "mcp__codex_app__update_running_summary"
+                || (tool == "update_running_summary" && ["codexapp", "mcpcodexapp"].contains(namespace ?? ""))
+            guard isSummary else { return .init(kind: .tool, state: state) }
+            let labels = (item["arguments"] as? [String: Any])?["labels"] as? [String] ?? []
+            let label = (state == .completed ? labels.last : labels.first)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let title = label.flatMap { candidate in
+                candidate.isEmpty || candidate.count > 100 || candidate.contains(where: \.isNewline)
+                    ? nil : candidate
+            }
+            return .init(kind: .step, state: state, title: title)
+        default: return nil
+        }
     }
 
     /// Codex 没有 app-server 的实时 activity 字段；从会话 JSONL 尾部的
@@ -148,6 +190,173 @@ public struct CodexAgentAdapter: AgentAdapter {
         case .failed(_, let message), .unknown(let message):
             throw AgentAdapterError.malformed(message)
         }
+    }
+
+    func sendImages(_ message: RemoteCodexImageMessage, to session: AgentSession,
+                    bridge: CodexBridge = CodexBridge(),
+                    stagingRoot: URL = URL.applicationSupportDirectory.appendingPathComponent("FlowCueRemote/CodexImages")) async throws -> QueueDeliveryOutcome {
+        let manager = FileManager.default
+        try manager.createDirectory(at: stagingRoot, withIntermediateDirectories: true,
+                                    attributes: [.posixPermissions: 0o700])
+        // A queued turn can outlive the CLI. Prune only our expired staging folders.
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .creationDateKey]
+        let cutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+        for entry in (try? manager.contentsOfDirectory(at: stagingRoot, includingPropertiesForKeys: Array(keys))) ?? [] {
+            guard UUID(uuidString: entry.lastPathComponent) != nil,
+                  let values = try? entry.resourceValues(forKeys: keys),
+                  values.isDirectory == true, values.isSymbolicLink != true,
+                  let created = values.creationDate, created < cutoff else { continue }
+            try? manager.removeItem(at: entry)
+        }
+        let folder = stagingRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try manager.createDirectory(at: folder, withIntermediateDirectories: false,
+                                    attributes: [.posixPermissions: 0o700])
+        var retain = false
+        defer { if !retain { try? manager.removeItem(at: folder) } }
+        let files = try message.images.enumerated().map { index, data in
+            let file = folder.appendingPathComponent("image-\(index + 1).jpg")
+            try data.write(to: file, options: .withoutOverwriting)
+            return file.path
+        }
+        let prepared = try await Self.prepareAttachments(files)
+        let result = await bridge.queue(message: message.text, to: session.locator, imagePaths: prepared)
+        // Keep the accepted turn's image files available to Codex history.
+        switch result {
+        case .queued, .unknown: retain = true
+        case .failed: break
+        }
+        return result
+    }
+
+    private static func prepareAttachments(_ paths: [String]) async throws -> [String] {
+        try await Task.detached(priority: .userInitiated) {
+            let budget = 192 * 1024
+            let files = paths.map { URL(fileURLWithPath: $0) }
+            let total = try files.reduce(0) { sum, file in
+                sum + (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+            }
+            guard total > budget else { return paths }
+            let folder = files[0].deletingLastPathComponent().appendingPathComponent("prepared")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            return try files.map { file in
+                guard let source = CGImageSourceCreateWithURL(file as CFURL, nil) else {
+                    throw AgentAdapterError.malformed("Invalid image attachment")
+                }
+                let target = folder.appendingPathComponent(file.lastPathComponent)
+                for side in [1600, 1200, 900, 640, 480, 320, 240] {
+                    let options: [CFString: Any] = [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceThumbnailMaxPixelSize: side
+                    ]
+                    guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else { continue }
+                    let jpeg = NSMutableData()
+                    guard let encoder = CGImageDestinationCreateWithData(jpeg, UTType.jpeg.identifier as CFString, 1, nil) else { continue }
+                    let compression = [kCGImageDestinationLossyCompressionQuality: 0.55] as CFDictionary
+                    CGImageDestinationAddImage(encoder, image, compression)
+                    guard CGImageDestinationFinalize(encoder), jpeg.length <= budget / paths.count else { continue }
+                    try (jpeg as Data).write(to: target, options: .atomic)
+                    return target.path
+                }
+                throw AgentAdapterError.malformed("Image attachment exceeds the delivery budget")
+            }
+        }.value
+    }
+
+    static func isValidAttachment(_ data: Data) -> Bool {
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+              CGImageSourceGetType(source) as String? == "public.jpeg",
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any],
+              let width = properties[kCGImagePropertyPixelWidth as String] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight as String] as? Int else { return false }
+        return (1...2048).contains(width) && (1...2048).contains(height)
+    }
+
+    @MainActor
+    struct ImageBatch {
+        let folder: URL
+        let sessionID: UUID
+        private var marker: URL { folder.appendingPathComponent("delivery") }
+
+        init(sessionID: UUID, batchID: UUID, root: URL = URL.applicationSupportDirectory
+            .appendingPathComponent("FlowCueRemote/CodexImageBatches")) {
+            self.sessionID = sessionID
+            folder = root.appendingPathComponent(sessionID.uuidString).appendingPathComponent(batchID.uuidString)
+        }
+
+        func uploaded() -> [Int] {
+            (0..<RemoteCodexImageMessage.batchMaxImages).filter {
+                FileManager.default.fileExists(atPath: file($0).path)
+            }
+        }
+
+        func deliveryStatus() -> Int {
+            guard let value = try? String(contentsOf: marker, encoding: .utf8) else { return 404 }
+            return value == "200" ? 200 : 409
+        }
+
+        func stage(_ data: Data, at index: Int) throws -> Int {
+            guard (0..<RemoteCodexImageMessage.batchMaxImages).contains(index) else { return 400 }
+            guard data.count <= RemoteCodexImageMessage.maxImageBytes else { return 413 }
+            guard CodexAgentAdapter.isValidAttachment(data) else { return 415 }
+            let target = file(index)
+            if let existing = try? Data(contentsOf: target) {
+                return existing == data ? 200 : 409
+            }
+            guard !FileManager.default.fileExists(atPath: marker.path) else { return 409 }
+            if !FileManager.default.fileExists(atPath: folder.path) {
+                let parent = folder.deletingLastPathComponent()
+                let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .creationDateKey]
+                let cutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+                for entry in (try? FileManager.default.contentsOfDirectory(
+                    at: parent, includingPropertiesForKeys: Array(keys)
+                )) ?? [] {
+                    guard UUID(uuidString: entry.lastPathComponent) != nil,
+                          let values = try? entry.resourceValues(forKeys: keys),
+                          values.isDirectory == true, values.isSymbolicLink != true,
+                          let created = values.creationDate, created < cutoff else { continue }
+                    try? FileManager.default.removeItem(at: entry)
+                }
+            }
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            try data.write(to: target, options: .atomic)
+            return 200
+        }
+
+        func submit(_ batch: RemoteCodexImageBatch, bridge: CodexBridge = CodexBridge()) async throws -> Int {
+            guard (1...RemoteCodexImageMessage.batchMaxImages).contains(batch.count) else { return 400 }
+            guard batch.text.utf8.count <= RemoteCodexImageMessage.maxTextBytes else { return 413 }
+            if let result = try? String(contentsOf: marker, encoding: .utf8) {
+                return Int(result) ?? 409
+            }
+            guard uploaded() == Array(0..<batch.count) else { return 424 }
+            try Data("409".utf8).write(to: marker, options: .withoutOverwriting)
+            let paths = (0..<batch.count).map { file($0).path }
+            let prepared: [String]
+            do {
+                prepared = try await CodexAgentAdapter.prepareAttachments(paths)
+            } catch {
+                try FileManager.default.removeItem(at: marker)
+                return 413
+            }
+            let receipt = marker
+            let outcome = await bridge.queue(message: batch.text, to: sessionID.uuidString.lowercased(), imagePaths: prepared) {
+                try? Data("200".utf8).write(to: receipt, options: .atomic)
+            }
+            switch outcome {
+            case .unknown: return 409
+            case .failed(_, let message):
+                try FileManager.default.removeItem(at: marker)
+                if message == QueueDeliveryDiagnostic.targetBusy.rawValue { return 423 }
+                return 422
+            case .queued:
+                try Data("200".utf8).write(to: marker, options: .atomic)
+                return 200
+            }
+        }
+
+        private func file(_ index: Int) -> URL { folder.appendingPathComponent("image-\(index + 1).jpg") }
     }
 
     // MARK: JSON-RPC over stdio
