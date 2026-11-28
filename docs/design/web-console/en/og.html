@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>FlowCue — one console for every agent</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    background:
+      radial-gradient(760px 480px at 78% 8%, rgba(126,132,255,.22), transparent 62%),
+      radial-gradient(620px 420px at 12% 100%, rgba(92,217,184,.07), transparent 60%),
+      #0B0B0F;
+    color: #F2F2F6;
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .left { position: absolute; left: 64px; top: 58px; width: 450px; }
+  .brand { display: flex; align-items: center; gap: 10px; font-size: 18px; font-weight: 650; letter-spacing: .2px; }
+  .mark {
+    width: 30px; height: 30px; border-radius: 10px;
+    background: linear-gradient(145deg, #A6ABFF, #6A70F0);
+    display: grid; place-items: center; color: #0A0A18; font-weight: 700; font-size: 17px;
+    box-shadow: 0 8px 22px rgba(126,132,255,.4);
+  }
+  .beta {
+    font-size: 9px; letter-spacing: .14em; color: #9A9AA7;
+    border: 1px solid #2A2A35; border-radius: 999px; padding: 4px 7px; margin-left: 4px;
+  }
+  h1 {
+    margin: 46px 0 0; font-size: 74px; line-height: .98; letter-spacing: -2.6px; font-weight: 700;
+  }
+  h1 span {
+    background: linear-gradient(100deg, #F2F2F6 10%, #A6ABFF 90%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  p { margin: 22px 0 0; font-size: 18px; line-height: 1.5; color: #9A9AA7; max-width: 390px; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 8px; margin-top: 28px;
+    font-size: 10px; letter-spacing: .16em; color: #B9BDFF;
+    background: rgba(126,132,255,.12); border: 1px solid rgba(126,132,255,.28);
+    border-radius: 999px; padding: 8px 12px;
+  }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: #5CD9B8; box-shadow: 0 0 8px rgba(92,217,184,.7); }
+  .window {
+    position: absolute; left: 545px; top: 96px; width: 760px;
+    border-radius: 18px; overflow: hidden;
+    border: 1px solid rgba(255,255,255,.09);
+    box-shadow: 0 50px 120px rgba(0,0,0,.65), 0 0 0 1px rgba(0,0,0,.4);
+    transform: rotate(-1.6deg);
+    background: #14141A;
+  }
+  .bar {
+    height: 34px; display: flex; align-items: center; gap: 6px; padding: 0 12px;
+    background: #17171E; border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .bar i { width: 8px; height: 8px; border-radius: 50%; background: #2E2E3A; }
+  .bar i:nth-child(1) { background: #FF6B6B; }
+  .bar i:nth-child(2) { background: #F0B429; }
+  .bar i:nth-child(3) { background: #5CD9B8; }
+  .url {
+    margin-left: 12px; font-size: 10px; color: #6B6B78;
+    font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  .window img { display: block; width: 100%; }
+</style>
+</head>
+<body>
+  <div class="left">
+    <div class="brand"><div class="mark">↵</div>FlowCue<span class="beta">BETA</span></div>
+    <h1>One console.<br><span>Every agent.</span></h1>
+    <p>Codex, Claude and DSH across your Mac, Windows PC and phone. Approve a file write from anywhere.</p>
+    <div class="pill"><span class="dot"></span>PRE-LAUNCH PREVIEW</div>
+  </div>
+  <div class="window">
+    <div class="bar"><i></i><i></i><i></i><span class="url">192.168.1.23:47825</span></div>
+    <img src="desktop-1600x900.png" alt="FlowCue web console">
+  </div>
+</body>
+</html>

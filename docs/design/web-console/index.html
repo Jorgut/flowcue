@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>FlowCue · Web Console</title>
+<style>
+  :root {
+    --canvas: #0B0B0F;
+    --surface: #14141A;
+    --surface-2: #1A1A21;
+    --surface-3: #20202A;
+    --border: #262630;
+    --border-soft: rgba(255,255,255,.065);
+    --text: #F2F2F6;
+    --text-2: #9A9AA7;
+    --text-3: #6B6B78;
+    --accent: #7E84FF;
+    --accent-bright: #9AA0FF;
+    --accent-soft: rgba(126,132,255,.13);
+    --accent-line: rgba(126,132,255,.30);
+    --success: #5CD9B8;
+    --warning: #F0B429;
+    --danger: #FF6B6B;
+    --claude: #E2A27A;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: var(--canvas); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body { overflow: hidden; }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+  a { color: inherit; text-decoration: none; }
+  .mono { font-family: "SF Mono", ui-monospace, Menlo, monospace; font-size: .92em; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-3); display: inline-block; flex: none; }
+  .dot.ok { background: var(--success); box-shadow: 0 0 8px rgba(92,217,184,.6); }
+  .dot.warn { background: var(--warning); }
+
+  /* ---------- desktop shell ---------- */
+  .desktop {
+    display: grid;
+    grid-template-columns: 292px minmax(0,1fr) 296px;
+    height: 100vh;
+    background:
+      radial-gradient(1000px 520px at 62% -18%, rgba(126,132,255,.11), transparent 62%),
+      var(--canvas);
+  }
+
+  /* ---------- sidebar ---------- */
+  .sidebar {
+    display: flex; flex-direction: column; gap: 13px;
+    padding: 18px 16px 14px;
+    border-right: 1px solid var(--border-soft);
+    min-height: 0;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 2px 4px 7px; }
+  .mark {
+    width: 27px; height: 27px; border-radius: 9px;
+    background: linear-gradient(145deg, #A6ABFF, #6A70F0);
+    display: grid; place-items: center;
+    color: #0A0A18; font-weight: 700; font-size: 15px;
+    box-shadow: 0 6px 18px rgba(126,132,255,.35);
+  }
+  .brand-name { font-weight: 650; letter-spacing: .2px; font-size: 15px; }
+  .chip-web {
+    font-size: 9px; letter-spacing: .12em; color: var(--text-3);
+    border: 1px solid var(--border); border-radius: 999px;
+    padding: 3px 6px; margin-left: 6px; vertical-align: 2px;
+  }
+  .device {
+    display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+    padding: 11px 12px; border-radius: 14px;
+    background: var(--surface); border: 1px solid var(--border);
+    box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  }
+  .device:hover { border-color: #32323e; }
+  .device-icon {
+    width: 34px; height: 34px; border-radius: 10px; background: var(--surface-3);
+    display: grid; place-items: center; flex: none;
+  }
+  .win-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; width: 14px; height: 14px; }
+  .win-grid i { background: #8FA2FF; border-radius: 1px; }
+  .device-name { font-size: 13.5px; font-weight: 600; }
+  .device-meta { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text-2); margin-top: 2px; }
+  .chev { margin-left: auto; color: var(--text-3); flex: none; }
+
+  .search {
+    display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 11px;
+    background: rgba(255,255,255,.035); border: 1px solid transparent; border-radius: 10px;
+    color: var(--text-3);
+  }
+  .search input { border: 0; outline: 0; background: none; color: var(--text); font-size: 12.5px; width: 100%; }
+  .search input::placeholder { color: var(--text-3); }
+
+  .section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 10px; letter-spacing: .14em; color: var(--text-3); padding: 4px 4px 0;
+  }
+  .filters { display: flex; gap: 6px; }
+  .chip { font-size: 11px; color: var(--text-2); padding: 4px 9px; border-radius: 999px; border: 1px solid transparent; }
+  .chip.active { color: var(--text); background: var(--accent-soft); border-color: var(--accent-line); }
+
+  .sessions { display: flex; flex-direction: column; gap: 2px; overflow: auto; min-height: 0; padding-right: 2px; }
+  .sessions::-webkit-scrollbar { width: 0; }
+  .session { display: flex; gap: 10px; padding: 9px 10px; border-radius: 12px; align-items: flex-start; }
+  .session:hover { background: rgba(255,255,255,.035); }
+  .session.active {
+    background: linear-gradient(90deg, rgba(126,132,255,.15), rgba(126,132,255,.045));
+    box-shadow: inset 0 0 0 1px rgba(126,132,255,.18);
+  }
+  .badge {
+    width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center;
+    font-size: 11px; font-weight: 700; flex: none;
+  }
+  .badge.codex { color: #B9BDFF; background: rgba(126,132,255,.16); }
+  .badge.claude { color: #F0BE9A; background: rgba(226,162,122,.14); }
+  .badge.dsh { color: #8FEBD6; background: rgba(92,217,184,.13); }
+  .session-main { min-width: 0; flex: 1; }
+  .session-top { display: flex; align-items: baseline; gap: 8px; }
+  .session-title { font-size: 12.8px; font-weight: 550; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .session-time { margin-left: auto; font-size: 10.5px; color: var(--text-3); font-variant-numeric: tabular-nums; flex: none; }
+  .session-preview { font-size: 11.5px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 3px; }
+  .session-tags { display: flex; gap: 5px; margin-top: 6px; }
+  .tag { font-size: 9.5px; color: var(--text-3); background: rgba(255,255,255,.04); padding: 2px 6px; border-radius: 5px; }
+
+  .sidebar-foot { margin-top: auto; display: flex; flex-direction: column; gap: 8px; padding-top: 8px; }
+  .new-btn {
+    display: flex; align-items: center; justify-content: center; gap: 7px; height: 36px;
+    border-radius: 11px; border: 1px dashed rgba(255,255,255,.12); color: var(--text-2); font-size: 12px;
+  }
+  .new-btn:hover { color: var(--text); border-color: rgba(255,255,255,.2); }
+  .conn { font-size: 10px; color: var(--text-3); text-align: center; letter-spacing: .02em; }
+
+  /* ---------- chat ---------- */
+  .chat { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  .chat-head { padding: 15px 26px 13px; border-bottom: 1px solid var(--border-soft); display: flex; gap: 12px; align-items: center; }
+  .chat-head .badge { width: 32px; height: 32px; border-radius: 10px; font-size: 13px; }
+  .chat-title { display: flex; align-items: center; gap: 8px; font-size: 16px; font-weight: 650; }
+  .chat-sub { font-size: 11px; color: var(--text-3); display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+  .head-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; color: var(--success);
+    background: rgba(92,217,184,.08); border: 1px solid rgba(92,217,184,.22);
+    padding: 4px 8px; border-radius: 999px;
+  }
+  .pulse { width: 5px; height: 5px; border-radius: 50%; background: var(--success); animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(92,217,184,.35); }
+    70% { box-shadow: 0 0 0 7px rgba(92,217,184,0); }
+    100% { box-shadow: 0 0 0 0 rgba(92,217,184,0); }
+  }
+
+  .messages { flex: 1; overflow: auto; padding: 22px 30px 16px; }
+  .messages::-webkit-scrollbar { width: 0; }
+  .messages-inner { width: 100%; max-width: 760px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+  .day { text-align: center; font-size: 10.5px; color: var(--text-3); letter-spacing: .04em; }
+  .msg { display: flex; flex-direction: column; gap: 5px; max-width: 78%; }
+  .msg.user { align-self: flex-end; align-items: flex-end; }
+  .msg.assistant { align-self: flex-start; }
+  .bubble { padding: 11px 14px; border-radius: 16px; font-size: 13px; line-height: 1.55; }
+  .msg.user .bubble {
+    background: linear-gradient(135deg, rgba(126,132,255,.22), rgba(126,132,255,.13));
+    border: 1px solid rgba(126,132,255,.28);
+    border-bottom-right-radius: 5px;
+  }
+  .msg.assistant .bubble { background: var(--surface); border: 1px solid var(--border); border-bottom-left-radius: 5px; }
+  .meta { font-size: 10px; color: var(--text-3); padding: 0 4px; }
+
+  .tool {
+    display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text-2);
+    background: rgba(255,255,255,.03); border: 1px solid var(--border-soft);
+    border-radius: 10px; padding: 8px 10px; margin-top: 9px;
+  }
+  .tool svg { color: var(--success); flex: none; }
+  .tool .path { color: var(--text-3); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .approval {
+    width: 100%; max-width: 760px; margin: 2px auto 0;
+    border-radius: 16px; border: 1px solid rgba(240,180,41,.28);
+    background: linear-gradient(180deg, rgba(240,180,41,.07), rgba(240,180,41,.02));
+    padding: 14px 16px; box-shadow: 0 14px 40px rgba(0,0,0,.28);
+  }
+  .approval-head { display: flex; align-items: center; gap: 7px; font-size: 9.5px; letter-spacing: .14em; color: var(--warning); font-weight: 600; }
+  .approval-title { font-size: 13.5px; margin-top: 7px; line-height: 1.4; }
+  .approval-detail { font-size: 11px; color: var(--text-2); margin-top: 5px; }
+  .approval-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .btn {
+    height: 32px; padding: 0 16px; border-radius: 9px; font-size: 12px; font-weight: 550;
+    border: 1px solid var(--border); color: var(--text-2); background: rgba(255,255,255,.03);
+  }
+  .btn:hover { color: var(--text); border-color: #3A3A48; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #0A0A18; font-weight: 650; }
+
+  .queued { display: flex; align-items: center; gap: 7px; font-size: 10.5px; color: var(--text-3); letter-spacing: .06em; padding-top: 2px; }
+
+  /* ---------- composer ---------- */
+  .composer { padding: 12px 26px 16px; border-top: 1px solid var(--border-soft); }
+  .composer-box {
+    max-width: 760px; margin: 0 auto; display: flex; align-items: center; gap: 9px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+    padding: 8px 9px 8px 12px; box-shadow: 0 12px 34px rgba(0,0,0,.35);
+  }
+  .composer-box input { flex: 1; border: 0; outline: 0; background: none; color: var(--text); font-size: 12.5px; }
+  .composer-box input::placeholder { color: var(--text-3); }
+  .icon-btn { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--text-3); flex: none; }
+  .icon-btn:hover { background: rgba(255,255,255,.05); color: var(--text-2); }
+  .send {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--accent); color: #0A0A18;
+    display: grid; place-items: center; box-shadow: 0 6px 16px rgba(126,132,255,.35); flex: none;
+  }
+  .composer-hint { max-width: 760px; margin: 7px auto 0; font-size: 9.5px; color: var(--text-3); text-align: center; letter-spacing: .03em; }
+
+  /* ---------- inspector ---------- */
+  .inspector {
+    border-left: 1px solid var(--border-soft); padding: 20px 18px;
+    display: flex; flex-direction: column; gap: 13px; overflow: auto;
+  }
+  .inspector::-webkit-scrollbar { width: 0; }
+  .kicker { font-size: 9.5px; letter-spacing: .14em; color: var(--text-3); font-weight: 600; }
+  .insp-title { font-size: 14px; font-weight: 600; line-height: 1.35; }
+  .kv { display: flex; justify-content: space-between; gap: 12px; font-size: 11.5px; padding: 4px 0; }
+  .kv span { color: var(--text-3); flex: none; }
+  .kv b { font-weight: 500; color: var(--text-2); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .divider { height: 1px; background: var(--border-soft); margin: 2px 0; }
+  .agent-row { display: flex; align-items: center; gap: 9px; padding: 6px 0; }
+  .agent-row .name { font-size: 12px; }
+  .agent-row .meta2 { font-size: 10px; color: var(--text-3); margin-top: 1px; }
+  .agent-row .dot { margin-left: auto; }
+  .node-card { border: 1px solid var(--border); border-radius: 14px; padding: 12px; background: var(--surface); }
+  .node-name { font-size: 12.5px; font-weight: 600; }
+  .node-meta { font-size: 10.5px; color: var(--text-3); margin-top: 3px; line-height: 1.55; }
+
+  /* ---------- mobile ---------- */
+  .mobile { display: none; }
+  .m-shell { height: 100vh; display: flex; flex-direction: column; background: var(--canvas); }
+  .m-head { padding: 20px 20px 10px; display: flex; align-items: center; justify-content: space-between; }
+  .m-head h1 { font-size: 18px; margin: 0; font-weight: 650; letter-spacing: -.2px; }
+  .m-body { flex: 1; overflow: auto; padding: 0 16px 92px; }
+  .m-body::-webkit-scrollbar { width: 0; }
+  .m-label { font-size: 9.5px; letter-spacing: .14em; color: var(--text-3); margin: 18px 4px 8px; }
+  .m-agent {
+    display: flex; align-items: center; gap: 10px; padding: 12px;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .m-agent .badge { width: 30px; height: 30px; border-radius: 9px; }
+  .m-agent .name { font-size: 13px; font-weight: 550; }
+  .m-agent .sub { font-size: 10.5px; color: var(--text-3); margin-top: 2px; }
+  .m-agent .dot { margin-left: auto; }
+  .m-session { display: flex; gap: 10px; padding: 11px 10px; border-radius: 12px; }
+  .m-session.active { background: linear-gradient(90deg, rgba(126,132,255,.14), rgba(126,132,255,.04)); box-shadow: inset 0 0 0 1px rgba(126,132,255,.15); }
+  .tabbar {
+    position: fixed; left: 12px; right: 12px; bottom: 12px; height: 58px; border-radius: 18px;
+    background: rgba(24,24,31,.92); -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    border: 1px solid var(--border); display: flex; align-items: center; justify-content: space-around;
+    box-shadow: 0 14px 40px rgba(0,0,0,.45);
+  }
+  .tab { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 9px; color: var(--text-3); }
+  .tab.active { color: var(--accent); }
+  .m-chat { height: 100vh; display: flex; flex-direction: column; }
+  .m-chat-head { display: flex; align-items: center; gap: 10px; padding: 14px 14px 10px; border-bottom: 1px solid var(--border-soft); }
+  .m-chat-title { text-align: center; flex: 1; min-width: 0; }
+  .m-chat-title .name { font-size: 13.5px; font-weight: 600; }
+  .m-chat-title .sub { font-size: 9.5px; color: var(--text-3); margin-top: 2px; }
+  .m-messages { flex: 1; overflow: auto; padding: 16px 14px 10px; display: flex; flex-direction: column; gap: 13px; }
+  .m-messages::-webkit-scrollbar { width: 0; }
+  .m-messages .msg { max-width: 86%; }
+  .m-messages .bubble { font-size: 12.5px; }
+  .m-messages .approval { padding: 13px 14px; }
+  .m-messages .approval-title { font-size: 12.5px; }
+  .m-composer { padding: 8px 12px 18px; }
+  .m-composer .composer-box { border-radius: 15px; }
+  .m-composer .composer-hint { font-size: 9px; }
+
+  body.screen-list .m-chat { display: none; }
+  body.screen-chat .m-list { display: none; }
+  body.screen-chat .tabbar { display: none; }
+
+  @media (max-width: 900px) {
+    .desktop { display: none; }
+    .mobile { display: block; }
+  }
+</style>
+</head>
+<body class="screen-chat">
+
+<!-- ================= DESKTOP ================= -->
+<div class="desktop">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="mark">↵</div>
+      <div class="brand-name">FlowCue<span class="chip-web">WEB</span></div>
+      <button class="icon-btn" style="margin-left:auto" title="设置">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06-1.9 1.9-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V20h-2.68v-.09A1.7 1.7 0 0 0 11.2 18.3a1.7 1.7 0 0 0-1.87.34l-.06.06-1.9-1.9.06-.06A1.7 1.7 0 0 0 7.77 15a1.7 1.7 0 0 0-1.56-1.03H6v-2.68h.21A1.7 1.7 0 0 0 7.77 10.2a1.7 1.7 0 0 0-.34-1.87l-.06-.06 1.9-1.9.06.06a1.7 1.7 0 0 0 1.87.34A1.7 1.7 0 0 0 12.23 5.2V5h2.68v.21a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06 1.9 1.9-.06.06a1.7 1.7 0 0 0-.34 1.87 1.7 1.7 0 0 0 1.56 1.03H21v2.68h-.21A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+      </button>
+    </div>
+
+    <button class="device">
+      <span class="device-icon"><span class="win-grid"><i></i><i></i><i></i><i></i></span></span>
+      <span>
+        <span class="device-name">Windows 笔记本</span>
+        <span class="device-meta"><span class="dot ok"></span>在线 · 34 ms</span>
+      </span>
+      <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6"/></svg>
+    </button>
+
+    <label class="search">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg>
+      <input placeholder="搜索会话…">
+    </label>
+
+    <div class="section-head"><span>SESSIONS</span><span>12</span></div>
+    <div class="filters">
+      <button class="chip active">全部</button>
+      <button class="chip">Codex</button>
+      <button class="chip">Claude</button>
+      <button class="chip">DSH</button>
+    </div>
+
+    <div class="sessions">
+      <a class="session active">
+        <span class="badge codex">C</span>
+        <span class="session-main">
+          <span class="session-top"><span class="session-title">修复登录接口</span><span class="session-time">刚刚</span></span>
+          <span class="session-preview">已统一错误码，正在补两个测试…</span>
+          <span class="session-tags"><span class="tag">Codex</span><span class="tag">auth-service</span></span>
+        </span>
+      </a>
+      <a class="session">
+        <span class="badge claude">✳</span>
+        <span class="session-main">
+          <span class="session-top"><span class="session-title">整理桌面上的发票</span><span class="session-time">12 分</span></span>
+          <span class="session-preview">已识别 18 张，等你确认命名规则</span>
+          <span class="session-tags"><span class="tag">Claude</span><span class="tag">Downloads</span></span>
+        </span>
+      </a>
+      <a class="session">
+        <span class="badge dsh">D</span>
+        <span class="session-main">
+          <span class="session-top"><span class="session-title">每日设计情报</span><span class="session-time">1 小时</span></span>
+          <span class="session-preview">今日日报已生成，等待审批发布</span>
+          <span class="session-tags"><span class="tag">DSH</span><span class="tag">Daily Tasks</span></span>
+        </span>
+      </a>
+      <a class="session">
+        <span class="badge codex">C</span>
+        <span class="session-main">
+          <span class="session-top"><span class="session-title">Upwork 项目扫描</span><span class="session-time">3 小时</span></span>
+          <span class="session-preview">新增 3 个匹配项，已写入表格</span>
+          <span class="session-tags"><span class="tag">Codex</span><span class="tag">Upwork Discovery</span></span>
+        </span>
+      </a>
+      <a class="session">
+        <span class="badge claude">✳</span>
+        <span class="session-main">
+          <span class="session-top"><span class="session-title">重构设置页</span><span class="session-time">昨天</span></span>
+          <span class="session-preview">拆出 4 个 section，测试待补</span>
+          <span class="session-tags"><span class="tag">Claude</span><span class="tag">FlowCue</span></span>
+        </span>
+      </a>
+    </div>
+
+    <div class="sidebar-foot">
+      <button class="new-btn">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 5v14M5 12h14"/></svg>
+        新建会话
+      </button>
+      <div class="conn">已连接 · 192.168.1.23:47825</div>
+    </div>
+  </aside>
+
+  <main class="chat">
+    <header class="chat-head">
+      <span class="badge codex">C</span>
+      <div>
+        <div class="chat-title">修复登录接口</div>
+        <div class="chat-sub"><span class="dot ok"></span>Windows 笔记本 · <span class="mono">D:\FlowCue\auth-service</span></div>
+      </div>
+      <div class="head-actions">
+        <span class="status-pill"><span class="pulse"></span>运行中</span>
+        <button class="icon-btn" title="更多">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="messages">
+      <div class="messages-inner">
+        <div class="day">今天 20:51</div>
+
+        <div class="msg user">
+          <div class="bubble">把登录接口的错误码统一一下，顺便补两个测试</div>
+          <div class="meta">20:51</div>
+        </div>
+
+        <div class="msg assistant">
+          <div class="bubble">
+            我先看现有的错误码定义，再改 <span class="mono">AuthController.swift</span>。
+            <div class="tool">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5L20 7"/></svg>
+              已读取 3 个文件
+              <span class="path mono">AuthController · AuthError · LoginTests</span>
+            </div>
+          </div>
+          <div class="meta">20:52</div>
+        </div>
+
+        <div class="approval">
+          <div class="approval-head">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z"/></svg>
+            APPROVAL REQUIRED
+          </div>
+          <div class="approval-title">Codex 想写入 <span class="mono">AuthController.swift</span></div>
+          <div class="approval-detail">Sources/Auth/AuthController.swift · <span style="color:var(--success)">+12</span> <span style="color:var(--danger)">−4</span> 行</div>
+          <div class="approval-actions">
+            <button class="btn primary">允许一次</button>
+            <button class="btn">拒绝</button>
+          </div>
+        </div>
+
+        <div class="queued"><span class="dot warn"></span>已排队 · 21:04 · 等待 Codex 处理</div>
+      </div>
+    </div>
+
+    <footer class="composer">
+      <div class="composer-box">
+        <button class="icon-btn" title="附件">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m20 12-7.5 7.5a5 5 0 0 1-7-7L13 5a3.3 3.3 0 0 1 4.7 4.7l-7.5 7.5a1.7 1.7 0 0 1-2.4-2.4l7-7"/></svg>
+        </button>
+        <input placeholder="给 Codex 发消息…">
+        <button class="icon-btn" title="语音">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+        </button>
+        <button class="send" title="发送">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+        </button>
+      </div>
+      <div class="composer-hint">⌘ / Ctrl + ↵ 发送 · 消息会进入当前 Codex 会话，不会另开新会话</div>
+    </footer>
+  </main>
+
+  <aside class="inspector">
+    <div class="kicker">SESSION</div>
+    <div class="insp-title">修复登录接口</div>
+    <div>
+      <div class="kv"><span>Agent</span><b>Codex</b></div>
+      <div class="kv"><span>节点</span><b>Windows 笔记本</b></div>
+      <div class="kv"><span>工作区</span><b class="mono">D:\FlowCue\auth-service</b></div>
+      <div class="kv"><span>开始</span><b>今天 20:51</b></div>
+      <div class="kv"><span>状态</span><b style="color:var(--success)">运行中</b></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="kicker">AGENTS ON THIS NODE</div>
+    <div class="agent-row">
+      <span class="badge codex">C</span>
+      <span><div class="name">Codex</div><div class="meta2">5 个会话 · 正在运行</div></span>
+      <span class="dot ok"></span>
+    </div>
+    <div class="agent-row">
+      <span class="badge claude">✳</span>
+      <span><div class="name">Claude Code</div><div class="meta2">3 个会话 · 空闲</div></span>
+      <span class="dot"></span>
+    </div>
+    <div class="agent-row">
+      <span class="badge dsh">D</span>
+      <span><div class="name">DSH</div><div class="meta2">2 个会话 · 等待审批</div></span>
+      <span class="dot warn"></span>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="kicker">NODE</div>
+    <div class="node-card">
+      <div class="node-name">Windows 笔记本</div>
+      <div class="node-meta">Windows 11 · 8 GB · SSD<br>FlowCue Node 0.1.0 · 协议 v1</div>
+      <div style="display:flex; gap:8px; margin-top:10px">
+        <span class="dot ok" style="margin-top:5px"></span>
+        <span style="font-size:10.5px; color:var(--text-3)">局域网直连 · 34 ms</span>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<!-- ================= MOBILE ================= -->
+<div class="mobile">
+  <section class="m-list m-shell">
+    <header class="m-head">
+      <h1>Agents</h1>
+      <button class="icon-btn" title="设置">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06-1.9 1.9-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V20h-2.68v-.09A1.7 1.7 0 0 0 11.2 18.3a1.7 1.7 0 0 0-1.87.34l-.06.06-1.9-1.9.06-.06A1.7 1.7 0 0 0 7.77 15a1.7 1.7 0 0 0-1.56-1.03H6v-2.68h.21A1.7 1.7 0 0 0 7.77 10.2a1.7 1.7 0 0 0-.34-1.87l-.06-.06 1.9-1.9.06.06a1.7 1.7 0 0 0 1.87.34A1.7 1.7 0 0 0 12.23 5.2V5h2.68v.21a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06 1.9 1.9-.06.06a1.7 1.7 0 0 0-.34 1.87 1.7 1.7 0 0 0 1.56 1.03H21v2.68h-.21A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+      </button>
+    </header>
+
+    <div class="m-body">
+      <button class="device" style="margin:4px 0 0">
+        <span class="device-icon"><span class="win-grid"><i></i><i></i><i></i><i></i></span></span>
+        <span>
+          <span class="device-name">Windows 笔记本</span>
+          <span class="device-meta"><span class="dot ok"></span>在线 · 34 ms</span>
+        </span>
+        <svg class="chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m9 6 6 6-6 6"/></svg>
+      </button>
+
+      <div class="m-label">AGENTS ON THIS NODE</div>
+      <div class="m-agent">
+        <span class="badge codex">C</span>
+        <span><div class="name">Codex</div><div class="sub">5 个会话 · 运行中</div></span>
+        <span class="dot ok"></span>
+      </div>
+      <div class="m-agent">
+        <span class="badge claude">✳</span>
+        <span><div class="name">Claude Code</div><div class="sub">3 个会话 · 空闲</div></span>
+        <span class="dot"></span>
+      </div>
+      <div class="m-agent">
+        <span class="badge dsh">D</span>
+        <span><div class="name">DSH</div><div class="sub">2 个会话 · 待审批</div></span>
+        <span class="dot warn"></span>
+      </div>
+
+      <div class="m-label">RECENT SESSIONS</div>
+      <a class="m-session active">
+        <span class="badge codex">C</span>
+        <span class="session-main">
+          <span class="session-top"><span class="session-title">修复登录接口</span><span class="session-time">刚刚</span></span>
+          <span class="session-preview">已统一错误码，正在补两个测试…</span>
+        </span>
+      </a>
+      <a class="m-session">
+        <span class="badge claude">✳</span>
+        <span class="session-main">
+          <span class="session-top"><span class="session-title">整理桌面上的发票</span><span class="session-time">12 分</span></span>
+          <span class="session-preview">已识别 18 张，等你确认命名规则</span>
+        </span>
+      </a>
+      <a class="m-session">
+        <span class="badge dsh">D</span>
+        <span class="session-main">
+          <span class="session-top"><span class="session-title">每日设计情报</span><span class="session-time">1 小时</span></span>
+          <span class="session-preview">今日日报已生成，等待审批发布</span>
+        </span>
+      </a>
+      <a class="m-session">
+        <span class="badge codex">C</span>
+        <span class="session-main">
+          <span class="session-top"><span class="session-title">Upwork 项目扫描</span><span class="session-time">3 小时</span></span>
+          <span class="session-preview">新增 3 个匹配项，已写入表格</span>
+        </span>
+      </a>
+    </div>
+
+    <nav class="tabbar">
+      <span class="tab"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h16M4 12h10M4 18h7"/></svg>Ideas</span>
+      <span class="tab active"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="m4 12 16-7-7 16-2.5-6.5L4 12Z"/></svg>Agents</span>
+      <span class="tab"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M9 18h6"/></svg>Devices</span>
+      <span class="tab"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="8" r="3.4"/><path d="M5 20c1.2-3.4 3.8-5 7-5s5.8 1.6 7 5"/></svg>Me</span>
+    </nav>
+  </section>
+
+  <section class="m-chat">
+    <header class="m-chat-head">
+      <button class="icon-btn" title="返回">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="m15 6-6 6 6 6"/></svg>
+      </button>
+      <div class="m-chat-title">
+        <div class="name">Codex</div>
+        <div class="sub"><span class="dot ok" style="vertical-align:0"></span> 在线 · Windows 笔记本</div>
+      </div>
+      <button class="icon-btn" title="更多">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>
+      </button>
+    </header>
+
+    <div class="m-messages">
+      <div class="day">今天 20:51</div>
+
+      <div class="msg user">
+        <div class="bubble">把登录接口的错误码统一一下，顺便补两个测试</div>
+        <div class="meta">20:51</div>
+      </div>
+
+      <div class="msg assistant">
+        <div class="bubble">
+          我先看现有的错误码定义，再改 <span class="mono">AuthController.swift</span>。
+          <div class="tool">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m5 12 5 5L20 7"/></svg>
+            已读取 3 个文件
+          </div>
+        </div>
+        <div class="meta">20:52</div>
+      </div>
+
+      <div class="approval">
+        <div class="approval-head">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z"/></svg>
+          APPROVAL REQUIRED
+        </div>
+        <div class="approval-title">Codex 想写入 <span class="mono">AuthController.swift</span></div>
+        <div class="approval-detail">Sources/Auth/AuthController.swift · +12 −4 行</div>
+        <div class="approval-actions">
+          <button class="btn primary">允许一次</button>
+          <button class="btn">拒绝</button>
+        </div>
+      </div>
+
+      <div class="queued"><span class="dot warn"></span>已排队 · 21:04</div>
+    </div>
+
+    <footer class="m-composer">
+      <div class="composer-box">
+        <button class="icon-btn" title="附件">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="m20 12-7.5 7.5a5 5 0 0 1-7-7L13 5a3.3 3.3 0 0 1 4.7 4.7l-7.5 7.5a1.7 1.7 0 0 1-2.4-2.4l7-7"/></svg>
+        </button>
+        <input placeholder="给 Codex 发消息…">
+        <button class="send" title="发送">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M6 11l6-6 6 6"/></svg>
+        </button>
+      </div>
+    </footer>
+  </section>
+</div>
+
+<script>
+  const screen = new URLSearchParams(location.search).get("screen") || (window.innerWidth < 900 ? "list" : "chat");
+  document.body.classList.toggle("screen-list", screen === "list");
+  document.body.classList.toggle("screen-chat", screen !== "list");
+
+  // --- demo interactions (no backend yet) ---
+  const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
+
+  $$(".session, .m-session").forEach((row) => {
+    row.addEventListener("click", () => {
+      $$(".session, .m-session").forEach((item) => item.classList.remove("active"));
+      row.classList.add("active");
+      const title = row.querySelector(".session-title")?.textContent ?? "会话";
+      $$(".chat-title, .insp-title").forEach((node) => { node.textContent = title; });
+      const mobileName = document.querySelector(".m-chat-title .name");
+      if (mobileName && row.classList.contains("m-session")) mobileName.textContent = title;
+      if (row.classList.contains("m-session")) {
+        document.body.classList.remove("screen-list");
+        document.body.classList.add("screen-chat");
+      }
+    });
+  });
+
+  document.querySelector(".m-chat-head .icon-btn")?.addEventListener("click", () => {
+    document.body.classList.remove("screen-chat");
+    document.body.classList.add("screen-list");
+  });
+
+  function sendFrom(scope) {
+    const input = scope.querySelector("input");
+    const text = input.value.trim();
+    if (!text) return;
+    const messages = scope.closest(".chat")?.querySelector(".messages-inner")
+      || scope.closest(".m-chat")?.querySelector(".m-messages");
+    if (!messages) return;
+
+    const user = document.createElement("div");
+    user.className = "msg user";
+    user.innerHTML = '<div class="bubble"></div><div class="meta">刚刚</div>';
+    user.querySelector(".bubble").textContent = text;
+    messages.appendChild(user);
+    input.value = "";
+    messages.scrollTop = messages.scrollHeight;
+
+    setTimeout(() => {
+      const bot = document.createElement("div");
+      bot.className = "msg assistant";
+      bot.innerHTML = '<div class="bubble">收到。这是演示环境，接入节点后会真的发给 Codex。</div><div class="meta">刚刚</div>';
+      messages.appendChild(bot);
+      messages.scrollTop = messages.scrollHeight;
+    }, 700);
+  }
+
+  $$(".composer, .m-composer").forEach((scope) => {
+    const input = scope.querySelector("input");
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); sendFrom(scope); }
+    });
+    scope.querySelector(".send").addEventListener("click", () => sendFrom(scope));
+  });
+
+  $$(".approval").forEach((card) => {
+    card.querySelectorAll(".btn").forEach((button) => {
+      button.addEventListener("click", () => {
+        const allowed = button.classList.contains("primary");
+        const note = document.createElement("div");
+        note.className = "queued";
+        note.innerHTML = '<span class="dot ' + (allowed ? "ok" : "warn") + '"></span>'
+          + (allowed ? "已允许一次 · 等待 Codex 继续" : "已拒绝 · Codex 会换一种方式");
+        card.replaceWith(note);
+      });
+    });
+  });
+</script>
+</body>
+</html>
