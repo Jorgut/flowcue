@@ -1,0 +1,10 @@
+# 允许推到公开仓库（Jorgut/flowcue）的分支。一行一个，精确匹配。
+# 公开 = 已经决定对外承诺的内容。新分支默认不公开：先在这里登记再推。
+main
+ui/merge-inbox
+ios/screens
+mac/inbox
+site/landing
+docs/sync-notification-proposal
+docs/reset-monitor-evaluation
+chore/flowcue-branding

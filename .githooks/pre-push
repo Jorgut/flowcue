@@ -1,0 +1,30 @@
+#!/bin/zsh
+# 公开仓库只接受白名单里的分支；其余一律走私有镜像 backup。
+set -euo pipefail
+
+remote_url="${2:-}"
+allowlist="$(cd -- "$(dirname -- "$0")" && pwd -P)/public-branches.txt"
+
+# 只拦公开仓库，私有备份与其它远端放行。
+case "$remote_url" in
+    *github.com/Jorgut/flowcue.git|*github.com/Jorgut/flowcue) ;;
+    *) exit 0 ;;
+esac
+
+blocked=""
+while read -r _local_ref local_sha remote_ref _remote_sha; do
+    [ -n "${remote_ref:-}" ] || continue
+    # 删除分支不拦；tag 等非分支引用放行。
+    [ "$local_sha" = "0000000000000000000000000000000000000000" ] && continue
+    case "$remote_ref" in refs/heads/*) ;; *) continue ;; esac
+    branch="${remote_ref#refs/heads/}"
+    grep -qxF -- "$branch" "$allowlist" 2>/dev/null && continue
+    blocked="${blocked}  ${branch}"$'\n'
+done
+
+if [ -n "$blocked" ]; then
+    printf '⛔ 以下分支不在公开仓库白名单里，已拒绝推送：\n%s\n' "$blocked" >&2
+    printf '要公开：把分支名写进 .githooks/public-branches.txt 并说明理由后重试。\n' >&2
+    printf '只备份：git push backup '"'"'refs/heads/*:refs/heads/*'"'"'\n' >&2
+    exit 1
+fi
