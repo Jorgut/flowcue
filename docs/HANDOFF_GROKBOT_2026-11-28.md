@@ -94,6 +94,10 @@ zsh Scripts/build-app.sh release
 6. **CLI 建的 Codex 会话仍不出现在会话列表**：本轮只修了「已知 id 能读」，手机 UI 里依然选不到。要改 `CodexAgentAdapter.listSessions` 的 `useStateDbOnly` 或合并另一路来源。
 7. **CloudKit 单张 10–20 秒**：550 KB 约 3.5 分钟。能用但慢，更大批次体验会更差。
 
+### 仓库与备份
+
+`Jorgut/flowcue` 是**公开**仓库，推分支等于公开。本地另有一个私有全量镜像（位置见 `PROJECT_STATE.md`，不写进公开文档），已覆盖 9 条分支与全部 tag；接手后做增量备份用 `git push backup --mirror`，不要往公开仓库推 WIP 分支。
+
 ### 现场状态（接手前先确认）
 
 - iPhone：Debug 签名包（Production CloudKit），带 QA 探针开关；不带环境变量重开就是正常界面。
