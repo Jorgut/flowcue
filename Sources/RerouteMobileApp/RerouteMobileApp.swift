@@ -1114,8 +1114,10 @@ final class LANRemoteController {
 
     fileprivate func queryCodexImageReceipt(sessionID: String, batchID: String) async -> Bool {
         guard UUID(uuidString: sessionID) != nil, UUID(uuidString: batchID) != nil else { return false }
+        // CloudKit 私有信箱的往返在 5G 下常要 15–25 秒；10 秒会把已经
+        // 写入的 200 当成超时，手机于是永远停在「待确认」。
         return (try? await sendRequest(path: "/v1/agents/codex/sessions/\(sessionID)/image-batch/\(batchID)/delivery",
-                                      timeout: 10)) != nil
+                                      timeout: 30)) != nil
     }
 
     /// 从 Mac 拉取全部想法（包含 Mac 上原有的历史想法），用于反向同步。
