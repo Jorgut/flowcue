@@ -584,16 +584,174 @@ public struct RemoteAgentSession: Codable, Identifiable, Hashable, Sendable {
     }
 }
 
+public struct RemoteCodexImageMessage: Codable, Sendable {
+    public static let maxImages = 4
+    public static let batchMaxImages = 20
+    public static let maxImageBytes = 320 * 1024
+    public static let maxTextBytes = 8 * 1024
+    public static let imageOnlyText = "Image attachment"
+
+    public let text: String
+    public let images: [Data]
+
+    public init(text: String, images: [Data]) {
+        self.text = text
+        self.images = images
+    }
+}
+
+public struct RemoteCodexImageBatch: Codable, Sendable {
+    public let text: String
+    public let count: Int
+
+    public init(text: String, count: Int) {
+        self.text = text
+        self.count = count
+    }
+
+    @MainActor
+    public static func uploadMissing(
+        count: Int,
+        status: () async throws -> [Int],
+        put: (Int) async throws -> Void,
+        retry: (Error) async throws -> Bool,
+        onProgress: (Int) -> Void
+    ) async throws {
+        var mostUploaded = 0
+        var failures = 0
+        while true {
+            try Task.checkCancellation()
+            do {
+                var uploaded = Set(try await status().filter { (0..<count).contains($0) })
+                if uploaded.count > mostUploaded {
+                    mostUploaded = uploaded.count
+                    failures = 0
+                }
+                onProgress(uploaded.count)
+                for index in 0..<count where !uploaded.contains(index) {
+                    try Task.checkCancellation()
+                    try await put(index)
+                    uploaded.insert(index)
+                    if uploaded.count > mostUploaded {
+                        mostUploaded = uploaded.count
+                        failures = 0
+                    }
+                    onProgress(uploaded.count)
+                }
+                return
+            } catch {
+                try Task.checkCancellation()
+                failures += 1
+                guard failures <= 3, try await retry(error) else { throw error }
+            }
+        }
+    }
+}
+
+public struct PendingCodexImageBatch: Codable, Sendable {
+    public enum Phase: String, Codable, Sendable { case uploading, submitted, acknowledged }
+
+    public let batchID: String
+    public let requestID: String
+    public let text: String
+    public let images: [Data]
+    public let historyIDs: Set<String>
+    public var phase: Phase
+
+    public init(batchID: String, requestID: String, text: String, images: [Data],
+                historyIDs: Set<String>, phase: Phase = .uploading) {
+        self.batchID = batchID
+        self.requestID = requestID
+        self.text = text
+        self.images = images
+        self.historyIDs = historyIDs
+        self.phase = phase
+    }
+
+    public static func load(from url: URL) throws -> Self? {
+        do { return try JSONDecoder().decode(Self.self, from: Data(contentsOf: url)) }
+        catch CocoaError.fileReadNoSuchFile { return nil }
+    }
+
+    public func save(to url: URL) throws {
+        var folder = url.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        #if os(iOS)
+        var resources = URLResourceValues()
+        resources.isExcludedFromBackup = true
+        try folder.setResourceValues(resources)
+        let options: Data.WritingOptions = [.atomic, .completeFileProtectionUntilFirstUserAuthentication]
+        #else
+        let options: Data.WritingOptions = .atomic
+        #endif
+        try JSONEncoder().encode(self).write(to: url, options: options)
+    }
+}
+
+public struct AgentProgress: Codable, Hashable, Sendable {
+    public enum Kind: String, Codable, Hashable, Sendable {
+        case step, command, edit, tool, plan
+    }
+
+    public enum State: String, Codable, Hashable, Sendable {
+        case inProgress, completed, failed, declined
+    }
+
+    public let kind: Kind
+    public let state: State
+    public let title: String?
+
+    public init(kind: Kind, state: State, title: String? = nil) {
+        self.kind = kind
+        self.state = state
+        self.title = title
+    }
+}
+
 public struct RemoteAgentMessage: Codable, Identifiable, Hashable, Sendable {
     public let id: String
     public let role: String
     public let text: String
     public let timestamp: Date?
+    public let progress: AgentProgress?
 
-    public init(id: String, role: String, text: String, timestamp: Date?) {
+    public init(id: String, role: String, text: String, timestamp: Date?, progress: AgentProgress? = nil) {
         self.id = id
         self.role = role
         self.text = text
         self.timestamp = timestamp
+        self.progress = progress
+    }
+}
+
+public struct RemoteAgentMessagePage: Codable, Sendable {
+    public let messages: [RemoteAgentMessage]
+    public let hasOlder: Bool
+    public let replacesHistory: Bool
+    public let progressUpdates: [RemoteAgentMessage]?
+
+    public init(messages: [RemoteAgentMessage], hasOlder: Bool, replacesHistory: Bool,
+                progressUpdates: [RemoteAgentMessage]? = nil) {
+        self.messages = messages
+        self.hasOlder = hasOlder
+        self.replacesHistory = replacesHistory
+        self.progressUpdates = progressUpdates
+    }
+
+    static func window(in messages: [RemoteAgentMessage], before: String?, after: String?) -> Self {
+        let pageSize = 20
+        if let before {
+            let end = messages.firstIndex(where: { $0.id == before }) ?? 0
+            let start = max(0, end - pageSize)
+            return .init(messages: Array(messages[start..<end]), hasOlder: start > 0, replacesHistory: false)
+        }
+        if let after, let index = messages.firstIndex(where: { $0.id == after }) {
+            let updates = messages[...index].filter { $0.progress != nil }.suffix(pageSize)
+            return .init(messages: Array(messages.dropFirst(index + 1).prefix(pageSize)),
+                         hasOlder: false, replacesHistory: false,
+                         progressUpdates: updates.isEmpty ? nil : Array(updates))
+        }
+        return .init(messages: Array(messages.suffix(pageSize)), hasOlder: messages.count > pageSize,
+                     replacesHistory: true)
     }
 }

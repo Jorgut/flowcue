@@ -36,6 +36,11 @@ public final class RemoteRelayClient: @unchecked Sendable {
     /// 之前每帧起一个独立 Task，Task 调度可能让 seq 4 先于 seq 3 解密，
     /// 3 就会被当成 replay 丢掉，手机侧表现就是请求超时/消息未送达。
     private var frameChain: Task<Void, Never>?
+    private var mailboxPoll: Task<Void, Never>?
+    #if DEBUG
+    private var deviceFixtureDidSend = false
+    #endif
+    private var cloudKitPoll: Task<Void, Never>?
     /// POST 幂等缓存：客户端重试复用同一个 request id，Mac 直接回放上次响应，
     /// 避免「第一次其实已执行、客户端超时后重试」造成重复消息/turn。
     private var postResponses: [String: (response: RemoteResponse, at: Date)] = [:]
@@ -68,6 +73,8 @@ public final class RemoteRelayClient: @unchecked Sendable {
             self.registerThenConnect()
             self.startWatchdog()
             self.startPairPolling()
+            self.startTestMailbox()
+            self.startCloudKitChat()
         }
     }
 
@@ -79,6 +86,8 @@ public final class RemoteRelayClient: @unchecked Sendable {
             self.registering = false
             self.reconnectWork?.cancel(); self.reconnectWork = nil
             self.handshakeWork?.cancel(); self.handshakeWork = nil
+            self.mailboxPoll?.cancel(); self.mailboxPoll = nil
+            self.cloudKitPoll?.cancel(); self.cloudKitPoll = nil
             self.task?.cancel(with: .goingAway, reason: nil)
             self.task = nil
             self.setState(.idle)
@@ -400,21 +409,31 @@ public final class RemoteRelayClient: @unchecked Sendable {
     }
 
     private func processEnvelope(_ envelope: RemoteEnvelope) async {
+        guard let (request, response) = await dispatchEnvelope(envelope) else { return }
+        await sendResponse(response, requestID: request.id, pairID: envelope.pair, path: request.path)
+    }
+
+    private func dispatchEnvelope(_ envelope: RemoteEnvelope, expectedID: String? = nil) async -> (RemoteRequest, RemoteResponse)? {
         let plaintext: Data
         do {
             plaintext = try await server.pairing.openEnvelope(envelope)
         } catch {
             NSLog("[FlowCue Remote] decrypt failed: %@", String(describing: error))
-            return
+            return nil
         }
         guard let request = try? JSONDecoder().decode(RemoteRequest.self, from: plaintext) else {
             NSLog("[FlowCue Remote] bad request payload")
-            return
+            return nil
         }
+        if let expectedID, request.id.lowercased() != expectedID { return nil }
+        #if DEBUG
+        if expectedID != nil, let fixtureResponse = deviceFixtureResponse(for: request) {
+            return (request, fixtureResponse)
+        }
+        #endif
         if request.method == "POST", let cached = postResponses[request.id] {
             log("idempotent POST replay \(request.path) id=\(request.id)")
-            await sendResponse(cached.response, requestID: request.id, pairID: envelope.pair, path: request.path)
-            return
+            return (request, cached.response)
         }
         let started = Date()
         let result = await server.dispatchRemote(
@@ -438,7 +457,169 @@ public final class RemoteRelayClient: @unchecked Sendable {
                 if let oldest { postResponses.removeValue(forKey: oldest) }
             }
         }
-        await sendResponse(response, requestID: request.id, pairID: envelope.pair, path: request.path)
+        return (request, response)
+    }
+
+    private func startCloudKitChat() {
+        cloudKitPoll = Task { @MainActor [weak self] in
+            guard let macID = self?.macID else { return }
+            var selected = CloudKitChatMailbox.configured(for: macID)
+            #if DEBUG
+            let environment = ProcessInfo.processInfo.environment
+            if environment["FLOWCUE_TEST_HTTPS_READ_ONLY"] == "1",
+               let testSession = environment["FLOWCUE_TEST_HTTPS_DSH_SESSION"], !testSession.isEmpty,
+               let testMailbox = CloudKitChatMailbox() {
+                selected = testMailbox
+            }
+            #endif
+            guard let mailbox = selected else { return }
+            var seen: [UUID: Date] = [:]
+            var pendingReceipts: [UUID: Data] = [:]
+            var prepared = false
+            while !Task.isCancelled, let self {
+                do {
+                    if !prepared {
+                        try await mailbox.prepare()
+                        prepared = true
+                    }
+                    for (id, receipt) in pendingReceipts {
+                        if try await mailbox.read(.receipt, id: id) == nil {
+                            try await mailbox.create(.receipt, id: id, payload: receipt)
+                        }
+                        pendingReceipts.removeValue(forKey: id)
+                    }
+                    let cutoff = Date().addingTimeInterval(-120)
+                    seen = seen.filter { $0.value >= cutoff }
+                    for (id, frame) in try await mailbox.pendingRequests(excluding: Set(seen.keys), newerThan: cutoff) {
+                        try Task.checkCancellation()
+                        // Only the successful creator may dispatch. A lost
+                        // claim acknowledgment must never trigger execution.
+                        let claimed = try await mailbox.claim(id)
+                        seen[id] = Date()
+                        guard claimed else { continue }
+                        guard let receipt = await self.processCloudKitClaim(frame, id: id) else { continue }
+                        pendingReceipts[id] = receipt
+                        try await mailbox.create(.receipt, id: id, payload: receipt)
+                        pendingReceipts.removeValue(forKey: id)
+                    }
+                } catch {
+                    // Pending requests are reloaded on the next poll.
+                }
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+    }
+
+    private func processCloudKitClaim(_ frame: Data, id: UUID) async -> Data? {
+        guard let envelope = try? JSONDecoder().decode(RemoteEnvelope.self, from: frame) else { return nil }
+        return await withCheckedContinuation { continuation in
+            queue.async {
+                guard !self.stopped, self.cloudKitPoll != nil else {
+                    continuation.resume(returning: nil)
+                    return
+                }
+                let previous = self.frameChain
+                self.frameChain = Task {
+                    _ = await previous?.value
+                    guard let (_, response) = await self.dispatchEnvelope(envelope, expectedID: id.uuidString.lowercased()),
+                          let plaintext = try? JSONEncoder().encode(response),
+                          let sealed = try? await self.server.pairing.sealEnvelope(pairID: envelope.pair, plaintext: plaintext)
+                    else {
+                        continuation.resume(returning: nil)
+                        return
+                    }
+                    continuation.resume(returning: try? JSONEncoder().encode(sealed))
+                }
+            }
+        }
+    }
+
+    #if DEBUG
+    private func deviceFixtureResponse(for request: RemoteRequest) -> RemoteResponse? {
+        let env = ProcessInfo.processInfo.environment
+        guard env["FLOWCUE_TEST_HTTPS_READ_ONLY"] == "1" else { return nil }
+        let sessionID = env["FLOWCUE_TEST_HTTPS_DSH_SESSION"]
+        if request.method == "GET" {
+            if request.path == "/v1/ping" { return nil }
+            if ["/v1/agents", "/v1/skills", "/v1/threads"].contains(request.path) {
+                return RemoteResponse(id: request.id, status: 200, body: Data("[]".utf8))
+            }
+            if let sessionID, request.path == "/v1/dsh/sessions" {
+                let session = DSHSessionSnapshot(
+                    id: sessionID, title: "FlowCue 5G 验收", projectDirectory: "", updatedAt: .now
+                )
+                return RemoteResponse(id: request.id, status: 200, body: try? JSONEncoder().encode([session]))
+            }
+            if let sessionID, URLComponents(string: request.path)?.path == "/v1/dsh/sessions/\(sessionID)/messages" {
+                return nil
+            }
+        }
+        if request.method == "POST", request.path == "/v1/dsh/send", !deviceFixtureDidSend,
+           let sessionID, let text = env["FLOWCUE_TEST_HTTPS_DSH_TEXT"],
+           let body = request.body, let message = try? JSONDecoder().decode(DSHRemoteMessage.self, from: body),
+           message.sessionId == sessionID, message.text == text, message.requestID == request.id,
+           message.images?.isEmpty != false {
+            deviceFixtureDidSend = true
+            return nil
+        }
+        return RemoteResponse(id: request.id, status: 405, body: nil)
+    }
+    #endif
+
+    private func startTestMailbox() {
+        #if DEBUG
+        let env = ProcessInfo.processInfo.environment
+        guard let address = env["FLOWCUE_TEST_HTTPS_URL"], let base = URL(string: address),
+              base.scheme == "https", base.host != nil,
+              let token = env["FLOWCUE_TEST_HTTPS_MAC_TOKEN"], !token.isEmpty else { return }
+        mailboxPoll = Task { [weak self] in
+            while !Task.isCancelled {
+                var claim = URLRequest(url: base.appendingPathComponent("prototype/claim"))
+                claim.httpMethod = "POST"
+                claim.timeoutInterval = 8
+                claim.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                if let (data, result) = try? await URLSession.shared.data(for: claim),
+                   !Task.isCancelled, let response = result as? HTTPURLResponse, response.statusCode == 200,
+                   let id = response.value(forHTTPHeaderField: "x-flowcue-request-id")?.lowercased(),
+                   UUID(uuidString: id) != nil,
+                   let envelope = try? JSONDecoder().decode(RemoteEnvelope.self, from: data) {
+                    await self?.processMailboxClaim(envelope, id: id, base: base, token: token)
+                    continue
+                }
+                try? await Task.sleep(for: .seconds(2))
+            }
+        }
+        #endif
+    }
+
+    private func processMailboxClaim(_ envelope: RemoteEnvelope, id: String, base: URL, token: String) async {
+        await withCheckedContinuation { continuation in
+            queue.async {
+                guard !self.stopped, self.mailboxPoll != nil else {
+                    continuation.resume()
+                    return
+                }
+                let previous = self.frameChain
+                self.frameChain = Task {
+                    defer { continuation.resume() }
+                    _ = await previous?.value
+                    guard let (_, response) = await self.dispatchEnvelope(envelope, expectedID: id),
+                          let plaintext = try? JSONEncoder().encode(response),
+                          let sealed = try? await self.server.pairing.sealEnvelope(pairID: envelope.pair, plaintext: plaintext),
+                          let data = try? JSONEncoder().encode(sealed),
+                          data.count <= 256 * 1024 else { return }
+                    var complete = URLRequest(url: base.appendingPathComponent("prototype/complete/\(id)"))
+                    complete.httpMethod = "POST"
+                    complete.httpBody = data
+                    complete.timeoutInterval = 8
+                    complete.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                    for _ in 0..<2 {
+                        if let (_, result) = try? await URLSession.shared.data(for: complete),
+                           (result as? HTTPURLResponse)?.statusCode == 200 { return }
+                    }
+                }
+            }
+        }
     }
 
     private func sendResponse(_ response: RemoteResponse, requestID: String, pairID: String, path: String) async {
