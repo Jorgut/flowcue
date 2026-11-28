@@ -1,5 +1,29 @@
 import XCTest
 
+final class DSHReceiptUITests: XCTestCase {
+    func testDelayedReceiptPreservesMessageWithoutRetry() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--flowcue-dsh-receipt-uitest"]
+        app.launch()
+
+        XCTAssertTrue(app.staticTexts["Isolated chat history"].waitForExistence(timeout: 8))
+        let composer = app.descendants(matching: .any)["chatComposer"].firstMatch
+        XCTAssertTrue(composer.waitForExistence(timeout: 5))
+        composer.tap()
+        composer.typeText("Synthetic outgoing message")
+        app.buttons["Send message"].tap()
+
+        let pending = app.staticTexts["chatReceiptUnconfirmed"]
+        XCTAssertTrue(pending.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Synthetic outgoing message"].exists)
+        XCTAssertFalse(app.buttons["chatRetrySend"].exists)
+        XCTAssertTrue(pending.waitForNonExistence(timeout: 20))
+        XCTAssertTrue(app.staticTexts["Synthetic outgoing message"].exists)
+        XCTAssertEqual(app.staticTexts.matching(identifier: "Synthetic outgoing message").count, 1)
+        XCTAssertTrue(app.staticTexts["Isolated chat history"].exists)
+    }
+}
+
 /// 想法列表的交互回归：长按批量选择、左滑操作、单击进详情、上下滚动。
 /// 这些断言只验证「能用」，视觉观感仍需人眼；但至少能把行为回归挡在发布前。
 final class IdeasUITests: XCTestCase {
@@ -8,7 +32,7 @@ final class IdeasUITests: XCTestCase {
     override func setUp() {
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["--flowcue-uitest-seed"]
+        app.launchArguments = ["--flowcue-uitest-seed", "-FlowCue.hasSeenOnboarding", "YES"]
         app.launch()
     }
 
@@ -110,9 +134,27 @@ final class IdeasUITests: XCTestCase {
 
 /// Agents → DSH 的会话列表应按项目文件夹分组。
 final class AgentSessionsUITests: XCTestCase {
+    func testCloudKitCancellationPreservesCachedSessions() {
+        let app = XCUIApplication()
+        app.launchArguments = ["--flowcue-qa-sessions"]
+        app.launch()
+        let session = app.staticTexts["FlowCue-Development QA session"]
+        XCTAssertTrue(session.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["FLOWCUE-DEVELOPMENT"].exists)
+        XCTAssertTrue(app.staticTexts["QUIETBAR"].exists)
+        app.terminate()
+        app.launchArguments = ["--flowcue-qa-sessions-cancel"]
+        app.launch()
+        XCTAssertTrue(session.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Retry"].exists)
+    }
+
     func testSessionsAreGroupedByProject() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["--flowcue-sessions-preview", "--flowcue-pro-preview", "--flowcue-uitest-seed"]
+        app.launchArguments = [
+            "--flowcue-sessions-preview", "--flowcue-pro-preview", "--flowcue-uitest-seed",
+            "-FlowCue.hasSeenOnboarding", "YES"
+        ]
         app.launch()
 
         app.buttons["Agents"].firstMatch.tap()

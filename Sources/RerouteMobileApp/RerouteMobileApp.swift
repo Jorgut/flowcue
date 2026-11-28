@@ -5,10 +5,12 @@ import StoreKit
 import Observation
 import UIKit
 import CryptoKit
+import CloudKit
 import Network
 import Speech
 import AVFoundation
 import PhotosUI
+import ImageIO
 
 // MARK: - Product identity
 
@@ -315,6 +317,7 @@ enum RemoteLinkError: LocalizedError, Equatable {
     case offline(String)
     case notReady
     case macOffline
+    case responseRejected(Int)
     /// A single request exceeded its deadline. This is not proof that the
     /// transport is down; a large history payload can be slow while heartbeats
     /// are still healthy, so callers must not flip the whole link offline.
@@ -325,11 +328,18 @@ enum RemoteLinkError: LocalizedError, Equatable {
         case .offline(let reason): return reason
         case .notReady: return L10n.text("正在连接 Mac…")
         case .macOffline: return L10n.text("Mac 不在线。")
+        case .responseRejected(let status):
+            return "\(L10n.text("Mac 拒绝了请求。")) (HTTP \(status))"
         case .timeout: return L10n.text("请求超时。")
         }
     }
 
     var errorDescription: String? { message }
+}
+
+private struct CodexImageUploadError: Error {
+    let detail: String
+    var resumeOnReconnect = false
 }
 
 struct DSHMessagePage: Decodable {
@@ -362,6 +372,12 @@ final class LANRemoteController {
     private(set) var lastAttempted: DiscoveredMac?
 
     private var browser: NWBrowser?
+    #if DEBUG
+    @ObservationIgnored private var receiptFixtureSend: (id: String, text: String, readyAt: Date)?
+    fileprivate static var usesReceiptFixture: Bool {
+        ProcessInfo.processInfo.arguments.contains("--flowcue-dsh-receipt-uitest")
+    }
+    #endif
     /// 最近一次成功推给 Mac 的 Pro 到期时间；nil 表示本次连接还没推过。
     @ObservationIgnored private var lastPushedProExpiry: String?
     @ObservationIgnored private var didPushPro = false
@@ -387,6 +403,11 @@ final class LANRemoteController {
     init() {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
+        if Self.usesReceiptFixture {
+            selected = DiscoveredMac(id: "receipt-fixture", name: "Test Mac", endpoint: .hostPort(host: "localhost", port: 1))
+            markOnline()
+            return
+        }
         if let value = args.first(where: { $0.hasPrefix("--flowcue-manual=") }) {
             manualAddress = String(value.dropFirst("--flowcue-manual=".count))
         }
@@ -489,13 +510,16 @@ final class LANRemoteController {
     /// 任何一次成功请求都证明链路仍通；设备页/卡片统一读这个。
     fileprivate func markOnline() {
         guard isPaired else { return }
+        if isRemote, RemoteTunnel.current()?.state.isOnline != true { return }
         linkState = .online
         lastRefreshAt = Date()
         lastError = nil
     }
 
     fileprivate func markOffline(_ error: Error) {
-        guard isPaired else { return }
+        // Only the remote tunnel may declare its link offline. A request
+        // submitted during its handshake can fail before the link is ready.
+        guard isPaired, !isRemote else { return }
         let message = Self.connectionMessage(for: error)
         linkState = .offline(reason: message)
         lastError = message
@@ -832,6 +856,31 @@ final class LANRemoteController {
         timeout: TimeInterval = 20,
         requestID: String? = nil
     ) async throws -> Data {
+        #if DEBUG
+        if Self.usesReceiptFixture {
+            if method == "POST", path == "/v1/dsh/send", let requestID,
+               let body, let json = try JSONSerialization.jsonObject(with: body) as? [String: Any],
+               let text = json["text"] as? String {
+                precondition(receiptFixtureSend == nil, "The test message was submitted more than once")
+                receiptFixtureSend = (requestID, text, Date.now.addingTimeInterval(10))
+                throw RemoteLinkError.timeout
+            }
+            if path.contains("/messages") {
+                var history: [[String: String]] = [
+                    ["id": "fixture-history", "role": "assistant", "text": "Isolated chat history"]
+                ]
+                if let item = receiptFixtureSend, item.readyAt <= .now {
+                    history.append(["id": item.id, "role": "user", "text": item.text])
+                }
+                let after = URLComponents(string: path)?.queryItems?.first { $0.name == "after" }?.value
+                let start = min(history.count, Int(after ?? "") ?? 0)
+                return try JSONSerialization.data(withJSONObject: [
+                    "messages": Array(history.dropFirst(start)), "total": history.count, "start": start
+                ])
+            }
+            return Data("[]".utf8)
+        }
+        #endif
         do {
             let data = try await LANHTTP.request(
                 endpoint: requestEndpoint,
@@ -845,6 +894,9 @@ final class LANRemoteController {
             markOnline()
             return data
         } catch {
+            if let link = error as? RemoteLinkError, case .responseRejected = link {
+                throw error
+            }
             // 大响应超时只代表这一次请求慢，不代表中继断了；链路状态交给
             // 心跳和 transport 错误，避免 2MB 历史把整个 UI 打成 offline。
             if !Self.isRequestTimeout(error) {
@@ -852,6 +904,16 @@ final class LANRemoteController {
             }
             throw error
         }
+    }
+
+    fileprivate func queryDSHReceipt(requestID: String) async -> Bool {
+        #if DEBUG
+        if Self.usesReceiptFixture {
+            guard let item = receiptFixtureSend else { return false }
+            return item.id == requestID && item.readyAt <= .now
+        }
+        #endif
+        return await RemoteTunnel.current()?.queryTestReceipt(requestID: requestID) ?? false
     }
 
     private static func isRequestTimeout(_ error: Error) -> Bool {
@@ -908,6 +970,19 @@ final class LANRemoteController {
     }
 
     func agentSessions(_ agentID: String) async throws -> [RemoteAgentSession] {
+        #if DEBUG
+        if agentID == "qa-sessions" {
+            if ProcessInfo.processInfo.arguments.contains("--flowcue-qa-sessions-cancel") {
+                throw CKError(.operationCancelled)
+            }
+            if ProcessInfo.processInfo.arguments.contains("--flowcue-qa-sessions") {
+                return ["FlowCue-Development", "QuietBar"].map { project in
+                    RemoteAgentSession(id: project, agentID: agentID, title: "\(project) QA session",
+                                       projectPath: "/QA/\(project)", updatedAt: .now, messageCount: nil)
+                }
+            }
+        }
+        #endif
         guard isPaired else { throw RemoteLinkError.offline(L10n.text("尚未连接 Mac。")) }
         let data = try await sendRequest(
             path: "/v1/agents/\(agentID)/sessions",
@@ -921,21 +996,31 @@ final class LANRemoteController {
         return sessions
     }
 
-    func agentMessages(agentID: String, sessionID: String, after: Int = 0) async throws -> [RemoteAgentMessage] {
+    func agentMessagePage(agentID: String, sessionID: String, afterID: String? = nil,
+                          beforeID: String? = nil) async throws -> RemoteAgentMessagePage {
         guard isPaired else { throw RemoteLinkError.offline(L10n.text("尚未连接 Mac。")) }
         let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? sessionID
-        var path = "/v1/agents/\(agentID)/sessions/\(encoded)/messages"
-        if after > 0 { path += "?after=\(after)" }
+        var endpoint = URLComponents()
+        let encodedAgent = agentID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        endpoint.percentEncodedPath = "/v1/agents/\(encodedAgent)/sessions/\(encoded)/messages"
+        endpoint.queryItems = [URLQueryItem(name: "paged", value: "1")]
+        if agentID == "codex" { endpoint.queryItems?.append(URLQueryItem(name: "timeline", value: "1")) }
+        if let afterID { endpoint.queryItems?.append(URLQueryItem(name: "afterID", value: afterID)) }
+        if let beforeID { endpoint.queryItems?.append(URLQueryItem(name: "beforeID", value: beforeID)) }
+        guard let path = endpoint.string else { throw RemoteLinkError.notReady }
         let data = try await sendRequest(
             path: path,
             timeout: 25
         )
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        guard let messages = try? decoder.decode([RemoteAgentMessage].self, from: data) else {
-            throw RemoteLinkError.offline(L10n.text("Mac 返回了无法解析的对话。"))
+        if let page = try? decoder.decode(RemoteAgentMessagePage.self, from: data) {
+            return page
         }
-        return messages
+        if let messages = try? decoder.decode([RemoteAgentMessage].self, from: data) {
+            return .init(messages: messages, hasOlder: false, replacesHistory: true)
+        }
+        throw RemoteLinkError.offline(L10n.text("Mac 返回了无法解析的对话。"))
     }
 
     /// 该会话「正在执行什么」；没有就返回 nil。
@@ -952,25 +1037,85 @@ final class LANRemoteController {
         return payload.activity
     }
 
-    @discardableResult
-    func sendAgent(agentID: String, sessionID: String, text: String, requestID: String? = nil) async -> Bool {
-        guard isPaired else { return false }
+    func sendAgent(agentID: String, sessionID: String, text: String, images: [Data] = [],
+                   requestID: String, batchID: String? = nil,
+                   beforeSubmit: () throws -> Void = {}, onUpload: (Int) -> Void = { _ in }) async throws {
+        guard isPaired else { throw RemoteLinkError.notReady }
+        let originalDevice = selected?.id
         let encoded = sessionID.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? sessionID
         struct Body: Encodable { let text: String }
-        guard let body = try? JSONEncoder().encode(Body(text: text)) else { return false }
-        do {
-            _ = try await sendRequest(
-                method: "POST",
-                path: "/v1/agents/\(agentID)/sessions/\(encoded)/send",
-                body: body,
-                timeout: 30,
-                requestID: requestID
-            )
-            return true
-        } catch {
-            lastError = String(format: L10n.text("发送失败：%@"), Self.connectionMessage(for: error))
-            return false
+        let body: Data
+        let action: String
+        if images.isEmpty {
+            body = try JSONEncoder().encode(Body(text: text))
+            action = "send"
+        } else {
+            guard agentID == "codex" else { throw RemoteLinkError.responseRejected(415) }
+            guard text.utf8.count <= RemoteCodexImageMessage.maxTextBytes,
+                  images.count <= RemoteCodexImageMessage.batchMaxImages else {
+                throw RemoteLinkError.responseRejected(413)
+            }
+            let batch = batchID ?? requestID
+            action = "image-batch/\(batch)"
+            let endpoint = "/v1/agents/codex/sessions/\(encoded)/\(action)"
+            do {
+                try await RemoteCodexImageBatch.uploadMissing(count: images.count, status: {
+                    guard selected?.id == originalDevice else { throw RemoteLinkError.notReady }
+                    let state = try await sendRequest(path: endpoint, timeout: 20)
+                    return try JSONDecoder().decode([Int].self, from: state)
+                }, put: { index in
+                    guard selected?.id == originalDevice else { throw RemoteLinkError.notReady }
+                    _ = try await sendRequest(method: "PUT", path: "\(endpoint)/\(index)", body: images[index], timeout: 30)
+                }, retry: { error in
+                    guard selected?.id == originalDevice, Self.isRetryableImageUploadError(error) else { return false }
+                    for _ in 0..<20 {
+                        try await Task.sleep(for: .seconds(1))
+                        if selected?.id != originalDevice { return false }
+                        if isOnline { return true }
+                    }
+                    return false
+                }, onProgress: onUpload)
+            } catch {
+                throw CodexImageUploadError(
+                    detail: Self.connectionMessage(for: error),
+                    resumeOnReconnect: selected?.id == originalDevice && Self.isRetryableImageUploadError(error)
+                )
+            }
+            body = try JSONEncoder().encode(RemoteCodexImageBatch(text: text, count: images.count))
+            guard selected?.id == originalDevice else {
+                throw CodexImageUploadError(detail: "The paired Mac changed during the upload.")
+            }
+            do { try beforeSubmit() }
+            catch { throw CodexImageUploadError(detail: "Couldn’t save the attachment batch on this iPhone.") }
         }
+        _ = try await sendRequest(
+            method: "POST",
+            path: "/v1/agents/\(agentID)/sessions/\(encoded)/\(action)",
+            body: body,
+            timeout: 30,
+            requestID: requestID
+        )
+    }
+
+    private static func isRetryableImageUploadError(_ error: Error) -> Bool {
+        // The tunnel invalidates in-flight requests when its connection changes.
+        if error is CancellationError { return !Task.isCancelled }
+        if let link = error as? RemoteLinkError {
+            if case .responseRejected = link { return false }
+            return true
+        }
+        if let error = error as? CKError {
+            return [.networkUnavailable, .networkFailure, .serviceUnavailable, .operationCancelled].contains(error.code)
+        }
+        guard let error = error as? URLError else { return false }
+        return [.timedOut, .notConnectedToInternet, .networkConnectionLost,
+                .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed].contains(error.code)
+    }
+
+    fileprivate func queryCodexImageReceipt(sessionID: String, batchID: String) async -> Bool {
+        guard UUID(uuidString: sessionID) != nil, UUID(uuidString: batchID) != nil else { return false }
+        return (try? await sendRequest(path: "/v1/agents/codex/sessions/\(sessionID)/image-batch/\(batchID)/delivery",
+                                      timeout: 10)) != nil
     }
 
     /// 从 Mac 拉取全部想法（包含 Mac 上原有的历史想法），用于反向同步。
@@ -1066,7 +1211,7 @@ final class LANRemoteController {
             await syncProToMac()
             lastError = nil
         } catch {
-            // sendRequest 已经把链路标离线并写入具体原因。
+            // Report the request failure separately from the remote link state.
             if lastError == nil {
                 lastError = "Connection lost. Make sure FlowCue is still running on your Mac."
             }
@@ -1107,7 +1252,7 @@ final class LANRemoteController {
                 images: encodedImages.isEmpty ? nil : encodedImages,
                 requestID: requestID
             ))
-            _ = try await sendRequest(method: "POST", path: "/v1/dsh/send", body: body, timeout: 30)
+            _ = try await sendRequest(method: "POST", path: "/v1/dsh/send", body: body, timeout: 30, requestID: requestID)
             statusMessage = "Sent to DSH."
             return true
         } catch {
@@ -1255,10 +1400,10 @@ final class LANRemoteController {
             let body = try JSONEncoder().encode(DSHRemoteDecision(id: approval.id, decision: decision))
             _ = try await sendRequest(method: "POST", path: "/v1/dsh/decide", body: body)
             dshApprovals.removeAll { $0.id == approval.id }
-            statusMessage = decision == "allowed-once" ? "DSH approved." : "DSH rejected."
+            statusMessage = decision == "allowed-once" ? "Approved." : "Denied."
             return true
         } catch {
-            lastError = "DSH approval expired or the bridge is unavailable."
+            lastError = "The approval expired or the bridge is unavailable."
             await refreshDSHApprovals()
             return false
         }
@@ -1454,6 +1599,10 @@ struct RerouteMobileApp: App {
     @State private var previewOnboarding = OnboardingPreview.isActive
 
     init() {
+        #if DEBUG
+        if LANRemoteController.usesReceiptFixture || NativeRelayProbe.isEnabled
+            || FlowCueCloudKitProbe.runID != nil || Self.usesSessionsFixture { return }
+        #endif
         FlowCueThemeSelection.migrateIfNeeded()
         let localStore = try? IdeaDockStore(
             modelContainer: IdeaDockPersistence.makeDefaultContainer(),
@@ -1473,22 +1622,64 @@ struct RerouteMobileApp: App {
             let _ = FlowCueTheme.current = theme
             let _ = FlowCueThemeSharing.publish(themeID)
             Group {
-                if let store, let syncController {
-                    if hasSeenOnboarding && !previewOnboarding {
-                        RootTabView(store: store, syncController: syncController, remoteController: remoteController)
-                    } else {
-                        OnboardingView {
-                            hasSeenOnboarding = true
-                            previewOnboarding = false
+                #if DEBUG
+                if let runID = FlowCueCloudKitProbe.runID {
+                    Text("FlowCue iCloud check")
+                        .task {
+                            let passed = await FlowCueCloudKitProbe.run(runID)
+                            print("CloudKit probe iPhone finished=\(passed)")
+                        }
+                } else if NativeRelayProbe.isEnabled {
+                    Text("FlowCue network check")
+                        .task { await NativeRelayProbe.run() }
+                } else if let sessionID = CodexImageDeviceProbe.sessionID {
+                    NavigationStack {
+                        AgentChatView(
+                            controller: remoteController,
+                            agent: .init(id: "codex", displayName: "Codex", sessionCount: 1, projectCount: 1, canSend: true),
+                            session: .init(id: sessionID, agentID: "codex", title: "FlowCue Image QA",
+                                           projectPath: nil, updatedAt: .now, messageCount: nil)
+                        )
+                    }
+                    .task {
+                        if remoteController.restoreRemoteIfPossible() { remoteController.adoptRemoteDevice() }
+                    }
+                } else if Self.usesSessionsFixture {
+                    NavigationStack {
+                        AgentSessionsView(
+                            controller: remoteController, tab: .constant(.agents),
+                            agent: RemoteAgentInfo(id: "qa-sessions", displayName: "DSH",
+                                                   sessionCount: 2, projectCount: 2, canSend: false)
+                        )
+                    }
+                } else if (CloudKitChatMailbox.enabledInBundle ||
+                           ProcessInfo.processInfo.environment["FLOWCUE_TEST_CLOUDKIT_CHAT_ZONE"] != nil),
+                          let sessionID = ProcessInfo.processInfo.environment["FLOWCUE_TEST_AUTO_DSH_SESSION"],
+                          !sessionID.isEmpty {
+                    ChatScreen(
+                        controller: remoteController, tab: .constant(.agents),
+                        initialTarget: .dsh(DSHSessionSnapshot(
+                            id: sessionID, title: "FlowCue 5G 验收", projectDirectory: "", updatedAt: .now
+                        ))
+                    )
+                    .task {
+                        if remoteController.restoreRemoteIfPossible() {
+                            remoteController.adoptRemoteDevice()
                         }
                     }
-                } else {
-                    ContentUnavailableView(
-                        "FlowCue could not start",
-                        systemImage: "exclamationmark.triangle",
-                        description: Text("Your existing ideas have not been replaced. Please reopen the app.")
+                } else if LANRemoteController.usesReceiptFixture {
+                    ChatScreen(
+                        controller: remoteController, tab: .constant(.agents),
+                        initialTarget: .dsh(DSHSessionSnapshot(
+                            id: "receipt-fixture", title: "Isolated chat", projectDirectory: "", updatedAt: .now
+                        ))
                     )
+                } else {
+                    normalRoot
                 }
+                #else
+                normalRoot
+                #endif
             }
             .id("\(themeID)|\(language)")
             .environment(\.flowCueTextScale, textScale)
@@ -1497,7 +1688,80 @@ struct RerouteMobileApp: App {
             .preferredColorScheme(theme.group.colorScheme)
         }
     }
+
+    #if DEBUG
+    private static var usesSessionsFixture: Bool {
+        let args = ProcessInfo.processInfo.arguments
+        return args.contains("--flowcue-qa-sessions") || args.contains("--flowcue-qa-sessions-cancel")
+    }
+    #endif
+
+    @ViewBuilder private var normalRoot: some View {
+        if let store, let syncController {
+            if hasSeenOnboarding && !previewOnboarding {
+                RootTabView(store: store, syncController: syncController, remoteController: remoteController)
+            } else {
+                OnboardingView {
+                    hasSeenOnboarding = true
+                    previewOnboarding = false
+                }
+            }
+        } else {
+            ContentUnavailableView(
+                "FlowCue could not start",
+                systemImage: "exclamationmark.triangle",
+                description: Text("Your existing ideas have not been replaced. Please reopen the app.")
+            )
+        }
+    }
 }
+
+#if DEBUG
+private enum NativeRelayProbe {
+    static var isEnabled: Bool { ProcessInfo.processInfo.arguments.contains("--flowcue-native-relay-probe") }
+
+    final class Metrics: NSObject, URLSessionTaskDelegate, Sendable {
+        let label: String
+
+        init(_ label: String) { self.label = label }
+
+        func urlSession(_ session: URLSession, task: URLSessionTask, didFinishCollecting metrics: URLSessionTaskMetrics) {
+            for metric in metrics.transactionMetrics {
+                print("Relay probe \(label) protocol=\(metric.networkProtocolName ?? "none") cellular=\(metric.isCellular) reused=\(metric.isReusedConnection) dns=\(metric.domainLookupEndDate != nil) connect=\(metric.connectEndDate != nil) tls=\(metric.secureConnectionEndDate != nil) sent=\(metric.requestEndDate != nil) response=\(metric.responseStartDate != nil)")
+            }
+        }
+    }
+
+    static func run() async {
+        let config = URLSessionConfiguration.ephemeral
+        config.requestCachePolicy = .reloadIgnoringLocalCacheData
+        let isolated = URLSession(configuration: config)
+        defer { isolated.finishTasksAndInvalidate() }
+        for round in 1...12 {
+            async let normal: Void = request(round: round, lane: "shared", session: .shared)
+            async let separate: Void = request(round: round, lane: "isolated", session: isolated)
+            _ = await (normal, separate)
+            try? await Task.sleep(for: .milliseconds(350))
+        }
+        print("FlowCue native relay probe complete")
+    }
+
+    private static func request(round: Int, lane: String, session: URLSession) async {
+        var url = URLComponents(string: "https://flowcue-relay.pages.dev/health")!
+        url.queryItems = [URLQueryItem(name: "nonce", value: UUID().uuidString)]
+        var request = URLRequest(url: url.url!, cachePolicy: .reloadIgnoringLocalCacheData)
+        request.timeoutInterval = 6
+        let label = "\(round)/\(lane)"
+        let started = ContinuousClock.now
+        do {
+            let (_, response) = try await session.data(for: request, delegate: Metrics(label))
+            print("Relay probe \(label) status=\((response as? HTTPURLResponse)?.statusCode ?? 0) elapsed=\(started.duration(to: .now))")
+        } catch {
+            print("Relay probe \(label) error=\((error as NSError).code) elapsed=\(started.duration(to: .now))")
+        }
+    }
+}
+#endif
 
 private struct MobileLocalBridge: CodexBridging {
     func listThreads() async throws -> [WorkContextItem] { [] }
@@ -6241,11 +6505,14 @@ private struct PendingChatMessage: Identifiable {
     enum State {
         case sending
         case failed
+        case unconfirmed
+        case awaitingHistory
     }
 
     let id = UUID()
     let text: String
     let images: [Data]
+    let historyOffset: Int?
     var state: State
 }
 
@@ -6264,6 +6531,9 @@ private struct ChatScreen: View {
     @State private var subagents: [DSHSessionSnapshot] = []
     @State private var text = ""
     @State private var pending: PendingChatMessage?
+    #if DEBUG
+    @State private var didStartDeviceChatProbe = false
+    #endif
     @State private var sending = false
     @State private var loading = false
     @State private var loadError: String?
@@ -6287,7 +6557,14 @@ private struct ChatScreen: View {
     private var target: ChatTarget { switchedTarget ?? initialTarget }
 
     private var isOnline: Bool {
-        controller.isOnline && network.isOnline
+        #if DEBUG
+        if LANRemoteController.usesReceiptFixture { return controller.isOnline }
+        #endif
+        return controller.isOnline && network.isOnline
+    }
+
+    private var isConnecting: Bool {
+        network.isOnline && controller.linkState.isConnecting
     }
 
     private var displayMessages: [RemoteConversationMessage] {
@@ -6308,7 +6585,7 @@ private struct ChatScreen: View {
 
     private var approvals: [DSHRemoteApproval] {
         guard let session = target.dshSession else { return [] }
-        return controller.dshApprovals.filter { $0.sessionId == session.id }
+        return controller.dshApprovals.filter { $0.agentID == nil && $0.sessionId == session.id }
     }
 
     private var showsEmptyState: Bool {
@@ -6344,14 +6621,14 @@ private struct ChatScreen: View {
         VStack(spacing: 0) {
             chatHeader
             chatStatus
-            if !isOnline {
+            if !isOnline && !isConnecting {
                 FlowCueInlineBanner(
                     kind: .warning,
-                    title: "Offline — messages can be retried when reconnected."
+                    title: "Can’t reach your Mac."
                 )
                 .padding(.horizontal, 18)
                 .padding(.top, 8)
-            } else if let loadError, !displayMessages.isEmpty {
+            } else if isOnline, let loadError, !displayMessages.isEmpty {
                 FlowCueInlineBanner(
                     kind: .failure,
                     title: "Couldn't refresh — \(loadError)",
@@ -6415,7 +6692,14 @@ private struct ChatScreen: View {
         .task { network.start() }
         .onDisappear { network.stop() }
         .task(id: target.id) { await runChat() }
-        .onChange(of: controller.isOnline) { _, online in
+        .task(id: pending?.state == .unconfirmed ? pending?.id : nil) {
+            guard let id = pending?.id, pending?.state == .unconfirmed else { return }
+            while !Task.isCancelled, pending?.id == id, pending?.state == .unconfirmed {
+                await queryDSHReceipt()
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+        .onChange(of: isOnline) { _, online in
             // 只在真正重连后补一次；视图初次出现由 runChat 负责，
             // 否则会并发拉两遍 2MB 历史，5G 下很容易把首个请求拖到超时。
             if online { Task { await reloadOnce() } }
@@ -6524,15 +6808,19 @@ private struct ChatScreen: View {
     }
 
     private var chatStatus: some View {
-        HStack(spacing: 5) {
+        let color = isOnline ? FlowCueTheme.mint : isConnecting ? FlowCueTheme.textSecondary : FlowCueTheme.failure
+        let label = isOnline
+            ? "online · \(FlowCueLinkFormat.deviceName(controller.selected?.name))"
+            : isConnecting ? L10n.text("正在连接 Mac…") : "offline"
+        return HStack(spacing: 5) {
             Circle()
-                .fill(isOnline ? FlowCueTheme.mint : FlowCueTheme.failure)
+                .fill(color)
                 .frame(width: 5, height: 5)
                 .accessibilityHidden(true)
-            Text(isOnline ? "online · \(FlowCueLinkFormat.deviceName(controller.selected?.name))" : "offline")
+            Text(label)
         }
         .flowCueFont(11, relativeTo: .caption2)
-        .foregroundStyle(isOnline ? FlowCueTheme.mint : FlowCueTheme.failure)
+        .foregroundStyle(color)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 18)
         .padding(.top, 6)
@@ -6542,10 +6830,12 @@ private struct ChatScreen: View {
 
     @ViewBuilder
     private var content: some View {
-        if loading && displayMessages.isEmpty && pending == nil {
+        if (isConnecting || (isOnline && loading)) && displayMessages.isEmpty && pending == nil {
             ProgressView()
                 .tint(FlowCueTheme.textSecondary)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if !isOnline && displayMessages.isEmpty && pending == nil {
+            Spacer(minLength: 0)
         } else if let loadError, displayMessages.isEmpty, pending == nil {
             VStack(spacing: 12) {
                 FlowCueInlineBanner(
@@ -6708,8 +6998,6 @@ private struct ChatScreen: View {
 
     private func runChat() async {
         loading = true
-        await refreshApprovalsIfNeeded()
-        await refreshSubagentsIfNeeded()
         do {
             try await loadInitialMessages()
             loadError = nil
@@ -6717,11 +7005,11 @@ private struct ChatScreen: View {
             loadError = LANRemoteController.connectionMessage(for: error)
         }
         loading = false
+        await refreshApprovalsIfNeeded()
+        await refreshSubagentsIfNeeded()
         while !Task.isCancelled {
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled else { break }
-            await refreshApprovalsIfNeeded()
-            await refreshSubagentsIfNeeded()
             do {
                 try await loadIncrementalMessages()
                 loadError = nil
@@ -6729,6 +7017,8 @@ private struct ChatScreen: View {
                 // 保留已经显示的消息，只在顶部显示原因。
                 loadError = LANRemoteController.connectionMessage(for: error)
             }
+            await refreshApprovalsIfNeeded()
+            await refreshSubagentsIfNeeded()
             if case .dsh(let session) = target {
                 let next = await controller.dshActivity(for: session)
                 if next?.label != activityLabel {
@@ -6742,23 +7032,39 @@ private struct ChatScreen: View {
     private func reloadOnce() async {
         // 首屏与“刚重连”可能同时触发；1MB 历史不能并发拉两遍。
         guard !loading, Date().timeIntervalSince(lastInitialLoadAt) > 2 else { return }
-        await refreshApprovalsIfNeeded()
         do {
             try await loadInitialMessages()
             loadError = nil
         } catch {
             loadError = LANRemoteController.connectionMessage(for: error)
         }
+        await refreshApprovalsIfNeeded()
     }
 
-    /// 初始只取最近 60 条，避免 5G 首屏拉 2MB+ 历史。
+    /// 初始只取最近 20 条文字消息。
     private func loadInitialMessages() async throws {
         switch target {
         case .dsh(let session):
             let page = try await controller.dshMessagePage(for: session, tail: 20, textOnly: true)
+            guard !Task.isCancelled, target == .dsh(session) else { return }
             messages = page.messages
             dshTotal = page.total
             dshOldestOffset = page.start
+            reconcileDSHPending(with: page)
+            lastInitialLoadAt = Date()
+            #if DEBUG
+            let env = ProcessInfo.processInfo.environment
+            recordDeviceChatReply(in: page, session: session)
+            if !didStartDeviceChatProbe, !page.messages.isEmpty, isOnline,
+               env["FLOWCUE_TEST_AUTO_DSH_SESSION"] == session.id,
+               let probeText = env["FLOWCUE_TEST_AUTO_DSH_TEXT"], !probeText.isEmpty,
+               RemoteTunnel.current()?.isTestChatTransportConnected == true {
+                didStartDeviceChatProbe = true
+                print("FlowCue device chat: initial history received")
+                text = probeText
+                send([])
+            }
+            #endif
         case .codex(let thread):
             messages = try await controller.messages(for: thread)
             dshTotal = 0
@@ -6770,14 +7076,59 @@ private struct ChatScreen: View {
     private func loadIncrementalMessages() async throws {
         switch target {
         case .dsh(let session):
+            guard !Task.isCancelled, target == .dsh(session) else { return }
+            guard lastInitialLoadAt != .distantPast else {
+                try await loadInitialMessages()
+                return
+            }
             let page = try await controller.dshMessagePage(for: session, after: dshTotal)
+            guard !Task.isCancelled, target == .dsh(session) else { return }
             if !page.messages.isEmpty {
                 messages.append(contentsOf: page.messages)
             }
             dshTotal = page.total
+            reconcileDSHPending(with: page)
+            #if DEBUG
+            recordDeviceChatReply(in: page, session: session)
+            #endif
         case .codex(let thread):
             let updated = try await controller.messages(for: thread)
             if updated != messages { messages = updated }
+        }
+    }
+
+    #if DEBUG
+    private func recordDeviceChatReply(in page: DSHMessagePage, session: DSHSessionSnapshot) {
+        let env = ProcessInfo.processInfo.environment
+        guard env["FLOWCUE_TEST_AUTO_DSH_SESSION"] == session.id,
+              let reply = env["FLOWCUE_TEST_DSH_EXPECT_REPLY"], !reply.isEmpty,
+              RemoteTunnel.current()?.isTestChatTransportConnected == true,
+              page.messages.contains(where: {
+                  $0.role == "assistant" && $0.text.trimmingCharacters(in: .whitespacesAndNewlines) == reply
+              }) else { return }
+        print("FlowCue device chat: expected assistant reply present")
+    }
+    #endif
+
+    private func reconcileDSHPending(with page: DSHMessagePage) {
+        guard let item = pending, item.state == .awaitingHistory, let offset = item.historyOffset,
+              !item.text.isEmpty, item.images.isEmpty else { return }
+        if page.messages.enumerated().contains(where: { index, message in
+            page.start + index >= offset && message.role == "user" && message.text == item.text
+        }) {
+            #if DEBUG
+            if didStartDeviceChatProbe { print("FlowCue device chat: outgoing message reconciled with history") }
+            #endif
+            pending = nil
+        }
+    }
+
+    private func queryDSHReceipt() async {
+        guard let item = pending, item.state == .unconfirmed else { return }
+        let confirmed = await controller.queryDSHReceipt(requestID: item.id.uuidString)
+        if confirmed, pending?.id == item.id {
+            pending?.state = .awaitingHistory
+            reconcileDSHPending(with: DSHMessagePage(messages: messages, total: dshTotal, start: dshOldestOffset))
         }
     }
 
@@ -6828,6 +7179,7 @@ private struct ChatScreen: View {
         messages = []
         dshTotal = 0
         dshOldestOffset = 0
+        lastInitialLoadAt = .distantPast
         pending = nil
         subagents = []
         loading = true
@@ -6839,23 +7191,24 @@ private struct ChatScreen: View {
     private func send(_ images: [Data]) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard (!trimmed.isEmpty || !images.isEmpty), pending?.state != .sending else { return }
-        let item = PendingChatMessage(text: trimmed, images: images, state: .sending)
+        let offset = target.dshSession != nil && lastInitialLoadAt != .distantPast ? dshTotal : nil
+        let item = PendingChatMessage(text: trimmed, images: images, historyOffset: offset, state: .sending)
         let sessionTarget = target
         pending = item
         text = ""
         sending = true
-        startWatchdog()
+        startWatchdog(for: item.id, isDSH: sessionTarget.dshSession != nil)
         Task { await deliver(item, to: sessionTarget) }
     }
 
     /// 兜底：任何一次发送如果没能回到 deliver 的收尾（连接半死、任务被取消），
     /// `sending` 会永远为 true，输入框从此锁死。超过 45 秒强制解开。
-    private func startWatchdog() {
+    private func startWatchdog(for messageID: UUID, isDSH: Bool) {
         Task {
             try? await Task.sleep(for: .seconds(45))
-            guard sending else { return }
+            guard sending, pending?.id == messageID, pending?.state == .sending else { return }
             sending = false
-            if pending?.state == .sending { pending?.state = .failed }
+            pending?.state = isDSH ? .unconfirmed : .failed
         }
     }
 
@@ -6865,7 +7218,7 @@ private struct ChatScreen: View {
         item.state = .sending
         pending = item
         sending = true
-        startWatchdog()
+        startWatchdog(for: item.id, isDSH: sessionTarget.dshSession != nil)
         Task { await deliver(item, to: sessionTarget) }
     }
 
@@ -6886,6 +7239,18 @@ private struct ChatScreen: View {
                 images: item.images,
                 requestID: item.id.uuidString
             )
+            guard sessionTarget == target, pending?.id == item.id else { return }
+            pending?.state = ok ? .awaitingHistory : .unconfirmed
+            #if DEBUG
+            if didStartDeviceChatProbe { print("FlowCue device chat: send acknowledged=\(ok)") }
+            #endif
+            sending = false
+            if ok {
+                loadError = nil
+                reconcileDSHPending(with: DSHMessagePage(messages: messages, total: dshTotal, start: dshOldestOffset))
+            }
+            try? await loadIncrementalMessages()
+            return
         }
         if ok {
             if sessionTarget == target {
@@ -7136,7 +7501,17 @@ private struct ChatPendingBubble: View {
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(L10n.text("重试发送失败的消息"))
+                    .accessibilityIdentifier("chatRetrySend")
                 }
+            } else if pending.state == .unconfirmed {
+                Text(L10n.text("待确认"))
+                    .flowCueFont(10, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .accessibilityIdentifier("chatReceiptUnconfirmed")
+            } else if pending.state == .awaitingHistory {
+                Text(L10n.text("已送达，等待同步"))
+                    .flowCueFont(10, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
             } else {
                 Text("SENDING.")
                     .flowCueFont(9.5, relativeTo: .caption2)
@@ -7171,15 +7546,22 @@ private struct ChatEmptyState: View {
 private struct ChatComposer: View {
     @Binding var text: String
     let sending: Bool
+    var imageLimit = 20
+    var imageByteLimit: Int? = nil
+    var editable = true
+    var sendIdentifier: String = "chatSend"
     let onSend: ([Data]) -> Void
 
     @State private var dictation = VoiceDictation()
     @State private var baseText = ""
     @State private var pickerItems: [PhotosPickerItem] = []
     @State private var images: [Data] = []
+    @State private var loadingImages = false
+    @State private var imageError: String?
 
     private var canSend: Bool {
-        !sending && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.isEmpty)
+        editable && !sending && !loadingImages && imageError == nil
+            && (!text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.isEmpty)
     }
 
     var body: some View {
@@ -7187,13 +7569,24 @@ private struct ChatComposer: View {
             if !images.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        ForEach(Array(images.enumerated()), id: \.offset) { _, data in
+                        ForEach(Array(images.enumerated()), id: \.offset) { index, data in
                             if let image = UIImage(data: data) {
                                 Image(uiImage: image)
                                     .resizable()
                                     .scaledToFill()
                                     .frame(width: 58, height: 58)
                                     .clipShape(RoundedRectangle(cornerRadius: FlowCueTheme.radiusCard, style: .continuous))
+                                    .overlay(alignment: .topTrailing) {
+                                        Button {
+                                            if images.indices.contains(index) { images.remove(at: index) }
+                                        } label: {
+                                            Image(systemName: "xmark.circle.fill")
+                                                .foregroundStyle(.white, .black)
+                                                .frame(width: 30, height: 30)
+                                        }
+                                        .buttonStyle(.plain)
+                                        .accessibilityLabel("Remove image")
+                                    }
                             }
                         }
                     }
@@ -7201,7 +7594,8 @@ private struct ChatComposer: View {
             }
 
             HStack(alignment: .bottom, spacing: 9) {
-                PhotosPicker(selection: $pickerItems, maxSelectionCount: 20, matching: .images) {
+                if imageLimit > 0 {
+                PhotosPicker(selection: $pickerItems, maxSelectionCount: imageLimit, matching: .images) {
                     Image(systemName: "plus")
                         .font(.system(size: 17))
                         .foregroundStyle(FlowCueTheme.textSecondary)
@@ -7210,13 +7604,17 @@ private struct ChatComposer: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Attach images")
+                .disabled(!editable || sending)
+                }
 
                 TextField("Reply...", text: $text, axis: .vertical)
+                    .accessibilityIdentifier("chatComposer")
                     .flowCueFont(13, relativeTo: .subheadline)
                     .foregroundStyle(FlowCueTheme.textPrimary)
                     .lineLimit(1...4)
                     .padding(.vertical, 8)
                     .accessibilityLabel("Reply")
+                    .disabled(!editable)
 
                 Button {
                     if dictation.isRecording {
@@ -7236,6 +7634,7 @@ private struct ChatComposer: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(dictation.isRecording ? "Stop voice input" : "Start voice input")
+                .disabled(!editable || sending)
 
                 Button {
                     guard canSend else { return }
@@ -7257,6 +7656,7 @@ private struct ChatComposer: View {
                 .buttonStyle(.plain)
                 .disabled(!canSend)
                 .accessibilityLabel("Send message")
+                .accessibilityIdentifier(sendIdentifier)
             }
             .padding(.leading, 12)
             .padding(.trailing, 6)
@@ -7269,20 +7669,19 @@ private struct ChatComposer: View {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .strokeBorder(FlowCueTheme.hairline)
             )
-            .onChange(of: pickerItems) { _, items in
-                Task {
-                    var loaded: [Data] = []
-                    for item in items {
-                        if let data = try? await item.loadTransferable(type: Data.self),
-                           let image = UIImage(data: data),
-                           let jpeg = image.jpegData(compressionQuality: 0.82) {
-                            loaded.append(jpeg)
-                        }
-                    }
-                    images = loaded
-                }
-            }
+            .task(id: pickerItems) { await loadImages(pickerItems) }
 
+            if loadingImages {
+                ProgressView().controlSize(.small).accessibilityLabel("Preparing images")
+            }
+            if let imageError {
+                HStack {
+                    Text(imageError)
+                        .flowCueFont(11, relativeTo: .caption2)
+                    Button("Clear") { pickerItems = []; images = []; self.imageError = nil }
+                }
+                .foregroundStyle(FlowCueTheme.warning)
+            }
             if dictation.isRecording {
                 Text("Listening…")
                     .flowCueFont(11, relativeTo: .caption2)
@@ -7297,6 +7696,43 @@ private struct ChatComposer: View {
                     .padding(.leading, 8)
             }
         }
+        .onDisappear { dictation.stop() }
+    }
+
+    private func loadImages(_ items: [PhotosPickerItem]) async {
+        loadingImages = !items.isEmpty
+        imageError = nil
+        images = []
+        guard !items.isEmpty else { return }
+        defer { if !Task.isCancelled { loadingImages = false } }
+        let perImage = imageByteLimit
+        var loaded: [Data] = []
+        for item in items {
+            guard !Task.isCancelled else { return }
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let jpeg = Self.prepareImage(data, limit: perImage) else {
+                if !Task.isCancelled { imageError = "Couldn’t prepare the selected images." }
+                return
+            }
+            loaded.append(jpeg)
+        }
+        if !Task.isCancelled { images = loaded }
+    }
+
+    private static func prepareImage(_ data: Data, limit: Int?) -> Data? {
+        guard let limit else { return UIImage(data: data)?.jpegData(compressionQuality: 0.82) }
+        guard let source = CGImageSourceCreateWithData(data as CFData, nil) else { return nil }
+        for side in [1600, 1200, 900, 640] {
+            let options = [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: side
+            ] as CFDictionary
+            guard let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options),
+                  let jpeg = UIImage(cgImage: thumbnail).jpegData(compressionQuality: 0.72) else { continue }
+            if jpeg.count <= limit { return jpeg }
+        }
+        return nil
     }
 }
 
@@ -10853,8 +11289,11 @@ private struct AgentSessionsView: View {
         // 先显示上次的列表，避免每次进来都看骨架屏。
         loadCachedSessions()
         if sessions.isEmpty { loading = true }
+        defer { loading = false }
         do {
-            sessions = try await controller.agentSessions(agent.id)
+            let refreshed = try await controller.agentSessions(agent.id)
+            try Task.checkCancellation()
+            sessions = refreshed
             loadError = nil
             saveCachedSessions()
             // 记住上次位置，供切换器显示「上次：xxx」
@@ -10863,15 +11302,53 @@ private struct AgentSessionsView: View {
                 resume = match
             }
         } catch {
-            // 失败必须落到 UI：以前这里返回空数组，页面不是「没有会话」
-            // 就是一直转圈，看不出是断线。
-            loadError = LANRemoteController.connectionMessage(for: error)
+            guard !Task.isCancelled else { return }
+            let cancelled = error is CancellationError
+                || (error as? URLError)?.code == .cancelled
+                || (error as? CKError)?.code == .operationCancelled
+            if cancelled && !sessions.isEmpty {
+                loadError = nil
+            } else {
+                loadError = L10n.text("请稍后重试。")
+            }
         }
-        loading = false
     }
 }
 
 /// 通用 Agent 对话页：消息 + 输入框，发送走 /v1/agents/.../send。
+#if DEBUG
+private enum CodexImageDeviceProbe {
+    static var sessionID: String? {
+        ProcessInfo.processInfo.environment["FLOWCUE_QA_IMAGE_SESSION"].flatMap {
+            UUID(uuidString: $0) == nil ? nil : $0
+        }
+    }
+
+    static var interrupt: Bool {
+        ProcessInfo.processInfo.environment["FLOWCUE_QA_IMAGE_STAGE"] == "interrupt"
+    }
+
+    static let labels = ["K7VQ", "B3NT", "H9RS", "X4CJ", "M8PD", "T2LF", "A6WZ", "F5GK", "U3BY", "D7MN",
+                         "P4XA", "W6RH", "V2SF", "N9TG", "Z5KU", "C8JV", "G4LD", "Y7EP", "R3HQ", "J6BC"]
+
+    static func images() -> [Data] {
+        labels.compactMap { label in
+            UIGraphicsImageRenderer(size: CGSize(width: 320, height: 160)).image { output in
+                UIColor.white.setFill()
+                output.fill(CGRect(x: 0, y: 0, width: 320, height: 160))
+                (label as NSString).draw(at: CGPoint(x: 42, y: 42),
+                                          withAttributes: [.font: UIFont.monospacedSystemFont(ofSize: 65, weight: .bold),
+                                                           .foregroundColor: UIColor.black])
+            }.jpegData(compressionQuality: 0.75)
+        }
+    }
+
+    static func log(_ line: String) {
+        FileHandle.standardOutput.write(Data("FlowCue image QA: \(line)\n".utf8))
+    }
+}
+#endif
+
 private struct AgentChatView: View {
     @Bindable var controller: LANRemoteController
     let agent: RemoteAgentInfo
@@ -10881,14 +11358,26 @@ private struct AgentChatView: View {
     @State private var text = ""
     @State private var sending = false
     @State private var loading = true
+    @State private var hasOlderMessages = false
+    @State private var loadingOlderMessages = false
+    @State private var refreshingMessages = false
     @State private var loadError: String?
     @State private var sendError: String?
     @State private var isAtBottom = true
     @State private var activity: String?
     /// 已发出、但 Mac 的会话文件还没更新的消息；先本地显示，避免「桌面已收到、手机空白」。
     @State private var optimistic: String?
+    @State private var optimisticImages: [Data] = []
+    @State private var optimisticBatchID: String?
+    @State private var pendingAttachments: PendingCodexImageBatch?
+    @State private var pendingAttachmentURL: URL?
+    @State private var uploadedImageCount = 0
+    @State private var uploadInterrupted = false
+    @State private var resumeUploadOnReconnect = false
     @State private var optimisticRequestID: String?
     @State private var optimisticFailed = false
+    @State private var optimisticUnconfirmed = false
+    @State private var optimisticHistoryIDs: Set<String> = []
 
     /// 以 `/` 开头且还没敲空格时，展示 skill 候选。
     private var slashQuery: String? {
@@ -10897,9 +11386,38 @@ private struct AgentChatView: View {
     }
     private var showsSlashMenu: Bool { slashQuery != nil }
 
+    private var approvals: [DSHRemoteApproval] {
+        controller.dshApprovals.filter { $0.agentID == agent.id && $0.sessionId == session.id }
+    }
+
+    private var attachmentDraftURL: URL? {
+        guard agent.id == "codex" else { return nil }
+        guard let deviceID = controller.isRemote ? RemoteCredentials.macID : controller.selected?.id else { return nil }
+        let key = SHA256.hash(data: Data("\(deviceID)\n\(session.id)".utf8))
+            .map { String(format: "%02x", $0) }.joined()
+        return URL.applicationSupportDirectory.appendingPathComponent("FlowCueUploadDrafts")
+            .appendingPathComponent(key + ".json")
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            if let loadError {
+            if controller.isConnecting {
+                Text(L10n.text("正在连接 Mac…"))
+                    .flowCueFont(11, relativeTo: .caption2)
+                    .foregroundStyle(FlowCueTheme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+            } else if !controller.isOnline {
+                FlowCueInlineBanner(
+                    kind: .warning,
+                    title: "Can’t reach your Mac.",
+                    actionTitle: "Reconnect",
+                    action: { Task { await controller.reconnect() } }
+                )
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
+            } else if let loadError {
                 FlowCueInlineBanner(
                     kind: .failure,
                     title: "Couldn't load conversation — \(loadError)",
@@ -10933,11 +11451,33 @@ private struct AgentChatView: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 10) {
+                        if hasOlderMessages, let first = messages.first?.id {
+                            Button("Load older messages") {
+                                Task {
+                                    await loadOlderMessages(before: first)
+                                    proxy.scrollTo(first, anchor: .top)
+                                }
+                            }
+                            .disabled(loadingOlderMessages)
+                        }
+                        if (controller.isConnecting || (controller.isOnline && loading)) && messages.isEmpty {
+                            ProgressView().frame(maxWidth: .infinity)
+                        }
                         ForEach(messages) { message in
                             bubble(message)
                         }
                         if let optimistic {
                             optimisticBubble(optimistic)
+                        }
+                        if controller.isOnline {
+                            ForEach(approvals) { approval in
+                                DSHApprovalCard(approval: approval) { decision in
+                                    let accepted = await controller.decideDSH(approval, decision: decision)
+                                    if !accepted {
+                                        sendError = controller.lastError
+                                    }
+                                }
+                            }
                         }
                         Color.clear.frame(height: 1).id("agent-chat-bottom")
                     }
@@ -10946,8 +11486,8 @@ private struct AgentChatView: View {
                 }
                 .defaultScrollAnchor(.bottom)
                 .onAppear { scrollAgentToBottom(proxy) }
-                .onChange(of: messages.count) { _, _ in
-                    scrollAgentToBottom(proxy)
+                .onChange(of: messages.last?.id) { _, _ in
+                    if isAtBottom { scrollAgentToBottom(proxy) }
                 }
                 .onChange(of: optimistic) { _, _ in
                     scrollAgentToBottom(proxy)
@@ -10995,13 +11535,82 @@ private struct AgentChatView: View {
         .background { FlowCueScreenBackground() }
         .navigationTitle(session.title.isEmpty ? agent.displayName : session.title)
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: optimisticUnconfirmed ? optimisticRequestID : nil) {
+            guard optimisticUnconfirmed, let id = optimisticRequestID else { return }
+            while !Task.isCancelled, optimisticUnconfirmed, optimisticRequestID == id {
+                let acknowledged: Bool
+                if let batchID = optimisticBatchID {
+                    acknowledged = await controller.queryCodexImageReceipt(sessionID: session.id, batchID: batchID)
+                } else {
+                    acknowledged = await RemoteTunnel.current()?.queryTestReceipt(requestID: id) == true
+                }
+                if acknowledged, !Task.isCancelled, optimisticRequestID == id {
+                    #if DEBUG
+                    if CodexImageDeviceProbe.sessionID == session.id {
+                        CodexImageDeviceProbe.log("submission acknowledged")
+                    }
+                    #endif
+                    optimisticUnconfirmed = false
+                    rememberAttachmentPhase(.acknowledged)
+                    return
+                }
+                try? await Task.sleep(for: .seconds(3))
+            }
+        }
+        .task(id: controller.isOnline) {
+            guard controller.isOnline, let url = attachmentDraftURL else { return }
+            if resumeUploadOnReconnect, pendingAttachmentURL == url, pendingAttachments?.phase == .uploading {
+                retryOptimistic()
+                return
+            }
+            guard optimistic == nil else { return }
+            do {
+                guard let draft = try PendingCodexImageBatch.load(from: url) else {
+                    #if DEBUG
+                    if CodexImageDeviceProbe.sessionID == session.id, CodexImageDeviceProbe.interrupt {
+                        let images = CodexImageDeviceProbe.images()
+                        guard images.count == 20 else { return }
+                        deliver("FlowCue Image QA: Read the four-character code in each of the 20 images. Return only the codes in order, separated by commas. Do not use tools.", images: images)
+                    }
+                    #endif
+                    return
+                }
+                #if DEBUG
+                if CodexImageDeviceProbe.sessionID == session.id {
+                    CodexImageDeviceProbe.log("restored \(draft.phase.rawValue)")
+                }
+                #endif
+                pendingAttachments = draft
+                pendingAttachmentURL = url
+                optimistic = draft.text
+                optimisticImages = draft.images
+                optimisticBatchID = draft.batchID
+                optimisticRequestID = draft.requestID
+                optimisticHistoryIDs = draft.historyIDs
+                switch draft.phase {
+                case .uploading: deliver(draft.text, images: draft.images, batchID: draft.batchID)
+                case .submitted: optimisticUnconfirmed = true
+                case .acknowledged: break
+                }
+            } catch {
+                sendError = "Couldn’t restore the image upload on this iPhone."
+            }
+        }
         .task {
             await load()
-            // 对齐 DSH 的 3 秒轮询：Codex/Claude 的 queue/send 只代表「已投递」，
-            // 会话文件写入有延迟；不轮询就会出现「桌面已收到、手机一直看不到」。
             while !Task.isCancelled {
-                activity = await controller.agentActivity(agentID: agent.id, sessionID: session.id)
-                await refreshMessages(afterCount: messages.count)
+                try? await Task.sleep(for: .seconds(3))
+                guard !Task.isCancelled else { break }
+                if controller.isOnline { await refreshMessages(afterID: messages.last?.id) }
+            }
+        }
+        .task(id: session.id) {
+            while !Task.isCancelled {
+                let current = controller.isOnline
+                    ? await controller.agentActivity(agentID: agent.id, sessionID: session.id)
+                    : nil
+                guard !Task.isCancelled else { break }
+                activity = current
                 try? await Task.sleep(for: .seconds(3))
             }
         }
@@ -11009,7 +11618,7 @@ private struct AgentChatView: View {
 
     @ViewBuilder
     private var activityBar: some View {
-        if let activity {
+        if controller.isOnline, let activity {
             HStack(spacing: 7) {
                 ProgressView().controlSize(.mini)
                 Text(activity)
@@ -11026,8 +11635,17 @@ private struct AgentChatView: View {
 
     @ViewBuilder
     private func bubble(_ message: RemoteAgentMessage) -> some View {
+        if let progress = message.progress {
+            AgentProgressRow(progress: progress)
+                .id(message.id)
+        } else {
+            messageBubble(message)
+        }
+    }
+
+    private func messageBubble(_ message: RemoteAgentMessage) -> some View {
         let isUser = message.role == "user"
-        HStack {
+        return HStack {
             if isUser { Spacer(minLength: 40) }
             Group {
                 if isUser {
@@ -11068,17 +11686,23 @@ private struct AgentChatView: View {
         HStack {
             Spacer(minLength: 40)
             VStack(alignment: .trailing, spacing: 5) {
+                if !optimisticImages.isEmpty {
+                    MessageImageGrid(images: optimisticImages.enumerated().map { index, data in
+                        RemoteMessageImage(id: String(index), mediaType: "image/jpeg", base64: data.base64EncodedString())
+                    })
+                }
                 Text(value)
                     .flowCueFont(13.5, relativeTo: .subheadline)
                     .foregroundStyle(FlowCueTheme.onAccent)
                     .textSelection(.enabled)
                 if optimisticFailed {
                     HStack(spacing: 8) {
-                        Label(L10n.text("发送失败"), systemImage: "exclamationmark.circle.fill")
+                        Label(uploadInterrupted ? "Upload interrupted" : L10n.text("发送失败"),
+                              systemImage: "exclamationmark.circle.fill")
                             .flowCueFont(10, relativeTo: .caption2, weight: .medium)
                             .foregroundStyle(FlowCueTheme.failure)
                         Button(action: retryOptimistic) {
-                            Label(L10n.text("重试"), systemImage: "arrow.clockwise")
+                            Label(uploadInterrupted ? "Resume upload" : L10n.text("重试"), systemImage: "arrow.clockwise")
                                 .flowCueFont(12, relativeTo: .caption, weight: .semibold)
                                 .foregroundStyle(FlowCueTheme.failure)
                                 .padding(.horizontal, 12)
@@ -11094,7 +11718,11 @@ private struct AgentChatView: View {
                 } else {
                     HStack(spacing: 5) {
                         ProgressView().controlSize(.mini).tint(FlowCueTheme.onAccent)
-                        Text(L10n.text("已发送，等待同步…"))
+                        Text(sending
+                             ? uploadedImageCount < optimisticImages.count
+                                ? "Uploaded \(uploadedImageCount)/\(optimisticImages.count)"
+                                : L10n.text("正在发送…")
+                             : L10n.text(optimisticUnconfirmed ? "待确认" : "已发送，等待同步…"))
                             .foregroundStyle(FlowCueTheme.onAccent.opacity(0.8))
                     }
                     .flowCueFont(10, relativeTo: .caption2)
@@ -11110,66 +11738,70 @@ private struct AgentChatView: View {
     }
 
     private var composer: some View {
-        HStack(spacing: 8) {
-            TextField("发消息…", text: $text, axis: .vertical)
-                .lineLimit(1...4)
-                .disabled(!agent.canSend)
-                .flowCueFont(13.5, relativeTo: .footnote)
-                .padding(.horizontal, 13)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: FlowCueTheme.radiusCapsule, style: .continuous)
-                        .fill(FlowCueTheme.surface)
-                )
-            Button {
-                let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !value.isEmpty, !sending else { return }
-                text = ""
-                deliver(value)
-            } label: {
-                Image(systemName: "arrow.up")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(FlowCueTheme.onAccent)
-                    .frame(width: 44, height: 44)
-                    .background(Circle().fill(FlowCueTheme.accent))
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("发送")
-            .accessibilityIdentifier("agent-send")
-            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || sending || !agent.canSend)
+        ChatComposer(
+            text: $text, sending: sending || optimistic != nil || !controller.isOnline,
+            imageLimit: agent.id == "codex" ? RemoteCodexImageMessage.batchMaxImages : 0,
+            imageByteLimit: RemoteCodexImageMessage.maxImageBytes,
+            editable: agent.canSend, sendIdentifier: "agent-send"
+        ) { images in
+            let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            text = ""
+            deliver(value, images: images)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(FlowCueTheme.canvas)
     }
 
     private func load() async {
         loading = true
-        await refreshMessages()
-        controller.loadCachedSkills()
-        await controller.refreshSkills()
+        if controller.isOnline { await refreshMessages(afterID: messages.last?.id) }
         loading = false
+        controller.loadCachedSkills()
         UserDefaults.standard.set(session.id, forKey: "FlowCue.agentLast.\(agent.id)")
     }
 
     /// 拉一次消息；如果本地待同步消息已经出现在会话里，就撤掉乐观气泡。
-    private func refreshMessages(afterCount: Int = 0) async {
+    private func refreshMessages(afterID: String? = nil) async {
+        guard !refreshingMessages else { return }
+        refreshingMessages = true
+        defer { refreshingMessages = false }
         do {
-            let fetched = try await controller.agentMessages(
-                agentID: agent.id,
-                sessionID: session.id,
-                after: afterCount
+            let page = try await controller.agentMessagePage(
+                agentID: agent.id, sessionID: session.id, afterID: afterID
             )
-            if afterCount > 0 {
-                if !fetched.isEmpty { messages.append(contentsOf: fetched) }
+            guard !Task.isCancelled else { return }
+            if page.replacesHistory {
+                messages = page.messages
+                hasOlderMessages = page.hasOlder
             } else {
-                messages = fetched
+                if let updates = page.progressUpdates {
+                    let byID = Dictionary(updates.map { ($0.id, $0) }, uniquingKeysWith: { _, latest in latest })
+                    messages = messages.map { byID[$0.id] ?? $0 }
+                }
+                var seen = Set(messages.map(\.id))
+                messages.append(contentsOf: page.messages.filter { seen.insert($0.id).inserted })
             }
             loadError = nil
-            if let optimistic, Self.containsUserMessage(optimistic, in: messages) {
+            if let optimistic,
+               optimisticImages.isEmpty || pendingAttachments?.phase == .submitted || pendingAttachments?.phase == .acknowledged,
+               Self.containsUserMessage(optimistic, in: messages.filter { !optimisticHistoryIDs.contains($0.id) }) {
+                if pendingAttachments != nil, let url = pendingAttachmentURL {
+                    guard attachmentDraftURL == url else { return }
+                    do { try FileManager.default.removeItem(at: url) }
+                    catch CocoaError.fileNoSuchFile {}
+                    catch {
+                        sendError = "Couldn’t clear the completed image upload."
+                        return
+                    }
+                }
+                pendingAttachments = nil
+                pendingAttachmentURL = nil
                 self.optimistic = nil
+                self.optimisticImages = []
+                self.optimisticBatchID = nil
                 self.optimisticRequestID = nil
                 optimisticFailed = false
+                optimisticUnconfirmed = false
             }
         } catch {
             // 已有消息时不要把整页打成错误，只在顶部显示原因。
@@ -11179,39 +11811,123 @@ private struct AgentChatView: View {
         }
     }
 
-    private func retryOptimistic() {
-        guard let value = optimistic, let requestID = optimisticRequestID else { return }
-        sendError = nil
-        deliver(value, requestID: requestID)
+    private func loadOlderMessages(before id: String) async {
+        guard !loadingOlderMessages else { return }
+        loadingOlderMessages = true
+        defer { loadingOlderMessages = false }
+        do {
+            let page = try await controller.agentMessagePage(agentID: agent.id, sessionID: session.id, beforeID: id)
+            guard !Task.isCancelled, messages.first?.id == id, !page.replacesHistory else { return }
+            var seen = Set(messages.map(\.id))
+            messages.insert(contentsOf: page.messages.filter { seen.insert($0.id).inserted }, at: 0)
+            hasOlderMessages = page.hasOlder
+            loadError = nil
+        } catch {
+            if !Task.isCancelled { loadError = LANRemoteController.connectionMessage(for: error) }
+        }
     }
 
-    private func deliver(_ value: String, requestID: String? = nil) {
+    private func retryOptimistic() {
+        guard optimisticFailed, controller.isOnline, let value = optimistic else { return }
+        sendError = nil
+        deliver(value, images: optimisticImages, batchID: optimisticBatchID)
+    }
+
+    private func rememberAttachmentPhase(_ phase: PendingCodexImageBatch.Phase) {
+        guard var draft = pendingAttachments, let url = pendingAttachmentURL else { return }
+        draft.phase = phase
+        do {
+            try draft.save(to: url)
+            pendingAttachments = draft
+        } catch {
+            sendError = "Couldn’t save the image upload state."
+        }
+    }
+
+    private func deliver(_ value: String, images: [Data], batchID: String? = nil) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !sending else { return }
-        let stableID = requestID ?? UUID().uuidString
+        guard (!trimmed.isEmpty || !images.isEmpty), !sending else { return }
+        let requestText = trimmed.isEmpty ? RemoteCodexImageMessage.imageOnlyText : trimmed
+        let stableID = UUID().uuidString
         optimisticRequestID = stableID
-        optimistic = trimmed
+        let uploadID = images.isEmpty ? nil : batchID ?? stableID
+        optimisticBatchID = uploadID
+        if batchID == nil { uploadedImageCount = 0 }
+        uploadInterrupted = false
+        resumeUploadOnReconnect = false
+        optimistic = requestText
+        optimisticImages = images
         optimisticFailed = false
+        optimisticUnconfirmed = false
+        if batchID == nil { optimisticHistoryIDs = Set(messages.map(\.id)) }
         sendError = nil
         sending = true
         Task {
-            let ok = await controller.sendAgent(
-                agentID: agent.id,
-                sessionID: session.id,
-                text: trimmed,
-                requestID: stableID
-            )
-            sending = false
-            if ok {
+            defer { sending = false }
+            do {
+                let draftURL = attachmentDraftURL
+                if let uploadID {
+                    guard let draftURL else { throw CodexImageUploadError(detail: "Couldn’t identify the paired Mac.") }
+                    let draft = PendingCodexImageBatch(batchID: uploadID, requestID: stableID, text: requestText,
+                                                      images: images, historyIDs: optimisticHistoryIDs)
+                    do { try draft.save(to: draftURL) }
+                    catch { throw CodexImageUploadError(detail: "Couldn’t save the image upload on this iPhone.") }
+                    pendingAttachments = draft
+                    pendingAttachmentURL = draftURL
+                }
+                try await controller.sendAgent(
+                    agentID: agent.id,
+                    sessionID: session.id,
+                    text: requestText,
+                    images: images,
+                    requestID: stableID,
+                    batchID: uploadID,
+                    beforeSubmit: {
+                        guard var draft = pendingAttachments, let draftURL,
+                              attachmentDraftURL == draftURL else { throw CocoaError(.fileWriteUnknown) }
+                        draft.phase = .submitted
+                        try draft.save(to: draftURL)
+                        pendingAttachments = draft
+                    },
+                    onUpload: { count in
+                        uploadedImageCount = count
+                        #if DEBUG
+                        if CodexImageDeviceProbe.sessionID == session.id {
+                            CodexImageDeviceProbe.log("uploaded \(count)/\(images.count)")
+                            if CodexImageDeviceProbe.interrupt, count == 10 { exit(0) }
+                        }
+                        #endif
+                    }
+                )
+                #if DEBUG
+                if CodexImageDeviceProbe.sessionID == session.id {
+                    CodexImageDeviceProbe.log("submission acknowledged")
+                }
+                #endif
                 loadError = nil
                 sendError = nil
-                await refreshMessages()
-            } else {
-                optimisticFailed = true
-                if agent.id == "claude" {
-                    sendError = L10n.text("Claude Code 发送失败。若测试机未登录，请在 Mac 终端运行 claude auth login。")
+                if optimisticRequestID == stableID { rememberAttachmentPhase(.acknowledged) }
+                await refreshMessages(afterID: messages.last?.id)
+            } catch {
+                guard optimisticRequestID == stableID else { return }
+                if let error = error as? CodexImageUploadError {
+                    optimisticFailed = true
+                    uploadInterrupted = true
+                    resumeUploadOnReconnect = error.resumeOnReconnect
+                    sendError = error.detail
+                    return
+                }
+                if let link = error as? RemoteLinkError,
+                   case .responseRejected(let status) = link,
+                   [400, 401, 403, 404, 405, 413, 415, 422, 423, 424].contains(status) {
+                    optimisticFailed = true
+                    uploadInterrupted = status == 424
+                    sendError = status == 423 && uploadID != nil
+                        ? L10n.text("Codex 正在运行。请等当前回复结束后重试。")
+                        : LANRemoteController.connectionMessage(for: error)
+                    rememberAttachmentPhase(.uploading)
                 } else {
-                    sendError = controller.lastError ?? L10n.text("发送失败。")
+                    optimisticUnconfirmed = true
                 }
             }
         }
@@ -11229,6 +11945,47 @@ private struct AgentChatView: View {
             // 被误判成已同步，乐观气泡随即消失。
             return body == target || body.contains(target)
         }
+    }
+}
+
+private struct AgentProgressRow: View {
+    let progress: AgentProgress
+
+    private var title: String {
+        if let title = progress.title { return title }
+        switch progress.kind {
+        case .step: return L10n.text("执行步骤")
+        case .command: return L10n.text("运行命令")
+        case .edit: return L10n.text("更新文件")
+        case .tool: return L10n.text("调用工具")
+        case .plan: return L10n.text("更新计划")
+        }
+    }
+
+    private var stateLabel: String {
+        switch progress.state {
+        case .inProgress: L10n.text("进行中")
+        case .completed: L10n.text("已完成")
+        case .failed: L10n.text("执行失败")
+        case .declined: L10n.text("已拒绝")
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 7) {
+            if progress.state == .inProgress {
+                ProgressView().controlSize(.mini).accessibilityHidden(true)
+            } else {
+                Image(systemName: progress.state == .completed ? "checkmark.circle" : "exclamationmark.circle")
+                    .accessibilityHidden(true)
+            }
+            Text("\(title) · \(stateLabel)")
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .flowCueFont(11, relativeTo: .caption2)
+        .foregroundStyle(FlowCueTheme.textSecondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
     }
 }
 
@@ -11461,6 +12218,29 @@ final class RemoteTunnel {
     /// 每个 request 单独起 Task 发送会被调度器乱序，Mac 的单调 seq 检查
     /// 会把后到的低 seq 当 replay 丢掉。
     private var sendChain: Task<Void, Never>?
+    private var testHTTPSubmitChain: Task<(Data, Int), Error>?
+    private var testHTTPActive = false
+    #if DEBUG
+    fileprivate var isTestChatTransportConnected: Bool {
+        testHTTPActive || (cloudKitMailbox != nil && state == .online)
+    }
+    #endif
+    private var cloudKitMailbox: CloudKitChatMailbox?
+    private var cloudKitSubmitChain: Task<Void, Error>?
+    private var cloudKitCanFallBack = false
+    private var testWebSocketIDs = Set<String>()
+    private var testHTTPIDs = Set<String>()
+    private var testHTTPS: (url: URL, token: String)? {
+        #if DEBUG
+        let env = ProcessInfo.processInfo.environment
+        guard let address = env["FLOWCUE_TEST_HTTPS_URL"], let url = URL(string: address),
+              url.scheme == "https", url.host != nil,
+              let token = env["FLOWCUE_TEST_HTTPS_PHONE_TOKEN"], !token.isEmpty else { return nil }
+        return (url, token)
+        #else
+        return nil
+        #endif
+    }
     private var offlineSince: Date?
     private var connectingSince: Date?
 
@@ -11471,6 +12251,14 @@ final class RemoteTunnel {
         self.pairToken = pairToken
         self.macID = macID
         self.session = session
+        cloudKitMailbox = CloudKitChatMailbox.configured(for: macID)
+        cloudKitCanFallBack = cloudKitMailbox != nil
+        #if DEBUG
+        if let testMailbox = CloudKitChatMailbox() {
+            cloudKitMailbox = testMailbox
+            cloudKitCanFallBack = false
+        }
+        #endif
         stopped = false
         reconnectAttempt = 0
         openSocket()
@@ -11480,6 +12268,7 @@ final class RemoteTunnel {
     /// 用户点 Reconnect：不等退避，立刻重开一次。
     func reconnectNow() {
         guard !stopped else { return }
+        if testHTTPActive { return }
         reconnectTask?.cancel()
         reconnectTask = nil
         reconnectAttempt = 0
@@ -11506,6 +12295,12 @@ final class RemoteTunnel {
 
     func disconnect() {
         stopped = true
+        cloudKitSubmitChain?.cancel()
+        cloudKitSubmitChain = nil
+        cloudKitMailbox = nil
+        testHTTPActive = false
+        testHTTPSubmitChain?.cancel()
+        testHTTPSubmitChain = nil
         generation += 1
         reconnectTask?.cancel(); reconnectTask = nil
         watchdogTask?.cancel(); watchdogTask = nil
@@ -11521,11 +12316,18 @@ final class RemoteTunnel {
 
     // MARK: 建立连接
 
-    private func openSocket() {
+    private func openSocket(preferCloudKit: Bool = true) {
+        testHTTPActive = false
+        testHTTPSubmitChain?.cancel()
+        testHTTPSubmitChain = nil
         reconnectTask?.cancel(); reconnectTask = nil
         handshakeTask?.cancel(); handshakeTask = nil
         pingTask?.cancel(); pingTask = nil
         failPending(RemoteLinkError.offline(L10n.text("连接已断开。")))
+        if preferCloudKit, let mailbox = cloudKitMailbox {
+            openCloudKitChat(mailbox)
+            return
+        }
 
         guard !stopped, let relayURL else { return }
         guard var components = URLComponents(url: relayURL, resolvingAgainstBaseURL: false) else { return }
@@ -11559,10 +12361,14 @@ final class RemoteTunnel {
         // 新中继连上后会立刻发一帧 mac/online|mac/offline，收到帧就算就绪；
         // 旧中继不发问候帧，所以 12 秒后仍未就绪再 ping 一次确认。
         handshakeTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(12))
+            try? await Task.sleep(for: .seconds(self?.testHTTPS == nil ? 12 : 5))
             guard let self, !Task.isCancelled, gen == self.generation,
                   !self.transportReady, !self.stopped else { return }
-            self.ping()
+            if self.testHTTPS == nil {
+                self.ping()
+            } else {
+                self.handleTransportFailure(L10n.text("连接超时。"))
+            }
         }
     }
 
@@ -11621,6 +12427,26 @@ final class RemoteTunnel {
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
         failPending(RemoteLinkError.offline(reason))
+        if let mailbox = testHTTPS {
+            let gen = generation
+            state = .connecting
+            handshakeTask = Task { [weak self] in
+                guard let self else { return }
+                let probe = RemoteRequest(id: UUID().uuidString, method: "GET", path: "/v1/ping", headers: [:], body: nil)
+                let result = try? await self.testHTTPRequest(probe, mailbox: mailbox, timeout: 18, freshID: true)
+                guard !Task.isCancelled, gen == self.generation, !self.stopped else { return }
+                self.handshakeTask = nil
+                if let data = result, let payload = try? JSONDecoder().decode([String: String].self, from: data),
+                   payload["name"] == "FlowCue" {
+                    self.testHTTPActive = true
+                    self.state = .online
+                } else {
+                    self.state = .offline(reason: reason)
+                    self.scheduleReconnect()
+                }
+            }
+            return
+        }
         state = .offline(reason: reason)
         scheduleReconnect()
     }
@@ -11663,6 +12489,23 @@ final class RemoteTunnel {
     }
 
     private func ping() {
+        if let mailbox = cloudKitMailbox, task == nil, state.isOnline, !stopped {
+            guard pingTask == nil else { return }
+            let gen = generation
+            pingTask = Task { [weak self] in
+                guard let self else { return }
+                defer { if gen == self.generation { self.pingTask = nil } }
+                let ping = RemoteRequest(id: UUID().uuidString, method: "GET", path: "/v1/ping", headers: [:], body: nil)
+                do {
+                    _ = try await self.cloudKitRequest(ping, mailbox: mailbox, timeout: 15)
+                } catch {
+                    guard !Task.isCancelled, gen == self.generation, !self.stopped else { return }
+                    self.log("CloudKit health check failed; reconnecting")
+                    self.openSocket()
+                }
+            }
+            return
+        }
         guard let socket = task, !stopped else { return }
         pingTask?.cancel()
         pingTask = nil
@@ -11793,6 +12636,10 @@ final class RemoteTunnel {
     }
 
     private func resolve(_ response: RemoteResponse) {
+        if response.status >= 400 {
+            pending.removeValue(forKey: response.id)?.resume(throwing: RemoteLinkError.responseRejected(response.status))
+            return
+        }
         let body: Data
         if response.encoding == "zlib" {
             guard let raw = response.body,
@@ -11813,10 +12660,19 @@ final class RemoteTunnel {
         guard state.isOnline else {
             throw RemoteLinkError.offline(state.reason ?? L10n.text("Mac 不在线。"))
         }
+        let request = RemoteRequest(id: requestID ?? UUID().uuidString, method: method, path: path, headers: headers, body: body)
+        if let mailbox = cloudKitMailbox, task == nil {
+            return try await cloudKitRequest(request, mailbox: mailbox, timeout: timeout ?? (method == "POST" ? 90 : 20))
+        }
+        let id = request.id.lowercased()
+        if testHTTPActive || testHTTPIDs.contains(id) || testWebSocketIDs.contains(id), let mailbox = testHTTPS {
+            return try await testHTTPRequest(
+                request, mailbox: mailbox, timeout: timeout ?? (method == "POST" ? 90 : 20), freshID: requestID == nil
+            )
+        }
         guard let socket = task, var session else {
             throw RemoteLinkError.notReady
         }
-        let request = RemoteRequest(id: requestID ?? UUID().uuidString, method: method, path: path, headers: headers, body: body)
         let encoded = try JSONEncoder().encode(request)
         let envelope = try session.seal(encoded)
         self.session = session
@@ -11833,6 +12689,7 @@ final class RemoteTunnel {
             sendChain = Task { @MainActor [weak self] in
                 _ = await previous?.value
                 guard let self, !self.stopped, gen == self.generation else { return }
+                if self.testHTTPS != nil { self.testWebSocketIDs.insert(request.id.lowercased()) }
                 do {
                     try await socket.send(.data(frame))
                 } catch {
@@ -11845,6 +12702,211 @@ final class RemoteTunnel {
                 waiting.resume(throwing: RemoteLinkError.timeout)
             }
         }
+    }
+
+    func queryTestReceipt(requestID: String) async -> Bool {
+        if let mailbox = cloudKitMailbox, !stopped, let id = UUID(uuidString: requestID) {
+            if (try? await cloudKitReceipt(id, mailbox: mailbox)) != nil { return true }
+        }
+        guard !stopped, testHTTPActive, testHTTPIDs.contains(requestID.lowercased()), let mailbox = testHTTPS else {
+            return false
+        }
+        let request = RemoteRequest(id: requestID, method: "GET", path: "", headers: [:], body: nil)
+        return (try? await testHTTPRequest(request, mailbox: mailbox, timeout: 5, queryOnly: true)) != nil
+    }
+
+    private func openCloudKitChat(_ mailbox: CloudKitChatMailbox) {
+        generation += 1
+        let gen = generation
+        cloudKitSubmitChain?.cancel()
+        cloudKitSubmitChain = nil
+        task?.cancel(with: .goingAway, reason: nil)
+        task = nil
+        connectingSince = Date()
+        state = .connecting
+        handshakeTask = Task { [weak self] in
+            guard let self else { return }
+            let ping = RemoteRequest(id: UUID().uuidString, method: "GET", path: "/v1/ping", headers: [:], body: nil)
+            do {
+                try await mailbox.waitForZone()
+                _ = try await self.cloudKitRequest(ping, mailbox: mailbox, timeout: 28)
+                guard !Task.isCancelled, gen == self.generation, !self.stopped else { return }
+                self.log("CloudKit paired Mac confirmed")
+                self.connectingSince = nil
+                self.reconnectAttempt = 0
+                self.state = .online
+            } catch {
+                guard !Task.isCancelled, gen == self.generation, !self.stopped else { return }
+                let failure = error as NSError
+                self.log("CloudKit handshake failed (\(failure.domain) \(failure.code))")
+                if self.cloudKitCanFallBack {
+                    self.openSocket(preferCloudKit: false)
+                    return
+                }
+                self.state = .offline(reason: L10n.text("无法连接这台 Mac。"))
+                self.scheduleReconnect()
+            }
+        }
+    }
+
+    private func cloudKitRequest(_ request: RemoteRequest, mailbox: CloudKitChatMailbox, timeout: TimeInterval) async throws -> Data {
+        guard let id = UUID(uuidString: request.id) else { throw RemoteLinkError.notReady }
+        let gen = generation
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(timeout)
+        let previous = cloudKitSubmitChain
+        let submission = Task { @MainActor in
+            _ = await previous?.result
+            try Task.checkCancellation()
+            guard gen == self.generation, !self.stopped else { throw CancellationError() }
+            guard clock.now < deadline else { throw RemoteLinkError.timeout }
+            guard try await mailbox.read(.request, id: id) == nil else { return }
+            guard gen == self.generation, !self.stopped, var cryptoSession = self.session else {
+                throw CancellationError()
+            }
+            let envelope = try cryptoSession.seal(JSONEncoder().encode(request))
+            let frame = try JSONEncoder().encode(envelope)
+            self.session = cryptoSession
+            // An uncertain upload is followed by reads only.
+            _ = try? await mailbox.create(.request, id: id, payload: frame)
+        }
+        cloudKitSubmitChain = submission
+        try await withTaskCancellationHandler {
+            try await submission.value
+        } onCancel: {
+            submission.cancel()
+        }
+        while clock.now < deadline {
+            try Task.checkCancellation()
+            guard gen == generation, !stopped else { throw CancellationError() }
+            if let receipt = try await cloudKitReceipt(id, mailbox: mailbox) { return receipt }
+            try await Task.sleep(for: .seconds(1))
+        }
+        throw RemoteLinkError.timeout
+    }
+
+    private func cloudKitReceipt(_ id: UUID, mailbox: CloudKitChatMailbox) async throws -> Data? {
+        let gen = generation
+        guard let frame = try await mailbox.read(.receipt, id: id) else { return nil }
+        guard gen == generation, !stopped, let cryptoSession = session else { throw CancellationError() }
+        let envelope = try JSONDecoder().decode(RemoteEnvelope.self, from: frame)
+        let encoded = try cryptoSession.decryptReceipt(envelope)
+        let response = try JSONDecoder().decode(RemoteResponse.self, from: encoded)
+        guard UUID(uuidString: response.id) == id else { throw RemoteLinkError.notReady }
+        guard response.status < 400 else { throw RemoteLinkError.responseRejected(response.status) }
+        if response.encoding == "zlib", let body = response.body {
+            return try (body as NSData).decompressed(using: .zlib) as Data
+        }
+        return response.body ?? Data()
+    }
+    private func testHTTPRequest(
+        _ request: RemoteRequest, mailbox: (url: URL, token: String), timeout: TimeInterval,
+        queryOnly: Bool = false, freshID: Bool = false
+    ) async throws -> Data {
+        let id = request.id.lowercased()
+        guard UUID(uuidString: id) != nil else { throw RemoteLinkError.notReady }
+        let gen = generation
+        let clock = ContinuousClock()
+        let deadline = clock.now + .seconds(timeout)
+
+        func fetch(_ operation: String, body: Data? = nil) async throws -> (Data, Int) {
+            try Task.checkCancellation()
+            guard gen == generation else { throw CancellationError() }
+            var http = URLRequest(url: mailbox.url.appendingPathComponent("prototype/\(operation)/\(id)"))
+            http.httpMethod = body == nil ? "GET" : "POST"
+            http.httpBody = body
+            http.timeoutInterval = 5
+            #if DEBUG
+            http.assumesHTTP3Capable = true
+            #endif
+            http.setValue("Bearer \(mailbox.token)", forHTTPHeaderField: "Authorization")
+            let data: Data
+            let response: URLResponse
+            do {
+                #if DEBUG
+                (data, response) = try await URLSession.shared.data(for: http, delegate: NativeRelayProbe.Metrics("mailbox-\(operation)"))
+                #else
+                (data, response) = try await URLSession.shared.data(for: http)
+                #endif
+            } catch {
+                if let error = error as? URLError {
+                    log("test HTTPS \(operation) transport code=\(error.code.rawValue)")
+                }
+                throw error
+            }
+            guard gen == generation, let response = response as? HTTPURLResponse else { throw CancellationError() }
+            log("test HTTPS \(operation) status=\(response.statusCode)")
+            return (data, response.statusCode)
+        }
+
+        func submitIfNeeded() async throws -> (Data, Int) {
+            try Task.checkCancellation()
+            guard !stopped, gen == generation else { throw CancellationError() }
+            guard clock.now < deadline else { throw RemoteLinkError.timeout }
+            guard !testWebSocketIDs.contains(id), !testHTTPIDs.contains(id) else {
+                return try await fetch("result")
+            }
+            if !freshID {
+                let existing = try await fetch("result")
+                guard existing.1 == 404 else { return existing }
+            }
+            guard var cryptoSession = session else { throw RemoteLinkError.notReady }
+            let envelope = try cryptoSession.seal(JSONEncoder().encode(request))
+            let ciphertext = try JSONEncoder().encode(envelope)
+            guard ciphertext.count <= 256 * 1024 else { throw RemoteLinkError.notReady }
+            session = cryptoSession
+            // Once POST starts, only query the original ID, even if its HTTP response is lost.
+            testHTTPIDs.insert(id)
+            if let accepted = try? await fetch("submit", body: ciphertext), ![200, 202].contains(accepted.1) {
+                throw RemoteLinkError.notReady
+            }
+            return (Data(), 202)
+        }
+
+        var result: (Data, Int)
+        if queryOnly {
+            result = try await fetch("result")
+        } else {
+            // Only seal and submit in order. Receipt reads do not change the
+            // sending sequence and must never hold up the next request.
+            let previous = testHTTPSubmitChain
+            let submission = Task { @MainActor in
+                _ = await previous?.result
+                return try await submitIfNeeded()
+            }
+            testHTTPSubmitChain = submission
+            result = try await withTaskCancellationHandler {
+                try await submission.value
+            } onCancel: {
+                submission.cancel()
+            }
+        }
+        while clock.now < deadline {
+            switch result.1 {
+            case 200:
+                guard let cryptoSession = session else { throw RemoteLinkError.notReady }
+                let envelope = try JSONDecoder().decode(RemoteEnvelope.self, from: result.0)
+                // Mailbox responses are immutable and bound to the request ID
+                // inside the ciphertext. A later history response can arrive
+                // before this receipt, so leave the WebSocket sequence alone.
+                let data = try cryptoSession.decryptReceipt(envelope)
+                let response = try JSONDecoder().decode(RemoteResponse.self, from: data)
+                guard response.id.lowercased() == id else { throw RemoteLinkError.notReady }
+                guard response.status < 400 else { throw RemoteLinkError.responseRejected(response.status) }
+                print("FlowCue Debug HTTPS: authenticated receipt")
+                if response.encoding == "zlib", let body = response.body {
+                    return try (body as NSData).decompressed(using: .zlib) as Data
+                }
+                return response.body ?? Data()
+            case 202, 404:
+                if queryOnly { throw RemoteLinkError.timeout }
+                try await Task.sleep(for: .milliseconds(700))
+                if let next = try? await fetch("result") { result = next }
+            default:
+                throw RemoteLinkError.notReady
+            }
+        }
+        throw RemoteLinkError.timeout
     }
 
     private func failPending(_ error: Error) {
@@ -11970,8 +13032,16 @@ struct RemoteCryptoSession {
         } else if envelope.epoch == nil, envelope.seq == 1, lastReceivedSeq > 1 {
             lastReceivedSeq = 0
         }
-        guard envelope.seq > lastReceivedSeq,
-              envelope.ciphertext.count > 16 else {
+        guard envelope.seq > lastReceivedSeq else {
+            throw URLError(.badServerResponse)
+        }
+        let plaintext = try decryptReceipt(envelope)
+        lastReceivedSeq = envelope.seq
+        return plaintext
+    }
+
+    fileprivate func decryptReceipt(_ envelope: RemoteEnvelope) throws -> Data {
+        guard envelope.pair == pairID, envelope.ciphertext.count > 16 else {
             throw URLError(.badServerResponse)
         }
         let nonce = try ChaChaPoly.Nonce(data: envelope.nonce)
@@ -11980,9 +13050,7 @@ struct RemoteCryptoSession {
             ciphertext: envelope.ciphertext.dropLast(16),
             tag: envelope.ciphertext.suffix(16)
         )
-        let plaintext = try ChaChaPoly.open(box, using: receiveKey)
-        lastReceivedSeq = envelope.seq
-        return plaintext
+        return try ChaChaPoly.open(box, using: receiveKey)
     }
 }
 
