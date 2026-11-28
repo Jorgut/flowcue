@@ -11328,6 +11328,11 @@ private enum CodexImageDeviceProbe {
         ProcessInfo.processInfo.environment["FLOWCUE_QA_IMAGE_STAGE"] == "interrupt"
     }
 
+    /// 直接按「离线点发送」走一遍：不等链路就绪，验证批次先落盘、重连后自动续传。
+    static var offlineFirst: Bool {
+        ProcessInfo.processInfo.environment["FLOWCUE_QA_IMAGE_STAGE"] == "offline"
+    }
+
     static let labels = ["K7VQ", "B3NT", "H9RS", "X4CJ", "M8PD", "T2LF", "A6WZ", "F5GK", "U3BY", "D7MN",
                          "P4XA", "W6RH", "V2SF", "N9TG", "Z5KU", "C8JV", "G4LD", "Y7EP", "R3HQ", "J6BC"]
 
@@ -11598,6 +11603,15 @@ private struct AgentChatView: View {
             } catch {
                 sendError = "Couldn’t restore the image upload on this iPhone."
             }
+        }
+        .task(id: "qa-offline-delivery") {
+            #if DEBUG
+            guard CodexImageDeviceProbe.offlineFirst, CodexImageDeviceProbe.sessionID == session.id else { return }
+            let images = CodexImageDeviceProbe.images()
+            guard images.count == 20 else { return }
+            CodexImageDeviceProbe.log("offline deliver \(images.count)")
+            deliver("FlowCue Image QA: Read the four-character code in each of the 20 images. Return only the codes in order, separated by commas. Do not use tools.", images: images)
+            #endif
         }
         .task {
             await load()
@@ -11904,6 +11918,11 @@ private struct AgentChatView: View {
                         uploadInterrupted = true
                         resumeUploadOnReconnect = true
                         waitingForNetwork = true
+                        #if DEBUG
+                        if CodexImageDeviceProbe.sessionID == session.id {
+                            CodexImageDeviceProbe.log("offline saved \(images.count)")
+                        }
+                        #endif
                         return
                     }
                 }
