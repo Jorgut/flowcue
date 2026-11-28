@@ -45,6 +45,28 @@ git config core.hooksPath .githooks
   git switch -c <branch> backup/<branch>
   ```
 
+## 不在私有仓迭代
+
+私有仓是单向镜像：`本地 → backup`。**不要**在它上面开分支、改代码或提交——否则同一个分支会出现两份真相，之后没人说得清哪边对。
+
+所有迭代都在本地工作副本进行，私有分支也一样；结束时 `zsh Scripts/mirror-backup.sh` 同步一次即可。
+
+需要另一台机器或另一个 agent 在私有分支上干活时，才临时把 backup 当协作远端：
+
+```bash
+git clone https://github.com/Jorgut/flowcue-backup.git     # 或在已有仓库里
+git fetch backup 'refs/heads/*:refs/remotes/backup/*'
+git switch -c <branch> backup/<branch>
+# 干完推回 backup，原机器再 fetch 合并
+git push backup <branch>
+```
+
+规则只有一条：**每条分支只在一个地方推进**，两边不要同时提交。
+
+## 敏感项不要进公开仓
+
+公开仓只放产品代码和可公开的设计文档。设备 UDID、issuer ID、密钥与描述文件路径、未发布的商业策略，放本地 `PROJECT_STATE.md`（不入库）或私有仓，不要写进 `docs/`。
+
 ## 仍然适用
 
 - 设计、宣发、历史发布包放在 `../FlowCue-Assets`，**不入库**（公开与私有都不进）。
