@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><style>
+:root{--canvas:#101014;--surface:#181820;--raised:#1B1B20;--border:#24242E;
+--text:#F2F2F5;--secondary:#9A9AA8;--tertiary:#6E6E7C;--accent:#7E84FF;
+--ok:#5CD9B8;--warn:#F0B429;--bad:#FF6B6B;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#08080A;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;padding:48px;width:1660px}
+h1{font-size:24px;font-weight:650;letter-spacing:-.3px}
+.sub{color:var(--secondary);font-size:13px;margin-top:6px}
+.row{display:flex;gap:40px;margin-top:36px;align-items:flex-start}
+.phone{width:372px;height:790px;border-radius:48px;background:var(--canvas);border:1px solid #22222A;
+position:relative;overflow:hidden;box-shadow:0 26px 70px rgba(0,0,0,.55),inset 0 0 0 5px #0A0A0C}
+.notch{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:104px;height:28px;border-radius:15px;background:#000;z-index:5}
+.screen{padding:66px 20px 26px;height:100%;display:flex;flex-direction:column;position:relative}
+.nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px}
+.back{width:36px;height:36px;border-radius:18px;background:var(--surface);border:1px solid var(--border);display:grid;place-items:center;font-size:16px}
+.nav-title{font-size:16px;font-weight:600}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:16px}
+.dcard{display:flex;align-items:center;gap:12px}
+.avatar{width:40px;height:40px;border-radius:12px;background:#1E1E28;border:1px solid var(--border);display:grid;place-items:center;font-size:18px}
+.t{font-size:14.5px;font-weight:600}
+.s{font-size:11.5px;color:var(--tertiary);margin-top:3px}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:650;padding:4px 9px;border-radius:999px;margin-left:auto}
+.dot{width:6px;height:6px;border-radius:3px}
+.label{font-size:10.5px;font-weight:650;letter-spacing:.9px;color:var(--tertiary);text-transform:uppercase;margin:22px 0 9px}
+.list{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:4px 16px}
+.row-item{display:flex;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--border)}
+.row-item:last-child{border-bottom:none}
+.banner{display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border-radius:14px;font-size:12px;line-height:1.45}
+.btn{height:48px;border-radius:24px;display:grid;place-items:center;font-size:14.5px;font-weight:650;margin-top:14px}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.ghost{background:var(--surface);border:1px solid var(--border);color:var(--text)}
+.btn.dim{background:var(--surface);border:1px solid var(--border);color:var(--tertiary)}
+.legend{margin-top:26px;display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.leg{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px}
+.leg b{display:block;font-size:12.5px;margin-bottom:4px}
+.leg span{font-size:11px;color:var(--tertiary);line-height:1.45}
+.mac{width:1100px;margin:54px auto 0;border-radius:14px;background:#161619;border:1px solid #26262E;overflow:hidden;box-shadow:0 34px 80px rgba(0,0,0,.6)}
+.mbar{height:34px;display:flex;align-items:center;gap:7px;padding:0 12px;background:#1C1C21;border-bottom:1px solid #26262E}
+.dr{width:10px;height:10px;border-radius:5px}
+.mbody{display:flex;min-height:430px}
+.mside{width:190px;padding:16px 12px;border-right:1px solid #23232B;background:#141417}
+.mi{padding:7px 10px;border-radius:7px;font-size:12px;color:var(--secondary);margin-bottom:2px}
+.mi.on{background:#22222A;color:var(--text)}
+.mmain{flex:1;padding:22px 26px}
+.qr{width:150px;height:150px;background:#fff;border-radius:10px;padding:8px;position:relative}
+.qr i{position:absolute;width:26px;height:26px;border:5px solid #000;background:#fff}
+.qr i::after{content:"";position:absolute;inset:4px;background:#000}
+.find1{left:8px;top:8px}.find2{right:8px;top:8px}.find3{left:8px;bottom:8px}
+.code{font-family:ui-monospace,Menlo,monospace;font-size:24px;letter-spacing:7px;font-weight:600}
+.note{font-size:11.5px;color:var(--secondary);line-height:1.6}
+</style></head><body>
+<h1>FlowCue Remote — 连接状态与配对界面</h1>
+<div class="sub">视觉稿 v2 ｜ 目标：四种状态不再互相矛盾；每屏只表达一个真相</div>
+
+<div class="row">
+  <!-- 1 已连接 -->
+  <div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="nav"><div class="nav-title" style="font-size:19px">Agents</div><div class="back">↻</div></div>
+      <div class="card dcard">
+        <div class="avatar">▤</div>
+        <div style="flex:1"><div class="t">MacBook Pro</div><div class="s">远程 · 端到端加密</div></div>
+        <div class="pill" style="background:rgba(92,217,184,.14);color:var(--ok)"><span class="dot" style="background:var(--ok)"></span>Remote · 84ms</div>
+      </div>
+      <div class="label">Mac 上的 Agent</div>
+      <div class="list">
+        <div class="row-item"><div class="avatar" style="width:30px;height:30px;border-radius:9px;font-size:15px">🐋</div>
+          <div style="flex:1"><div class="t">DeepSeek Harness</div><div class="s">57 sessions · 24 projects</div></div><div style="color:var(--tertiary)">›</div></div>
+        <div class="row-item"><div class="avatar" style="width:30px;height:30px;border-radius:9px;font-size:15px;color:#10A37F">✳</div>
+          <div style="flex:1"><div class="t">Codex</div><div class="s">82 sessions · 46 projects</div></div><div style="color:var(--tertiary)">›</div></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--tertiary);margin-top:auto;text-align:center">状态来自真实请求，不是缓存</div>
+    </div></div>
+    <div class="note" style="width:372px;margin-top:12px">① 已连接：只显示一种状态（Remote + 延迟）。数字是刚拉到的，不显示缓存值。</div>
+  </div>
+
+  <!-- 2 重连中 -->
+  <div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="nav"><div class="nav-title" style="font-size:19px">Agents</div><div class="back">↻</div></div>
+      <div class="banner" style="background:rgba(240,180,41,.12);border:1px solid rgba(240,180,41,.28);color:var(--warn)">
+        <span>◌</span><div><b style="font-size:12.5px">正在重新连接…</b><br>
+        <span style="color:var(--secondary)">第 2 次尝试 · 上次成功 00:42 前</span></div>
+      </div>
+      <div class="card dcard" style="margin-top:12px;opacity:.55">
+        <div class="avatar">▤</div>
+        <div style="flex:1"><div class="t">MacBook Pro</div><div class="s">上次连接：2 分钟前</div></div>
+        <div class="pill" style="background:rgba(110,110,124,.18);color:var(--tertiary)">重连中</div>
+      </div>
+      <div class="label">上次的 Agent 列表（可能已过期）</div>
+      <div class="list" style="opacity:.5">
+        <div class="row-item"><div class="avatar" style="width:30px;height:30px;border-radius:9px">🐋</div>
+          <div style="flex:1"><div class="t">DeepSeek Harness</div><div class="s">57 sessions · 24 projects</div></div></div>
+      </div>
+      <div class="btn primary">立即重连</div>
+    </div></div>
+    <div class="note" style="width:372px;margin-top:12px">② 重连中：明确告诉用户"数据可能过期"，并且重连按钮永远可点。</div>
+  </div>
+
+  <!-- 3 断开 -->
+  <div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="nav"><div class="nav-title" style="font-size:19px">Agents</div><div class="back">↻</div></div>
+      <div class="banner" style="background:rgba(255,107,107,.12);border:1px solid rgba(255,107,107,.3);color:var(--bad)">
+        <span>●</span><div><b style="font-size:12.5px">没有连接到 Mac</b><br>
+        <span style="color:var(--secondary)">FlowCue 可能已退出，或网络不可达</span></div>
+      </div>
+      <div class="card" style="margin-top:12px">
+        <div class="t">要做什么？</div>
+        <div class="s" style="margin-top:6px;line-height:1.6">· 确认 Mac 上 FlowCue 正在运行<br>· 回到同一 Wi-Fi 会自动直连<br>· 远程连接需要 Mac 能上网</div>
+      </div>
+      <div class="btn primary">重新连接</div>
+      <div class="btn ghost">重新配对</div>
+    </div></div>
+    <div class="note" style="width:372px;margin-top:12px">③ 断开：不再显示空的 Agent 列表和空对话，直接给原因和两个出口。</div>
+  </div>
+
+  <!-- 4 对话页断线 -->
+  <div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="nav"><div class="back">‹</div><div class="nav-title">DSH · iOS 开发</div><div style="width:36px"></div></div>
+      <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px">
+        <div style="font-size:26px">⚠︎</div>
+        <div style="font-size:15px;font-weight:650">这条会话暂时读不到</div>
+        <div style="font-size:12.5px;color:var(--secondary);text-align:center;line-height:1.6;max-width:270px">
+          连接已断开，消息没有加载。<br>不是"没有消息"，是没法读。
+        </div>
+        <div class="btn primary" style="width:220px">重试</div>
+      </div>
+    </div></div>
+    <div class="note" style="width:372px;margin-top:12px">④ 对话页：彻底区分「空会话」和「读不到」。这是最早埋下误解的地方。</div>
+  </div>
+</div>
+
+<div class="legend">
+  <div class="leg"><b style="color:var(--ok)">● Remote · 84ms</b><span>隧道在线，数据是实时的</span></div>
+  <div class="leg"><b style="color:var(--accent)">● LAN · 直接</b><span>同一 Wi-Fi，免费且更快</span></div>
+  <div class="leg"><b style="color:var(--warn)">◌ 重连中</b><span>有旧数据，但要提示可能过期</span></div>
+  <div class="leg"><b style="color:var(--bad)">● 未连接</b><span>不显示任何缓存数据</span></div>
+</div>
+
+<!-- Mac 面板 -->
+<div class="mac">
+  <div class="mbar"><div class="dr" style="background:#FF5F57"></div><div class="dr" style="background:#FEBC2E"></div><div class="dr" style="background:#28C840"></div></div>
+  <div class="mbody">
+    <div class="mside">
+      <div class="mi">通用</div><div class="mi on">远程</div><div class="mi">Agent</div><div class="mi">同步</div><div class="mi">实验室</div>
+    </div>
+    <div class="mmain">
+      <div style="font-size:18px;font-weight:650">远程</div>
+      <div class="note" style="margin-top:4px">手机不在同一 Wi-Fi 时，通过中继继续这些会话。</div>
+
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 0;border-bottom:1px solid #23232B;margin-top:8px">
+        <div><div style="font-size:13px;font-weight:600">允许远程连接</div>
+        <div class="note" style="margin-top:3px">关闭后，手机无法通过中继连接（同一 Wi-Fi 不受影响）。</div></div>
+        <div style="width:42px;height:24px;border-radius:12px;background:var(--accent);position:relative">
+          <div style="position:absolute;top:3px;right:3px;width:18px;height:18px;border-radius:9px;background:#fff"></div></div>
+      </div>
+
+      <div style="display:flex;gap:26px;margin-top:20px">
+        <div class="qr">
+          <div style="position:absolute;left:8px;top:8px;width:26px;height:26px;border:5px solid #000;background:#fff"></div>
+          <div style="position:absolute;right:8px;top:8px;width:26px;height:26px;border:5px solid #000;background:#fff"></div>
+          <div style="position:absolute;left:8px;bottom:8px;width:26px;height:26px;border:5px solid #000;background:#fff"></div>
+          <div style="position:absolute;inset:44px;background:
+            repeating-linear-gradient(90deg,#000 0 4px,#fff 4px 8px),
+            repeating-linear-gradient(0deg,#000 0 4px,#fff 4px 8px);background-blend-mode:multiply"></div>
+        </div>
+        <div>
+          <div class="note">用 iPhone 相机扫描，或手动输入：</div>
+          <div class="code" style="margin-top:8px">482 913</div>
+          <div class="note" style="margin-top:6px">5 分钟内有效 · 一码一用</div>
+          <div style="margin-top:16px;font-size:12px;font-weight:600">已配对的手机</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #23232B">
+            <div><div style="font-size:12.5px">Altankhuu 的 iPhone</div>
+              <div class="note" style="margin-top:2px">上次连接 2 分钟前 · Remote</div></div>
+            <div style="font-size:11.5px;color:#FF6B6B;font-weight:600">撤销</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="note" style="width:1100px;margin:14px auto 0;text-align:center">
+Mac 面板：QR 与 6 位码并列（扫码为主、手输兜底）；「允许远程连接」是配对的前置授权，不再是弹窗。
+</div>
+</body></html>

@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>FlowCue · Remote model v1</title>
+<style>
+  :root{
+    --bg:#0B0B0F; --surface:#14141A; --surface2:#1A1A21; --border:#262630;
+    --text:#F2F2F6; --text2:#9A9AA7; --text3:#6B6B78;
+    --accent:#7E84FF; --mint:#5CD9B8; --warning:#F0B429;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;-webkit-font-smoothing:antialiased}
+  .page{max-width:1240px;margin:0 auto;padding:48px 32px 80px}
+  .mast{display:flex;align-items:baseline;justify-content:space-between;gap:20px;padding-bottom:20px;border-bottom:1px solid var(--border)}
+  .eyebrow{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text3)}
+  h1{font-size:28px;letter-spacing:-.03em;margin:6px 0 0}
+  .meta{font-size:12px;color:var(--text3);text-align:right}
+  section{margin-top:56px}
+  .section-label{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--accent);letter-spacing:.12em;text-transform:uppercase;margin-bottom:12px}
+  .section-label::after{content:"";height:1px;flex:1;background:var(--border)}
+  h2{font-size:30px;letter-spacing:-.03em;margin:0 0 8px}
+  .sub{font-size:15px;color:var(--text2);max-width:64ch;margin:0 0 24px}
+  .plans{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .plan{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:20px;display:flex;flex-direction:column;min-height:310px}
+  .plan.highlight{border-color:rgba(126,132,255,.55);background:radial-gradient(400px 200px at 50% 0%,rgba(126,132,255,.16),transparent 70%),var(--surface)}
+  .plan h3{margin:0;font-size:17px;display:flex;align-items:center;gap:8px}
+  .chip{font-size:10px;font-weight:600;color:var(--text2);border:1px solid var(--border);border-radius:999px;padding:2px 8px}
+  .plan .price{font-size:38px;font-weight:650;letter-spacing:-.04em;margin:14px 0 2px}
+  .plan .price small{font-size:12px;font-weight:500;color:var(--text3);letter-spacing:0}
+  .plan .lede{font-size:13px;color:var(--text2);margin:0 0 14px;min-height:38px}
+  .plan ul{margin:0;padding-left:18px;font-size:12.5px;color:var(--text2);flex:1}
+  .plan li{margin-bottom:5px}
+  .plan .foot{margin-top:14px;font-size:11px;color:var(--text3)}
+  .strip{margin-top:14px;display:flex;align-items:center;gap:10px;justify-content:space-between;border:1px solid var(--border);border-radius:12px;padding:12px 16px;background:var(--surface2);font-size:12.5px;color:var(--text2)}
+  .strip strong{color:var(--text)}
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:40px;padding:0 18px;border-radius:10px;background:var(--accent);color:#0b0b12;font-weight:650;font-size:13px;border:0}
+
+  /* Mac settings window */
+  .mac{display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start}
+  .window{background:#1d1d22;border:1px solid #33333c;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.45)}
+  .titlebar{height:38px;background:#2a2a31;display:flex;align-items:center;padding:0 13px;gap:7px;border-bottom:1px solid #38383f}
+  .light{width:11px;height:11px;border-radius:50%}
+  .light.r{background:#ff5f57}.light.y{background:#febc2e}.light.g{background:#28c840}
+  .titlebar span{margin-left:auto;margin-right:auto;font-size:11px;color:#b8b8c2;transform:translateX(-16px)}
+  .settings{display:grid;grid-template-columns:170px 1fr;min-height:520px;background:#1b1b20}
+  .side{border-right:1px solid #2e2e37;padding:14px 10px;background:#17171c}
+  .side .row{display:flex;align-items:center;gap:8px;font-size:12px;color:#9a9aa7;padding:7px 9px;border-radius:7px;margin-bottom:2px}
+  .side .row.on{background:rgba(126,132,255,.16);color:#b9bcff}
+  .side .ico{width:14px;text-align:center;font-size:12px}
+  .content{padding:24px 26px}
+  .content h2{font-size:24px;margin:0 0 3px}
+  .content .sub{margin:0 0 18px;font-size:12.5px;color:#9a9aa7}
+  .group{background:#15151a;border:1px solid #2b2b34;border-radius:12px;margin-bottom:14px}
+  .grow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;border-bottom:1px solid #25252d;font-size:12.5px}
+  .grow:last-child{border-bottom:0}
+  .status{display:flex;align-items:center;gap:6px;color:#9a9aa7}
+  .dot{width:6px;height:6px;border-radius:50%;background:#6b6b78}
+  .dot.ok{background:var(--mint)}
+  .input{height:32px;border:1px solid #34343f;background:#101014;border-radius:8px;color:#6b6b78;display:flex;align-items:center;padding:0 10px;font-size:11px;flex:1;min-width:0;font-family:ui-monospace,Menlo,monospace}
+  .small{height:28px;padding:0 12px;font-size:11px;border-radius:8px}
+  .note{font-size:11px;color:#6b6b78;margin:8px 2px 0}
+  .benefit{display:flex;align-items:flex-start;gap:8px;padding:9px 14px;font-size:12px;color:#9a9aa7;border-bottom:1px solid #25252d}
+  .benefit:last-child{border-bottom:0}
+  .benefit b{color:#f2f2f6;font-weight:600}
+  .tick{color:var(--mint);font-size:11px;margin-top:2px}
+  .lock{color:var(--warning)}
+
+  /* phones */
+  .phones{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+  .phone-wrap{background:var(--surface);border:1px solid var(--border);border-radius:18px;padding:20px;display:flex;flex-direction:column;align-items:center;gap:12px}
+  .phone{width:286px;padding:7px;border-radius:40px;border:1px solid #33333c;background:#08080c;box-shadow:0 30px 70px rgba(0,0,0,.5);position:relative}
+  .screen{position:relative;border-radius:33px;overflow:hidden;aspect-ratio:1206/2622;background:#0b0b12}
+  .screen>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+  .free-screen{background:radial-gradient(360px 260px at 50% 18%,rgba(126,132,255,.16),transparent 70%),#0b0b12;display:flex;align-items:center;justify-content:center;padding:22px}
+  .free-top{position:absolute;top:14px;left:18px;right:18px;display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#d8d8e0}
+  .free-card{text-align:center;padding:18px 16px;border:1px solid rgba(255,255,255,.1);border-radius:18px;background:rgba(21,21,26,.9)}
+  .free-lock{width:38px;height:38px;border-radius:50%;border:1px solid rgba(255,255,255,.16);display:grid;place-items:center;margin:0 auto 10px;color:var(--warning);font-size:16px}
+  .free-card h4{margin:0 0 6px;font-size:14px}
+  .free-card p{margin:0 0 12px;font-size:10.5px;color:#9a9aa7;line-height:1.5}
+  .free-card .btn{width:100%;height:34px;font-size:11px;border-radius:9px}
+  .free-card .ghost{height:30px;border:1px solid #34343f;border-radius:9px;color:#6b6b78;font-size:10px;display:flex;align-items:center;justify-content:center;margin-top:7px}
+  .overlay{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:flex-end;padding:14px 12px;pointer-events:none}
+  .state{display:flex;align-items:center;gap:6px;font-size:10px;color:#9a9aa7;margin-bottom:6px}
+  .pill{align-self:center;display:inline-flex;align-items:center;gap:6px;font-size:10px;font-weight:600;padding:5px 10px;border-radius:999px;background:rgba(11,11,15,.78);border:1px solid rgba(255,255,255,.12);backdrop-filter:blur(8px);color:#d8d8e0}
+  .pill .dot{width:5px;height:5px}
+  .sheet{pointer-events:auto;background:rgba(21,21,26,.94);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:14px;backdrop-filter:blur(14px);box-shadow:0 18px 40px rgba(0,0,0,.35)}
+  .sheet h4{margin:0 0 4px;font-size:13px;letter-spacing:-.01em}
+  .sheet p{margin:0 0 10px;font-size:11px;color:#9a9aa7;line-height:1.45}
+  .sheet .btn{width:100%;height:34px;font-size:11.5px;border-radius:9px}
+  .sheet .ghost{width:100%;height:32px;border:1px solid #34343f;border-radius:9px;color:#9a9aa7;font-size:11px;display:flex;align-items:center;justify-content:center;margin-top:7px}
+  .caption{font-size:11px;color:var(--text3);text-align:center;max-width:34ch}
+  .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:18px}
+  .flow .node{border:1px solid var(--border);border-radius:12px;padding:12px;background:var(--surface);font-size:12px;color:var(--text2)}
+  .flow .node b{display:block;color:var(--text);font-size:12.5px;margin-bottom:3px}
+  .flow .node.on{border-color:rgba(126,132,255,.5)}
+  .flow .node.on b{color:var(--accent)}
+  .fine{font-size:11px;color:var(--text3);margin-top:12px}
+  @media(max-width:900px){.plans,.mac,.phones{grid-template-columns:1fr}.flow{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="mast">
+    <div>
+      <div class="eyebrow">FlowCue · Agent HUD model</div>
+      <h1>现在全免费。Remote 以后再做。</h1>
+    </div>
+    <div class="meta">视觉稿 v2 · 2026-11-24<br>非最终实现</div>
+  </div>
+
+  <section>
+    <div class="section-label">01 · 官网定价</div>
+    <h2>Mac 免费，iPhone 同 Wi-Fi 也免费。</h2>
+    <p class="sub">Agent HUD 的免费层就是这样：同一网络能看、能发、能审批；只有 Remote（离开网络、远程控制）才收费。FlowCue 现在还没有 Remote，所以先全部免费，等 Remote 做完再卖 1,999 终身。</p>
+    <div class="plans">
+      <article class="plan">
+        <h3>Mac <span class="chip">FREE</span></h3>
+        <div class="price">Free</div>
+        <p class="lede">捕获、收件箱、读会话、发消息、并行分发、收藏搜索。</p>
+        <ul>
+          <li>全部本地功能</li>
+          <li>Codex / Claude Code / DSH</li>
+          <li>无需账号、无需 License</li>
+        </ul>
+        <div class="foot">macOS 14+ · 已签名公证</div>
+      </article>
+      <article class="plan">
+        <h3>iPhone <span class="chip">FREE</span></h3>
+        <div class="price">Free</div>
+        <p class="lede">同一 Wi-Fi 下全功能：看会话、发消息、审批。</p>
+        <ul>
+          <li>同网络免费</li>
+          <li>无需订阅或账号</li>
+          <li>Remote 才收费（以后）</li>
+        </ul>
+        <div class="foot">iOS 17+ · 不经过 App Store 订阅</div>
+      </article>
+      <article class="plan">
+        <h3>Remote <span class="chip">LATER</span></h3>
+        <div class="price">Later <small>in development</small></div>
+        <p class="lede">离开同一网络、远程控制、推送；还没做。</p>
+        <ul>
+          <li>1,999 终身（上线后）</li>
+          <li>Mac license 或 iOS IAP 待定</li>
+          <li>现在不收费</li>
+        </ul>
+        <div class="foot">Remote 上线后再公布价格与渠道</div>
+      </article>
+    </div>
+    <div class="strip">
+      <span><strong>现在全部免费</strong> · Mac 与同 Wi-Fi 的 iPhone 都能用 · Remote 上线后再卖 1,999 终身</span>
+      <span class="btn">Remote 上线通知</span>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">02 · Mac 设置</div>
+    <h2>Mac 全免费，Remote 还没做。</h2>
+    <p class="sub">Mac 本地功能全部免费；同一 Wi-Fi 的 iPhone 也免费。Remote（离开网络/远程控制）上线后，才会出现 license 或订阅入口。</p>
+    <div class="mac">
+      <div class="window">
+        <div class="titlebar"><span class="light r"></span><span class="light y"></span><span class="light g"></span><span>设置</span></div>
+        <div class="settings">
+          <aside class="side">
+            <div class="row"><span class="ico">⚙</span>通用</div>
+            <div class="row"><span class="ico">▭</span>面板</div>
+            <div class="row"><span class="ico">◉</span>Agent</div>
+            <div class="row"><span class="ico">⌘</span>集成</div>
+            <div class="row"><span class="ico">◌</span>远程</div>
+            <div class="row"><span class="ico">☁</span>同步</div>
+            <div class="row"><span class="ico">▥</span>用量</div>
+            <div class="row on"><span class="ico">✦</span>Remote</div>
+            <div class="row"><span class="ico">↓</span>更新</div>
+            <div class="row"><span class="ico">⚗</span>实验室</div>
+          </aside>
+          <div class="content">
+            <h2>Remote</h2>
+            <p class="sub">还没上线。现在同一 Wi-Fi 的 iPhone 已经免费可用。</p>
+            <div class="group">
+              <div class="grow"><span>状态</span><span class="status"><span class="dot"></span>开发中</span></div>
+              <div class="grow"><span>授权 / 订阅</span><span class="input">Remote 上线后开放</span><span class="btn small" style="opacity:.45">未开放</span></div>
+            </div>
+            <p class="note">当前没有收费项：Mac 本地全免费；同 Wi-Fi 的 iPhone 也免费。</p>
+            <div class="group" style="margin-top:18px">
+              <div class="benefit"><span class="tick">✓</span><span><b>同 Wi-Fi iPhone 免费</b><br>看会话、发消息、审批</span></div>
+              <div class="benefit"><span class="tick">✓</span><span><b>Mac 本地全免费</b><br>不需要账号或 license</span></div>
+              <div class="benefit"><span class="lock">○</span><span><b>Remote：任意网络 / 远程控制</b><br>还没做；上线后才有 1,999 终身</span></div>
+            </div>
+            <div class="strip" style="margin-top:14px">
+              <span><strong>Remote 开发中</strong> · 上线后再公布价格</span>
+              <span class="btn small" style="opacity:.55">Coming later</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div>
+        <div class="group">
+          <div class="grow"><span>免费 Mac</span><span class="status"><span class="dot ok"></span>本地全功能</span></div>
+          <div class="grow"><span>免费 iPhone</span><span class="status"><span class="dot ok"></span>同 Wi-Fi 全功能</span></div>
+          <div class="grow"><span>Remote</span><span class="status"><span class="dot"></span>开发中</span></div>
+        </div>
+        <p class="note">现在没有付费入口，也没有 license；App 内不会出现订阅墙。</p>
+        <div class="flow">
+          <div class="node"><b>Mac</b>免费全功能</div>
+          <div class="node"><b>iPhone</b>同 Wi-Fi 免费</div>
+          <div class="node" style="opacity:.55"><b>Remote</b>开发中</div>
+          <div class="node" style="opacity:.55"><b>任意网络</b>以后</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-label">03 · iPhone 两种状态</div>
+    <h2>同 Wi-Fi 全免费；Remote 以后再说。</h2>
+    <p class="sub">左边是同一 Wi-Fi 的 iPhone：看、发、审批都能用；右边是 Remote 还没上线的状态。没有订阅墙，也不消耗名额。</p>
+    <div class="phones">
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="screen">
+            <img src="iphone-agents.webp" alt="">
+            <div class="overlay">
+              <div class="sheet">
+                <div class="state"><span class="dot" style="background:var(--mint)"></span>Same Wi-Fi · Free</div>
+                <h4>全功能可用</h4>
+                <p>同一 Wi-Fi 下免费：看会话、发消息、审批。不需要订阅或账号。</p>
+                <div class="btn">Open approvals</div>
+                <div class="ghost">No subscription · No account</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">免费 iPhone：同 Wi-Fi 下全功能；没有订阅墙。</div>
+      </div>
+      <div class="phone-wrap">
+        <div class="phone">
+          <div class="screen free-screen">
+            <div class="free-top"><span>09:41</span><span>FlowCue</span></div>
+            <div class="free-card">
+              <div class="free-lock">◌</div>
+              <h4>Remote · later</h4>
+              <p>离开同一网络还在做。现在同 Wi-Fi 继续免费；Remote 上线后才会收费。</p>
+              <div class="btn" style="opacity:.55">Coming later</div>
+              <div class="ghost">Same Wi-Fi stays free</div>
+            </div>
+          </div>
+        </div>
+        <div class="caption">Remote：任意网络/远程控制，开发中；上线后才有 1,999 终身。</div>
+      </div>
+    </div>
+    <p class="fine">视觉稿仅用于确认产品与收费边界；“Remote / 任意网络” 尚未实现，现在没有任何付费入口。</p>
+  </section>
+</div>
+</body>
+</html>

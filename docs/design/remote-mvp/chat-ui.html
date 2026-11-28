@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh"><head><meta charset="utf-8"><style>
+:root{--canvas:#101014;--surface:#181820;--raised:#1B1B20;--border:#24242E;
+--text:#F2F2F5;--secondary:#9A9AA8;--tertiary:#6E6E7C;--accent:#7E84FF;
+--ok:#5CD9B8;--warn:#F0B429;--bad:#FF6B6B;--bubble:#23232C;}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#08080A;color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;padding:46px;width:1500px}
+h1{font-size:23px;font-weight:650}
+.sub{color:var(--secondary);font-size:12.5px;margin-top:5px}
+.row{display:flex;gap:44px;margin-top:34px;align-items:flex-start}
+.phone{width:376px;height:800px;border-radius:46px;background:var(--canvas);border:1px solid #22222A;position:relative;overflow:hidden;box-shadow:0 26px 70px rgba(0,0,0,.55),inset 0 0 0 5px #0A0A0C}
+.notch{position:absolute;top:12px;left:50%;transform:translateX(-50%);width:104px;height:28px;border-radius:15px;background:#000;z-index:6}
+.screen{padding:64px 18px 20px;height:100%;display:flex;flex-direction:column}
+.nav{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:0 4px}
+.back{width:34px;height:34px;border-radius:17px;background:var(--surface);border:1px solid var(--border);display:grid;place-items:center;font-size:15px}
+.nav-title{font-size:15.5px;font-weight:600;display:flex;align-items:center;gap:5px}
+.s{font-size:11px;color:var(--tertiary);margin-top:2px}
+.t{font-size:14px;font-weight:560}
+.label{font-size:10px;font-weight:650;letter-spacing:.9px;color:var(--tertiary);text-transform:uppercase;margin:16px 0 7px}
+.group{background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden}
+.ghead{display:flex;align-items:center;gap:9px;padding:11px 13px;border-bottom:1px solid var(--border)}
+.grow{display:flex;align-items:center;gap:9px;padding:10px 13px;border-bottom:1px solid rgba(36,36,46,.7)}
+.grow:last-child{border-bottom:none}
+.badge{font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:999px;background:var(--accent);color:#fff;margin-left:auto}
+.chip{font-size:9.5px;font-weight:700;padding:2px 6px;border-radius:999px}
+.banner{margin-top:10px;padding:11px 13px;border-radius:14px;background:rgba(126,132,255,.12);border:1px solid rgba(126,132,255,.3);font-size:11.5px;line-height:1.5}
+.msgs{flex:1;display:flex;flex-direction:column;gap:10px;margin-top:8px;overflow:hidden}
+.msg{max-width:82%;padding:10px 13px;border-radius:16px;font-size:12.5px;line-height:1.5}
+.msg.me{align-self:flex-end;background:var(--accent);color:#fff;border-bottom-right-radius:5px}
+.msg.ai{align-self:flex-start;background:var(--bubble);border-bottom-left-radius:5px}
+.act{display:flex;align-items:center;gap:6px;padding:6px 12px;background:rgba(24,24,32,.7);font-size:10.5px;color:var(--secondary);margin:0 -18px}
+.spin{width:9px;height:9px;border-radius:5px;border:1.5px solid rgba(126,132,255,.3);border-top-color:var(--accent)}
+.composer{margin-top:auto;display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:9px 12px}
+.plus{width:26px;height:26px;border-radius:13px;border:1px solid var(--border);display:grid;place-items:center;color:var(--secondary);font-size:14px}
+.send{width:28px;height:28px;border-radius:14px;background:var(--accent);display:grid;place-items:center;color:#fff;font-size:14px}
+.scroll{position:absolute;right:20px;bottom:132px;width:32px;height:32px;border-radius:16px;background:var(--accent);display:grid;place-items:center;color:#fff;font-size:13px;box-shadow:0 6px 16px rgba(0,0,0,.4)}
+.slash{position:absolute;left:18px;right:18px;bottom:86px;background:var(--raised);border:1px solid var(--border);border-radius:14px;overflow:hidden;box-shadow:0 -8px 30px rgba(0,0,0,.5)}
+.si{display:flex;flex-direction:column;gap:2px;padding:9px 12px;border-bottom:1px solid rgba(36,36,46,.8)}
+.si:last-child{border-bottom:none}
+.skill{font-size:12px;font-weight:600}
+.sdesc{font-size:10px;color:var(--tertiary)}
+.note{width:376px;font-size:11.5px;color:var(--tertiary);line-height:1.6;margin-top:12px}
+</style></head><body>
+<h1>FlowCue — 会话列表与对话页</h1>
+<div class="sub">视觉稿 v1 ｜ 覆盖：项目分组、待回答徽标、继续上次、活动条、回到底部、斜杠菜单</div>
+
+<div class="row">
+  <!-- A 会话列表 -->
+  <div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="nav"><div class="back">‹</div><div class="nav-title">DSH <span style="color:var(--tertiary);font-size:11px">▾</span></div><div class="back">⋯</div></div>
+
+      <div class="banner">
+        <b>继续上次：iOS 开发</b><br>
+        <span style="color:var(--secondary)">2 小时前 · DeepSeek 正在等待你的回答</span>
+      </div>
+
+      <div class="label">FlowCue-Development · 4</div>
+      <div class="group">
+        <div class="ghead"><span>📱</span><span class="t">FlowCue-Development</span><span style="margin-left:auto;color:var(--tertiary);font-size:11px">4 ›</span></div>
+        <div class="grow"><div><div class="t">iOS 开发</div><div class="s">1 小时前</div></div><span class="badge">待回答</span></div>
+        <div class="grow"><div><div class="t">官网视觉稿更新上线</div><div class="s">7 小时前</div></div></div>
+        <div class="grow"><div><div class="t">开发安卓端可行性</div><div class="s">23 小时前</div></div></div>
+      </div>
+
+      <div class="label">Dorewio · 2</div>
+      <div class="group">
+        <div class="ghead"><span>🧪</span><span class="t">Dorewio</span><span style="margin-left:auto;color:var(--tertiary);font-size:11px">2 ›</span></div>
+        <div class="grow"><div><div class="t">Dorewio 支付接入</div><div class="s">昨天</div></div></div>
+      </div>
+
+      <div class="label">未关联项目 · 1</div>
+      <div class="group" style="opacity:.75">
+        <div class="ghead"><span>💬</span><span class="t">未关联项目</span><span style="margin-left:auto;color:var(--tertiary);font-size:11px">1 ›</span></div>
+      </div>
+    </div></div>
+    <div class="note">① 分组默认折叠成一行，点开后才是会话；「待回答」徽标只在真有提问时出现；「继续上次」置顶一条。</div>
+  </div>
+
+  <!-- B 对话页 -->
+  <div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="nav"><div class="back">‹</div><div class="nav-title">iOS 开发 <span style="color:var(--tertiary);font-size:11px">▾</span></div><div class="back">⋯</div></div>
+      <div class="act"><span class="spin"></span><span>执行命令 · npm run build</span></div>
+
+      <div class="msgs">
+        <div class="msg ai">iOS 端远程连接已经通了，但对话加载还是慢，我先把消息缓存加上看看。</div>
+        <div class="msg me">好，你先弄，我这边等你说能测。</div>
+        <div class="msg ai">缓存加好了：首次 0.98 秒，之后 0.10 秒。你装 108 试试。</div>
+        <div class="msg me">装好了，现在打开对话能出内容了。</div>
+      </div>
+
+      <div class="scroll">↓</div>
+
+      <div class="slash">
+        <div class="si"><span class="skill">/skill-atlas</span><span class="sdesc">Manage agent skills across platforms…</span></div>
+        <div class="si"><span class="skill">/imagegen</span><span class="sdesc">Generate images from prompts</span></div>
+      </div>
+
+      <div class="composer">
+        <div class="plus">+</div>
+        <div style="flex:1;font-size:12.5px;color:var(--tertiary)">/ski</div>
+        <div class="send">↑</div>
+      </div>
+    </div></div>
+    <div class="note">② 顶部活动条显示"正在执行什么"；离开底部时出现 ↓ 按钮；输入 <code>/</code> 弹出本机 skill，按名字或描述过滤。</div>
+  </div>
+
+  <!-- C 长对话 -->
+  <div>
+    <div class="phone"><div class="notch"></div><div class="screen">
+      <div class="nav"><div class="back">‹</div><div class="nav-title">Codex · 官网视觉稿</div><div class="back">⋯</div></div>
+      <div class="msgs" style="justify-content:flex-end">
+        <div class="msg ai">我已经把首页的 sticky stage 改成真机滚动演示。</div>
+        <div class="msg me">截图看一下</div>
+        <div class="msg ai">（图片消息 1600×900）</div>
+        <div class="msg me">这个可以</div>
+      </div>
+      <div style="text-align:center;margin:10px 0 0"><button style="background:none;border:1px solid var(--border);color:var(--secondary);border-radius:999px;padding:6px 14px;font-size:11px">↓ 回到底部</button></div>
+      <div class="composer" style="margin-top:10px">
+        <div class="plus">+</div>
+        <div style="flex:1;font-size:12.5px;color:var(--tertiary)">Reply…</div>
+        <div class="send" style="background:#2A2A34">↑</div>
+      </div>
+    </div></div>
+    <div class="note">③ 通用对话页（Codex / Claude）：气泡已到底时隐藏浮动按钮，改用底部一条轻量提示，避免遮挡内容。</div>
+  </div>
+</div>
+</body></html>
