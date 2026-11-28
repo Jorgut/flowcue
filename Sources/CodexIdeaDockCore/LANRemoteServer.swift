@@ -503,7 +503,8 @@ public final class LANRemoteServer {
                         }
                     }
                     let sessions = (try? await agentService.sessions(for: agentID, limit: 1000)) ?? []
-                    guard let session = sessions.first(where: { $0.id == sessionID }) else {
+                    guard let session = sessions.first(where: { $0.id == sessionID })
+                        ?? Self.unlistedSession(agentID: agentID, sessionID: sessionID) else {
                         return Self.response(status: 404, body: Data("{}".utf8))
                     }
                     if action == "activity", request.method == "GET" {
@@ -986,6 +987,16 @@ public final class LANRemoteServer {
         default:
             return Self.response(status: 404, body: Data("{}".utf8))
         }
+    }
+
+    /// `thread/list` 用 `useStateDbOnly`，CLI 或 `codex exec` 建的线程常常不在
+    /// 列表里，但 `thread/read` 仍能读。id 合法就先合成一个会话，避免手机
+    /// 只因为「列表里没有」就拿到 404，历史、活动与发送跟着一起失败。
+    static func unlistedSession(agentID: String, sessionID: String) -> AgentSession? {
+        guard agentID == "codex", UUID(uuidString: sessionID) != nil else { return nil }
+        return AgentSession(id: sessionID, agentID: agentID, title: sessionID,
+                            updatedAt: Date(timeIntervalSince1970: 0),
+                            projectPath: nil, messageCount: nil, locator: sessionID)
     }
 
     private static func response(status: Int, body: Data) -> Data {

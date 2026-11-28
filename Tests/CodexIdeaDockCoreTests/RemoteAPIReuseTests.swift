@@ -115,6 +115,26 @@ final class RemoteAPIReuseTests: XCTestCase {
         XCTAssertFalse(result.body.isEmpty)
     }
 
+    /// `thread/list` 用 useStateDbOnly，CLI 建的线程可能不在列表里；
+    /// 这类会话只要 id 合法就该继续可读，而不是 404。
+    func testUnlistedCodexSessionFallsBackToThreadID() {
+        let id = UUID().uuidString
+        let session = LANRemoteServer.unlistedSession(agentID: "codex", sessionID: id)
+        XCTAssertEqual(session?.id, id)
+        XCTAssertEqual(session?.locator, id)
+        XCTAssertNil(LANRemoteServer.unlistedSession(agentID: "codex", sessionID: "not-a-uuid"))
+        XCTAssertNil(LANRemoteServer.unlistedSession(agentID: "dsh", sessionID: id))
+    }
+
+    func testUnlistedCodexHistoryIsNot404() async {
+        let id = UUID().uuidString
+        let result = await server.dispatchRemote(
+            method: "GET", path: "/v1/agents/codex/sessions/\(id)/messages",
+            headers: ["authorization": "Bearer \(code)"]
+        )
+        XCTAssertNotEqual(result.status, 404, "列表里没有的合法线程不该回 404")
+    }
+
     func testUnknownRouteIs404() async {
         let result = await server.dispatchRemote(
             method: "GET", path: "/v1/does-not-exist",
