@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>试点：verification-loop</title><link rel="stylesheet" href="v2.css"></head>
+<body>
+<div class="diagram">
+  <h2>试点 · verification-loop</h2>
+  <div class="sub">只把两句 “Codex sessions / Claude Code sessions” 换成 “agent sessions”，其余不动</div>
+
+  <div class="cols">
+    <div class="panel-d">
+      <h3>改之前</h3>
+      <div class="tag2">3 份实体副本，2 个版本</div>
+
+      <div class="copy">
+        <span class="badge">agents</span>
+        <div><div class="path"><b>~/.agents/skills/verification-loop</b></div>
+        <div class="bad">“Comprehensive verification workflow for <b>Codex</b> sessions…”</div></div>
+      </div>
+      <div class="copy">
+        <span class="badge">cc-switch</span>
+        <div><div class="path"><b>~/.cc-switch/skills/verification-loop</b></div>
+        <div class="bad">“A comprehensive verification system for <b>Claude Code</b> sessions.”</div></div>
+      </div>
+      <div class="copy">
+        <span class="badge">claude</span>
+        <div><div class="path"><b>~/.claude/skills/verification-loop</b></div>
+        <div class="bad">第三份副本，跟着 cc-switch 走</div></div>
+      </div>
+
+      <div class="copy" style="background:rgba(255,92,92,.06); border:1px solid rgba(255,92,92,.22)">
+        <span class="badge red">审计</span>
+        <div class="path">copies = 3 · variants = <b style="color:var(--bad)">2</b></div>
+      </div>
+    </div>
+
+    <div class="panel-d">
+      <h3>改之后</h3>
+      <div class="tag2">1 份实体 + 2 条软链</div>
+
+      <div class="canon">
+        <div class="path"><b>~/.agents/skills/verification-loop/SKILL.md</b></div>
+        <div style="font-size:10.5px; color:var(--ok); margin-top:5px">
+          “Comprehensive verification workflow for agent sessions…”
+        </div>
+      </div>
+      <div class="links">
+        <div class="link-row"><span class="arrow">↳</span>~/.cc-switch/skills/verification-loop <span class="badge green">symlink</span></div>
+        <div class="link-row"><span class="arrow">↳</span>~/.claude/skills/verification-loop <span class="badge green">symlink</span></div>
+        <div class="link-row"><span class="arrow">↳</span>~/.codex/skills/verification-loop <span class="badge green">若存在，同样指向它</span></div>
+      </div>
+
+      <div class="copy" style="margin-top:12px; background:rgba(92,217,184,.06); border:1px solid rgba(92,217,184,.22)">
+        <span class="badge green">审计</span>
+        <div class="path">copies = 3 · variants = <b style="color:var(--ok)">1</b> ✅</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="code">
+    <div class="cbox">
+      <div class="hint2">实际改动（2 行）</div>
+      <span class="del">- description: … verification workflow for Codex sessions.</span><br>
+      <span class="del">- A comprehensive verification system for Claude Code sessions.</span>
+    </div>
+    <div class="cbox">
+      <div class="hint2">改后（两个平台都成立）</div>
+      <span class="add">+ description: … verification workflow for agent sessions.</span><br>
+      <span class="add">+ A comprehensive verification system for agent sessions.</span><br>
+      <span style="color:var(--text-3)">命令、步骤、触发词均未变</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

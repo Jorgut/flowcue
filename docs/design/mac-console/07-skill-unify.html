@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><title>方案 A：平台中立 + 单一副本</title><link rel="stylesheet" href="v2.css"></head>
+<body>
+<div class="diagram">
+  <h2>方案 A · 平台中立措辞 + 一个副本</h2>
+  <div class="sub">把「Codex / Claude」写死的地方改成「your agent」，然后所有平台共用同一份 SKILL.md</div>
+
+  <div class="cols">
+    <div class="panel-d">
+      <h3>现在：三份内容不同的副本</h3>
+      <div class="tag2">同一个技能，按平台各改一份 → 审计里算「分叉」</div>
+
+      <div class="copy">
+        <span class="badge">agents</span>
+        <div>
+          <div class="path"><b>~/.agents/skills/strategic-compact/SKILL.md</b></div>
+          <div class="bad">“Use the Codex compact command…”</div>
+        </div>
+      </div>
+      <div class="copy">
+        <span class="badge">cc-switch</span>
+        <div>
+          <div class="path"><b>~/.cc-switch/skills/strategic-compact/SKILL.md</b></div>
+          <div class="bad">“Use the Claude compact command…”</div>
+        </div>
+      </div>
+      <div class="copy">
+        <span class="badge">claude</span>
+        <div>
+          <div class="path"><b>~/.claude/skills/strategic-compact/SKILL.md</b></div>
+          <div class="bad">第三份，内容又差一点</div>
+        </div>
+      </div>
+
+      <div class="copy" style="background:rgba(255,92,92,.06); border:1px solid rgba(255,92,92,.22)">
+        <span class="badge red">风险</span>
+        <div class="path">同名 3 份、内容 2~3 个版本；更新哪一份、哪份被加载，取决于 agent 平台。</div>
+      </div>
+    </div>
+
+    <div class="panel-d">
+      <h3>方案 A：一份中立正文 + 软链</h3>
+      <div class="tag2">只改措辞，不改流程和命令；所有平台读同一份</div>
+
+      <div class="canon">
+        <div class="path"><b>~/.agents/skills/strategic-compact/SKILL.md</b> <span style="color:var(--ok)">（唯一副本）</span></div>
+        <div style="font-size:10.5px; color:var(--text-2); margin-top:5px">
+          “Use your agent’s compact command after long phases…”
+        </div>
+      </div>
+
+      <div class="links">
+        <div class="link-row"><span class="arrow">↳</span>~/.cc-switch/skills/strategic-compact <span class="badge green">symlink</span></div>
+        <div class="link-row"><span class="arrow">↳</span>~/.claude/skills/strategic-compact <span class="badge green">symlink</span></div>
+        <div class="link-row"><span class="arrow">↳</span>~/.codex/skills/strategic-compact <span class="badge green">symlink</span></div>
+        <div class="link-row"><span class="arrow">↳</span>~/.config/opencode/skills/strategic-compact <span class="badge green">symlink</span></div>
+      </div>
+
+      <div class="copy" style="margin-top:12px; background:rgba(92,217,184,.06); border:1px solid rgba(92,217,184,.22)">
+        <span class="badge green">收益</span>
+        <div class="path">改一次全平台生效；审计里这组从「分叉」变成「一致」。</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="code">
+    <div class="cbox">
+      <div class="hint2">改之前（每个平台各一份）</div>
+      <span class="del">- Use the Codex compact command after long phases</span><br>
+      <span class="del">- Use the Claude compact command after long phases</span>
+    </div>
+    <div class="cbox">
+      <div class="hint2">改之后（一份，各平台都成立）</div>
+      <span class="add">+ Use your agent’s compact command after long phases</span><br>
+      <span style="color:var(--text-3)">（命令、步骤、触发条件都不变，只去掉平台名）</span>
+    </div>
+  </div>
+</div>
+</body>
+</html>

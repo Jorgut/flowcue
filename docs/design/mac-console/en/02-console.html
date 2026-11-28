@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>FlowCue · Local Agents v2</title><link rel="stylesheet" href="../v2.css"></head>
+<body>
+<div class="window wide">
+  <div class="titlebar">
+    <div class="lights"><i></i><i></i><i></i></div>
+    <div class="t">Local Agents</div>
+    <div></div>
+  </div>
+
+  <div class="console">
+    <div class="side2">
+      <div class="node">
+        <div>
+          <div class="n">This Mac</div>
+          <div class="s"><i class="dot ok"></i>Online · 3 ms</div>
+        </div>
+        <div class="spacer" style="flex:1"></div>
+        <span style="color:var(--text-3); font-size:11px">⌕</span>
+      </div>
+      <div class="search" style="margin:0">Search sessions…</div>
+
+      <div style="display:flex; gap:12px; font-size:11px; color:var(--text-3); padding:2px 2px 4px">
+        <span style="color:var(--accent)">All</span><span>Codex</span><span>Claude</span><span>DSH</span>
+      </div>
+
+      <div class="sessions">
+        <div class="srow on">
+          <div class="t">Unify login errors <span>just now</span></div>
+          <div class="m">Error codes merged, adding two tests…</div>
+          <div class="f"><i class="dot ok"></i>Codex · auth-service</div>
+        </div>
+        <div class="srow">
+          <div class="t">Tidy the invoices <span>12m</span></div>
+          <div class="m">18 found, waiting on naming rule</div>
+          <div class="f"><i class="dot"></i>Claude Code · Downloads</div>
+        </div>
+        <div class="srow">
+          <div class="t">Daily design brief <span>1h</span></div>
+          <div class="m">Today's brief is ready to approve</div>
+          <div class="f"><i class="dot warn"></i>DSH · Daily Tasks</div>
+        </div>
+        <div class="srow">
+          <div class="t">Upwork scan <span>3h</span></div>
+          <div class="m">3 new matches, written to the sheet</div>
+          <div class="f"><i class="dot ok"></i>Codex · Upwork</div>
+        </div>
+        <div class="srow">
+          <div class="t">Refactor settings <span>yesterday</span></div>
+          <div class="m">Split into 4 sections, tests pending</div>
+          <div class="f"><i class="dot"></i>Claude Code · FlowCue</div>
+        </div>
+      </div>
+
+      <div style="font-size:10px; color:var(--text-3); display:flex; gap:6px; align-items:center; padding-top:8px; border-top:1px solid var(--stroke)">
+        <i class="dot ok"></i>LAN · 127.0.0.1:53160
+      </div>
+    </div>
+
+    <div class="chatpane">
+      <div class="chat-head">
+        <div>
+          <div class="t">Unify login errors</div>
+          <div class="s">Codex · auth-service · 3 files read</div>
+        </div>
+        <div class="spacer"></div>
+        <span style="font-size:10.5px; color:var(--text-2); display:flex; gap:5px; align-items:center"><i class="dot ok"></i>Running</span>
+        <span class="btn ghost" style="height:22px">⋯</span>
+      </div>
+
+      <div class="stream">
+        <div style="text-align:center; font-size:9.5px; color:var(--text-3)">Today 20:51</div>
+
+        <div class="msg me">
+          <div class="b">Unify the login error codes, then add two tests</div>
+          <div class="time">20:51</div>
+        </div>
+
+        <div class="msg bot">
+          <div class="b">Let me check the existing error codes first, then update AuthController.swift.</div>
+          <div class="tool"><span class="ok">✓</span>3 files read <span class="mono" style="color:var(--text-3)">AuthController · AuthError · LoginTests</span></div>
+          <div class="time">20:52</div>
+        </div>
+
+        <div class="approval">
+          <div class="hd">⚠ Approval needed</div>
+          <div class="t1">Codex wants to write AuthController.swift</div>
+          <div class="t2"><span class="mono">Sources/Auth/AuthController.swift</span><span>+12</span><span>−4 lines</span></div>
+          <div class="acts"><span class="btn primary">Allow once</span><span class="btn">Deny</span></div>
+        </div>
+
+        <div class="queue"><i class="dot warn"></i>Queued · 21:04 · waiting for Codex</div>
+      </div>
+
+      <div class="compose2">
+        <span class="ph">Message Codex…</span>
+        <span class="send">↑</span>
+      </div>
+    </div>
+
+    <div class="inspector2">
+      <div class="grp">
+        <div class="l">Session</div>
+        <div class="kv"><span>Agent</span><span style="color:#E2A27A">Codex</span></div>
+        <div class="kv"><span>Node</span><span>This Mac</span></div>
+        <div class="kv"><span>Workspace</span><span class="mono">~/FlowCue/auth-service</span></div>
+        <div class="kv"><span>Started</span><span>Today 20:51</span></div>
+        <div class="kv"><span>Status</span><span><i class="dot ok"></i>&nbsp;&nbsp;Running</span></div>
+      </div>
+
+      <div class="grp">
+        <div class="l">Agents on this machine</div>
+        <div class="arow"><div class="ab">C</div><div style="flex:1"><div class="an">Codex</div><div class="as">5 sessions · running</div></div><i class="dot ok"></i></div>
+        <div class="arow"><div class="ab" style="color:#E2A27A">✳</div><div style="flex:1"><div class="an">Claude Code</div><div class="as">3 sessions · idle</div></div><i class="dot"></i></div>
+        <div class="arow"><div class="ab" style="color:var(--ok)">D</div><div style="flex:1"><div class="an">DSH</div><div class="as">2 sessions · awaiting approval</div></div><i class="dot warn"></i></div>
+      </div>
+
+      <div class="grp">
+        <div class="l">Node</div>
+        <div class="kv"><span>System</span><span>macOS 26 · arm64</span></div>
+        <div class="kv"><span>Version</span><span>FlowCue 0.1.5</span></div>
+        <div class="kv"><span>Protocol</span><span>v1</span></div>
+      </div>
+
+      <div class="grp">
+        <div class="l">Queue</div>
+        <div class="kv"><span>Waiting</span><span>1 item</span></div>
+        <div class="kv"><span>Last delivery</span><span>3 hours ago · success</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
